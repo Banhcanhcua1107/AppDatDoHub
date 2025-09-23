@@ -3,10 +3,19 @@
   "compilerOptions": {
     "strict": true,
     "jsx": "react-jsx",
-
+    "module": "esnext",
+    "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
-      "~/*": ["src/*"]
+      "~/*": [
+        "src/*"
+      ]
     }
-  }
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "declarations.d.ts",
+    "nativewind-env.d.ts"
+  ]
 }
