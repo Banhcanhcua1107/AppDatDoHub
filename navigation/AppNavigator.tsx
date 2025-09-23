@@ -8,7 +8,7 @@ import { ROUTES } from "../constants/routes";
 import LoginScreen from "../screens/Auth/LoginScreen";
 import RegisterScreen from "../screens/Auth/RegisterScreen";
 import ForgotPasswordScreen from "../screens/Auth/ForgotPasswordScreen";
-import OtpScreen from "../screens/Auth/OtpScreen";
+import OtpScreenR from "../screens/Auth/OtpScreenR";
 import ResetPasswordScreen from "../screens/Auth/ResetPasswordScreen";
 import ResetSuccessScreen from "../screens/Auth/ResetSuccessScreen";
 
@@ -31,16 +31,15 @@ export default function AppNavigator() {
       <Stack.Navigator
         initialRouteName={ROUTES.LOGIN}
         screenOptions={{
-          headerShown: false, // ẩn header mặc định
+          headerShown: false,
         }}
       >
-    <Stack.Screen name="Login" component={LoginScreen} />
-    <Stack.Screen name="Register" component={RegisterScreen} />
-    <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
-    <Stack.Screen name="Otp" component={OtpScreen} />
-    <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
-    <Stack.Screen name="ResetSuccess" component={ResetSuccessScreen} />
-
+        <Stack.Screen name={ROUTES.LOGIN} component={LoginScreen} />
+        <Stack.Screen name={ROUTES.REGISTER} component={RegisterScreen} />
+        <Stack.Screen name={ROUTES.FORGOT_PASSWORD} component={ForgotPasswordScreen} />
+        <Stack.Screen name={ROUTES.OTP} component={OtpScreenR} />
+        <Stack.Screen name={ROUTES.RESET_PASSWORD} component={ResetPasswordScreen} />
+        <Stack.Screen name={ROUTES.RESET_SUCCESS} component={ResetSuccessScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

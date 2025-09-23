@@ -1,3 +1,4 @@
+import 'react-native-url-polyfill/auto';
 import React from "react";
 import AppNavigator from "./navigation/AppNavigator";
 import "./global.css";

@@ -12,21 +12,15 @@ import {
 // --- CÁC DÒNG IMPORT QUAN TRỌNG ---
 import { Ionicons } from "@expo/vector-icons";
 import MaskedView from '@react-native-masked-view/masked-view';
-
 import { LinearGradient } from 'expo-linear-gradient';
-
-// ------------------------------------
-
 import GoogleIconSVG from "../../assets/icons/GoogleIcon"; 
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-
-// import { saveUser } from "../../utils/authStorage";
-
 import { registerUser } from "../../services/authService";
 // --- Định nghĩa kiểu (Types) ---
 type RootStackParamList = {
   Login: undefined;
   Register: undefined;
+  Otp: { email: string }; // <-- THÊM DÒNG NÀY VÀO
 };
 // Sử dụng props cho màn hình Register
 type RegisterScreenProps = NativeStackScreenProps<RootStackParamList, 'Register'>; 
@@ -74,12 +68,16 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
     return Object.keys(currentErrors).length === 0;
   };
 
+  // Trong file RegisterScreen.tsx
   const handleRegister = async () => {
   if (validateForm()) {
     try {
-      const user = await registerUser(email, password);
-      alert("Đăng ký thành công: " + user.email);
-      navigation.navigate("Login");
+      await registerUser(email, password);
+      alert("Đăng ký thành công! Vui lòng kiểm tra email để lấy mã OTP.");
+      
+      // Dòng này bây giờ sẽ hợp lệ
+      navigation.navigate("Otp", { email: email });
+
     } catch (error: any) {
       alert("Lỗi đăng ký: " + error.message);
     }

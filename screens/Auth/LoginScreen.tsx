@@ -12,14 +12,12 @@ import {
 // --- CÁC DÒNG IMPORT QUAN TRỌNG ---
 import { Ionicons } from "@expo/vector-icons";
 import MaskedView from '@react-native-masked-view/masked-view';
-
 import { LinearGradient } from 'expo-linear-gradient';
 import { ROUTES } from "../../constants/routes";
-// ------------------------------------
 import { loginUser } from "../../services/authService";
 import GoogleIconSVG from "../../assets/icons/GoogleIcon"; 
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-// import { getUser } from "../../utils/authStorage";
+
 
 // --- Định nghĩa kiểu (Types) ---
 type RootStackParamList = {
@@ -52,7 +50,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     try {
       const user = await loginUser(email, password);
       alert("Đăng nhập thành công: " + user.email);
-      // TODO: chuyển sang màn hình chính (Tables/Orders)
     } catch (error: any) {
       alert("Lỗi đăng nhập: " + error.message);
     }
