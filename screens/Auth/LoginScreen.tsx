@@ -13,19 +13,19 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ROUTES } from "../../constants/routes";
+import { AuthStackParamList, ROUTES } from "../../constants/routes";
 import { loginUser } from "../../services/authService";
 import GoogleIconSVG from "../../assets/icons/GoogleIcon"; 
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
-
+import { useAuth } from '../../context/AuthContext';
 
 // --- Định nghĩa kiểu (Types) ---
-type RootStackParamList = {
-  Login: undefined;
-  Register: undefined;
-  ForgotPassword: undefined;
-};
-type LoginScreenProps = NativeStackScreenProps<RootStackParamList, 'Login'>;
+// type RootStackParamList = {
+//   Login: undefined;
+//   Register: undefined;
+//   ForgotPassword: undefined;
+// };
+type LoginScreenProps = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 type FormErrors = {
   email?: string;
   password?: string;
@@ -37,6 +37,8 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
 
+  const { login } = useAuth();
+
   const validateForm = (): boolean => {
     const currentErrors: FormErrors = {};
     if (!email) { currentErrors.email = "Nhập Email is required"; }
@@ -45,17 +47,17 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     return Object.keys(currentErrors).length === 0;
   };
 
- const handleLogin = async () => {
-  if (validateForm()) {
-    try {
-      const user = await loginUser(email, password);
-      alert("Đăng nhập thành công: " + user.email);
-    } catch (error: any) {
-      alert("Lỗi đăng nhập: " + error.message);
+  const handleLogin = async () => {
+    if (validateForm()) {
+      try {
+        // Chỉ cần gọi hàm mà không cần gán kết quả cho biến nào
+        await loginUser(email, password); 
+        login(); 
+      } catch (error: any) {
+        alert("Lỗi đăng nhập: " + error.message);
+      }
     }
-  }
 };
-
   
 
   return (
