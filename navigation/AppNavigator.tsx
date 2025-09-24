@@ -18,6 +18,7 @@ import OtpScreen from "../screens/Auth/OtpScreen";
 import OtpScreenR from "../screens/Auth/OtpScreenR";
 import ResetPasswordScreen from "../screens/Auth/ResetPasswordScreen";
 import ResetSuccessScreen from "../screens/Auth/ResetSuccessScreen";
+import MenuScreen from '../screens/Menu/MenuScreen';
 
 // Màn hình chính của ứng dụng (sau khi đăng nhập)
 import HomeScreen from "../screens/Tables/HomeScreen"; // <-- Import màn hình Home
@@ -49,6 +50,7 @@ const AppMainNavigator = () => {
   return (
     <AppStack.Navigator screenOptions={{ headerShown: false }}>
       <AppStack.Screen name={ROUTES.HOME} component={HomeScreen} />
+      <AppStack.Screen name={ROUTES.MENU} component={MenuScreen} />
       {/* <AppStack.Screen name={ROUTES.PROFILE} component={ProfileScreen} /> */}
       {/* Thêm các màn hình khác của bạn ở đây */}
     </AppStack.Navigator>

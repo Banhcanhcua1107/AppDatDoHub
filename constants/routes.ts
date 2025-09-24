@@ -10,9 +10,9 @@ export const ROUTES = {
   OTP_REGISTER: "OtpScreenR", 
   RESET_PASSWORD: "ResetPassword",
   RESET_SUCCESS: "ResetSuccess",
-
   // --- Thêm route mới cho màn hình chính ---
   HOME: "Home", 
+  MENU: "Menu",
 } as const;
 
 
@@ -26,6 +26,7 @@ export type AuthStackParamList = {
   [ROUTES.OTP_REGISTER]: { email: string };
   [ROUTES.RESET_PASSWORD]: { email: string };
   [ROUTES.RESET_SUCCESS]: undefined;
+  
 };
 
 
@@ -33,6 +34,8 @@ export type AuthStackParamList = {
 // Nó cũng sẽ dùng đối tượng ROUTES ở trên
 export type AppStackParamList = {
   [ROUTES.HOME]: undefined;
+  [ROUTES.MENU]: { tableId: string; tableName: string; }; 
+
   // Thêm các màn hình khác của App vào đây, ví dụ:
   // [ROUTES.PROFILE]: { userId: string };
 };

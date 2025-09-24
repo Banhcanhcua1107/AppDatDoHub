@@ -9,10 +9,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context'; 
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { AppStackParamList } from '../../constants/routes'; 
+import { AppStackParamList, ROUTES } from '../../constants/routes'; 
 import Icon from 'react-native-vector-icons/Ionicons';
 
-// --- DỮ LIỆU MẪU (Cập nhật chữ hoa để giống ảnh) ---
+// --- DỮ LIỆU MẪU ---
 type TableStatus = 'Đang Sử Dụng' | 'Bàn Trống' | 'Chưa Dọn';
 type PaymentStatus = 'Chưa thanh toán' | 'Đã thanh toán' | 'rỗng';
 type TableItemData = { id: string; name: string; status: TableStatus; paymentStatus: PaymentStatus; };
@@ -39,51 +39,36 @@ const StatusIndicator: React.FC<{ status: TableStatus }> = ({ status }) => {
   return <View className={`w-3 h-3 rounded-full ${getStatusColor()}`} />;
 };
 
-// --- [CẬP NHẬT] Component Card thông tin bàn ---
-const TableItem: React.FC<{ item: TableItemData }> = ({ item }) => {
+// --- Component Card thông tin bàn ---
+const TableItem: React.FC<{ item: TableItemData, onPress: () => void }> = ({ item, onPress }) => {
   const getPaymentInfo = () => {
     switch (item.paymentStatus) {
-      case 'Chưa thanh toán': 
-        return { text: 'Chưa thanh toán', color: 'text-red-600', bg: 'bg-red-100' };
-      case 'Đã thanh toán': 
-        return { text: 'Đã thanh toán', color: 'text-green-600', bg: 'bg-green-100' };
-      default: 
-        return null;
+      case 'Chưa thanh toán': return { text: 'Chưa thanh toán', color: 'text-red-600', bg: 'bg-red-100' };
+      case 'Đã thanh toán': return { text: 'Đã thanh toán', color: 'text-green-600', bg: 'bg-green-100' };
+      default: return null;
     }
   };
-
   const paymentInfo = getPaymentInfo();
 
   return (
-    <TouchableOpacity style={styles.shadow} className="bg-white rounded-2xl mx-4 mb-4 p-4 flex-row">
-      {/* Icon */}
+    <TouchableOpacity onPress={onPress} style={styles.shadow} className="bg-white rounded-2xl mx-4 mb-4 p-4 flex-row">
       <View className="w-14 h-14 bg-blue-100 rounded-xl items-center justify-center mr-4">
         <Icon name="tablet-landscape-outline" size={30} color="#3461FD" />
       </View>
-      
-      {/* Thông tin chính (quan trọng) */}
-      {/* Sử dụng justify-between để đẩy nội dung ra hai đầu trên và dưới */}
       <View className="flex-1 justify-between">
-        {/* Phần trên: Tên bàn và trạng thái */}
         <View>
-            <Text className="text-lg font-bold text-gray-800">{item.name}</Text>
-            <Text className="text-sm text-gray-500 mt-1">{item.status}</Text>
+          <Text className="text-lg font-bold text-gray-800">{item.name}</Text>
+          <Text className="text-sm text-gray-500 mt-1">{item.status}</Text>
         </View>
-
-        {/* Phần dưới: Luôn có một View chứa thẻ thanh toán */}
-        {/* View này có chiều cao cố định để đảm bảo mọi card đều bằng nhau */}
         <View className="h-6 mt-2 items-start">
-            {paymentInfo && (
+          {paymentInfo && (
             <View className={`px-2 py-1 rounded-full flex-row items-center ${paymentInfo.bg}`}>
-                <Icon name="cash-outline" size={14} color={paymentInfo.color.replace('text-', '')} />
-                <Text className={`text-xs font-semibold ml-1 ${paymentInfo.color}`}>{paymentInfo.text}</Text>
+              <Icon name="cash-outline" size={14} color={paymentInfo.color.replace('text-', '')} />
+              <Text className={`text-xs font-semibold ml-1 ${paymentInfo.color}`}>{paymentInfo.text}</Text>
             </View>
-            )}
+          )}
         </View>
       </View>
-      
-      {/* Cột bên phải (quan trọng) */}
-      {/* Sử dụng justify-between để đẩy chấm tròn và mũi tên ra hai đầu */}
       <View className="justify-between items-center ml-2">
         <StatusIndicator status={item.status} />
         <Icon name="chevron-forward-outline" size={24} color="#CBD5E0" />
@@ -118,7 +103,7 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
       <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
       
       {/* Header */}
-      <View style={{ paddingTop: insets.top + 20, paddingBottom: 10, backgroundColor: '#F8F9FA' }} className="px-4">
+      <View style={{ paddingTop: insets.top + 30, paddingBottom: 10, backgroundColor: '#F8F9FA' }} className="px-4">
         <View className="flex-row items-center justify-between">
           <Text className="text-2xl font-bold text-gray-800">Danh sách bàn</Text>
           <TouchableOpacity className="w-10 h-10 bg-white rounded-full items-center justify-center" style={styles.shadow}>
@@ -139,7 +124,14 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
       <ScrollView>
           <View className="h-4" /> 
           {filteredData.map(table => (
-              <TableItem key={table.id} item={table} />
+              <TableItem 
+                key={table.id} 
+                item={table} 
+                onPress={() => navigation.navigate(ROUTES.MENU, { 
+                  tableId: table.id, 
+                  tableName: table.name 
+                })}
+              />
           ))}
           <View className="h-4" /> 
       </ScrollView>
@@ -150,10 +142,10 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
 const styles = StyleSheet.create({
     shadow: {
         shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.05,
-        shadowRadius: 15,
-        elevation: 5,
+        shadowOffset: { width: 0, height: 2 }, // Giảm chiều cao bóng đổ
+        shadowOpacity: 0.04, // Giảm độ mờ
+        shadowRadius: 8, // Giảm độ lan tỏa
+        elevation: 2, // Giảm độ nổi khối cho Android
     }
 });
 
