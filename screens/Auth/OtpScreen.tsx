@@ -1,121 +1,142 @@
-import React, { useState, useRef } from 'react';
+// OtpScreen.tsx
+import React, { useState, useEffect, useRef } from 'react';
 import { 
     View, 
     Text, 
     TouchableOpacity, 
     SafeAreaView, 
     TextInput, 
-    Alert 
+    Alert,
+    Keyboard,
+    Platform
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { AuthStackParamList, ROUTES } from '../../constants/routes';
+import { verifyPasswordResetOtp, sendPasswordResetOtp } from '../../services/authService';
 
-// Giả định bạn có một Stack Navigator như thế này
-type AuthStackParamList = {
-  Login: undefined;
-  ForgotPassword: undefined;
-  Otp: { email: string };
-  ResetPassword: { email: string };
-};
-
-type OtpProps = NativeStackScreenProps<AuthStackParamList, 'Otp'>;
+type OtpProps = NativeStackScreenProps<AuthStackParamList, typeof ROUTES.OTP>;
 
 export default function OtpScreen({ route, navigation }: OtpProps) {
   const { email } = route.params;
-  const [otp, setOtp] = useState<string[]>(new Array(6).fill(''));
-  const inputs = useRef<TextInput[]>([]);
-
-  const handleChange = (text: string, index: number) => {
-    const newOtp = [...otp];
-    newOtp[index] = text;
-    setOtp(newOtp);
-
-    // Tự động focus ô tiếp theo
-    if (text && index < 5) {
-      inputs.current[index + 1].focus();
-    }
-  };
-
-  const handleKeyPress = (e: any, index: number) => {
-    // Tự động focus ô trước đó khi xóa
-    if (e.nativeEvent.key === 'Backspace' && !otp[index] && index > 0) {
-      inputs.current[index - 1].focus();
-    }
-  };
+  // --- THAY ĐỔI 1: Chuyển state OTP từ mảng sang chuỗi ---
+  const [otp, setOtp] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   
-  const handleConfirm = () => {
-      const enteredOtp = otp.join('');
-      if(enteredOtp.length < 6) {
-          Alert.alert("Lỗi", "Vui lòng nhập đủ 6 chữ số OTP.");
-          return;
-      }
+  // --- THÊM MỚI: State và Ref giống như OtpScreenR ---
+  const [resendCooldown, setResendCooldown] = useState(60);
+  const otpInputRef = useRef<TextInput>(null);
 
-      // --- Logic Xác thực OTP ---
-      // Trong ứng dụng thực tế, bạn sẽ gọi API để kiểm tra OTP
-      // Ở đây, chúng ta giả lập mã OTP đúng là "123456"
-      if (enteredOtp === "123456") {
-          Alert.alert("Thành công", "Xác thực OTP thành công!", [
-              { text: "OK", onPress: () => navigation.navigate("ResetPassword", { email }) }
-          ]);
-      } else {
-          Alert.alert("Lỗi", "Mã OTP không chính xác. Vui lòng thử lại.");
-      }
+  // --- THÊM MỚI: useEffect để tự động focus ---
+  useEffect(() => {
+    const focusSubscription = navigation.addListener('focus', () => {
+      otpInputRef.current?.focus();
+    });
+    return focusSubscription;
+  }, [navigation]);
+
+  // --- THÊM MỚI: useEffect cho bộ đếm gửi lại OTP ---
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (resendCooldown > 0) {
+      timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
+  
+  const handleConfirm = async () => {
+    Keyboard.dismiss();
+    // --- THAY ĐỔI 2: Cập nhật logic kiểm tra OTP ---
+    if (otp.length < 6) {
+      setError("Vui lòng nhập đủ 6 chữ số OTP.");
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+    try {
+      // Logic nghiệp vụ vẫn giữ nguyên
+      await verifyPasswordResetOtp(email, otp);
+      Alert.alert("Thành công", "Xác thực OTP thành công! Vui lòng tạo mật khẩu mới.", [
+        { text: "OK", onPress: () => navigation.navigate(ROUTES.RESET_PASSWORD, { email }) }
+      ]);
+    } catch (err: any) {
+      setError(err.message || "Mã OTP không chính xác. Vui lòng thử lại.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleResendOtp = () => {
-      // Logic gửi lại OTP
+  const handleResendOtp = async () => {
+    if (resendCooldown > 0) return;
+    try {
+      // Logic nghiệp vụ vẫn giữ nguyên
+      await sendPasswordResetOtp(email);
       Alert.alert("Đã gửi lại", `Một mã OTP mới đã được gửi đến ${email}.`);
+      // --- THÊM MỚI: Bật lại bộ đếm ---
+      setResendCooldown(60);
+    } catch (err: any) {
+      Alert.alert("Lỗi", err.message || "Không thể gửi lại OTP.");
+    }
   }
 
   return (
     <SafeAreaView className="flex-1 bg-white">
-        <View className="flex-1 px-8 pt-4">
-            {/* Nút Back */}
-            <TouchableOpacity 
-                onPress={() => navigation.goBack()} 
-                className="absolute top-20 left-5 z-10"
-            >
-                <Ionicons name="arrow-back" size={32} color="#14181B" />
+        {/* --- THAY ĐỔI 3: Cập nhật toàn bộ JSX để giống hệt OtpScreenR --- */}
+        <View className="absolute top-12 left-5 z-10">
+            <TouchableOpacity onPress={() => navigation.goBack()} className="p-2">
+                <Ionicons name="arrow-back" size={32} color="#1F2937" />
             </TouchableOpacity>
-
-            <View className="flex-1 justify-center items-center pb-8">
-                <Text className="text-3xl font-bold text-[#2A4ECA] mb-2">Nhập OTP</Text>
-                <Text className="text-center text-base text-[#61677D] mb-10 px-4">
-                    Nhập mã OTP vừa được gửi cho bạn trên Email đã đăng ký của bạn
+        </View>
+        <View className="flex-1 justify-center px-8 pb-8">
+            <Text className="text-4xl font-bold text-center" style={{ color: '#2A4ECA' }}>
+                Nhập OTP
+            </Text>
+            <Text className="text-center text-base mt-4 mb-8 leading-6" style={{ color: '#61677D' }}>
+                Nhập mã OTP gồm 6 chữ số đã được gửi đến email của bạn để đặt lại mật khẩu.
+            </Text>
+            <TextInput
+                ref={otpInputRef}
+                value={otp}
+                onChangeText={(text) => {
+                    setOtp(text.replace(/[^0-9]/g, ''));
+                    if (error) setError(null);
+                }}
+                placeholder="------"
+                placeholderTextColor="#D1D5DB"
+                keyboardType="number-pad"
+                maxLength={6}
+                className={`rounded-xl px-5 py-4 text-center text-3xl bg-[#F5F9FE] text-gray-800 border-2 ${error ? 'border-red-500' : 'border-transparent'} focus:border-[#3461FD]`}
+                style={{ letterSpacing: Platform.OS === 'ios' ? 12 : 8 }}
+                autoFocus={true}
+            />
+            {error && <Text className="text-red-500 mt-2 text-center">{error}</Text>}
+            <TouchableOpacity 
+                onPress={handleConfirm} 
+                disabled={isLoading}
+                className="bg-[#3461FD] rounded-xl py-4 mt-8 items-center justify-center h-16"
+            >
+                <Text className="text-center text-white font-bold text-lg">
+                    {isLoading ? "Đang xử lý..." : "Xác nhận"}
                 </Text>
-
-                {/* OTP Input Fields */}
-                <View className="flex-row justify-between w-full mb-10">
-                    {otp.map((digit, index) => (
-                        <TextInput
-                            key={index}
-                            ref={ref => { inputs.current[index] = ref! }}
-                            value={digit}
-                            onChangeText={(text) => handleChange(text, index)}
-                            onKeyPress={(e) => handleKeyPress(e, index)}
-                            className="w-12 h-14 bg-[#F5F9FE] rounded-xl text-center text-2xl font-bold text-gray-800 border border-gray-200"
-                            keyboardType="number-pad"
-                            maxLength={1}
-                            selectTextOnFocus
-                        />
-                    ))}
-                </View>
-
-                {/* Confirm Button */}
+            </TouchableOpacity>
+            <View className="flex-row justify-center mt-8 items-center">
+                <Text className="text-base" style={{ color: '#7C8BA0' }}>
+                    Không nhận được mã?
+                </Text>
                 <TouchableOpacity 
-                    onPress={handleConfirm}
-                    className="w-full bg-[#3461FD] rounded-xl py-4"
+                    onPress={handleResendOtp}
+                    disabled={resendCooldown > 0}
+                    className="ml-1"
                 >
-                    <Text className="text-center text-white font-bold text-lg">Xác nhận</Text>
+                    <Text 
+                        className={`text-base font-bold ${resendCooldown > 0 ? 'text-gray-400' : ''}`}
+                        style={resendCooldown === 0 ? { color: '#3461FD' } : {}}
+                    >
+                        {resendCooldown > 0 ? `Gửi lại sau (${resendCooldown}s)` : 'Gửi lại mã'}
+                    </Text>
                 </TouchableOpacity>
-
-                {/* Resend OTP */}
-                <View className="flex-row justify-center mt-6">
-                    <Text className="text-gray-600">Không nhận được OTP? </Text>
-                    <TouchableOpacity onPress={handleResendOtp}>
-                        <Text className="font-bold text-[#3461FD]">Gửi lại OTP</Text>
-                    </TouchableOpacity>
-                </View>
             </View>
         </View>
     </SafeAreaView>

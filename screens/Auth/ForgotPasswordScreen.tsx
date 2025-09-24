@@ -1,3 +1,4 @@
+// ForgotPasswordScreen.tsx
 import React, { useState } from "react";
 import {
   View,
@@ -12,26 +13,18 @@ import { Ionicons } from "@expo/vector-icons";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
-// import { ROUTES } from "../../constants/routes";
-// Giả định bạn có một Stack Navigator như thế này
-type AuthStackParamList = {
-  Login: undefined;
-  ForgotPassword: undefined;
-  Otp: { email: string };
-  ResetPassword: { email: string };
-};
+import { AuthStackParamList, ROUTES } from "../../constants/routes";
+import { sendPasswordResetOtp } from "../../services/authService";
 
-type ForgotPasswordProps = NativeStackScreenProps<AuthStackParamList, 'ForgotPassword'>;
+type ForgotPasswordProps = NativeStackScreenProps<AuthStackParamList, typeof ROUTES.FORGOT_PASSWORD>;
 
 export default function ForgotPasswordScreen({ navigation }: ForgotPasswordProps) {
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSendRequest = () => {
-    // Xóa lỗi cũ
+  const handleSendRequest = async () => {
     setError(null);
-
-    // Validate Email
     if (!email) {
       setError("Vui lòng nhập Email của bạn.");
       return;
@@ -42,18 +35,19 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordProps
       return;
     }
 
-    // --- Logic Gửi Yêu Cầu ---
-    // Trong một ứng dụng thực tế, bạn sẽ gọi API ở đây để gửi mã OTP.
-    // Ở đây, chúng ta sẽ giả lập việc gửi thành công và chuyển hướng.
-    console.log("Yêu cầu đặt lại mật khẩu cho email:", email);
-    
-    Alert.alert(
-      "Thành công",
-      `Một mã OTP đã được gửi đến ${email}. Vui lòng kiểm tra hộp thư của bạn.`,
-      [
-        { text: "OK", onPress: () => navigation.navigate("Otp", { email: email }) }
-      ]
-    );
+    setIsLoading(true);
+    try {
+      await sendPasswordResetOtp(email);
+      Alert.alert(
+        "Thành công",
+        `Một mã OTP đã được gửi đến ${email}. Vui lòng kiểm tra hộp thư của bạn.`,
+        [{ text: "OK", onPress: () => navigation.navigate(ROUTES.OTP, { email }) }]
+      );
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -64,22 +58,18 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordProps
         keyboardShouldPersistTaps="handled"
       >
         <View className="flex-1 px-8 pt-4">
-          {/* Nút Back */}
           <TouchableOpacity 
             onPress={() => navigation.goBack()} 
-            className="absolute top-20 left-5 z-10"
+            className="absolute top-12 left-5 z-10 p-2"
           >
             <Ionicons name="arrow-back" size={32} color="#14181B" />
           </TouchableOpacity>
 
           <View className="flex-1 justify-center pb-8">
-            {/* Title */}
             <View className="items-center mb-2">
                 <MaskedView
                     maskElement={
-                        <Text className="text-4xl font-bold text-center">
-                            Đặt lại mật khẩu
-                        </Text>
+                        <Text className="text-4xl font-bold text-center">Đặt lại mật khẩu</Text>
                     }
                 >
                     <LinearGradient
@@ -95,10 +85,9 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordProps
             </View>
             
             <Text className="text-center text-base text-[#61677D] mb-8">
-                Nhập đúng email đang sử dụng để nhận mã OTP.
+                Nhập đúng email đã đăng ký để nhận mã OTP.
             </Text>
 
-            {/* Email Input */}
             <View className="mb-4">
               <TextInput
                 placeholder="Nhập Email của bạn"
@@ -115,13 +104,13 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordProps
               {error && <Text className="text-red-500 mt-2 ml-1">{error}</Text>}
             </View>
 
-            {/* Submit Button */}
             <TouchableOpacity
               onPress={handleSendRequest}
-              className="bg-[#3461FD] rounded-xl py-4 mt-6"
+              disabled={isLoading}
+              className="bg-[#3461FD] rounded-xl py-4 mt-6 h-16 justify-center"
             >
               <Text className="text-center text-white font-bold text-lg">
-                Gửi
+                {isLoading ? 'Đang gửi...' : 'Gửi yêu cầu'}
               </Text>
             </TouchableOpacity>
           </View>
