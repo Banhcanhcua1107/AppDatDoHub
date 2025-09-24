@@ -12,34 +12,34 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppStackParamList } from '../../constants/routes'; 
 import Icon from 'react-native-vector-icons/Ionicons';
 
-// --- DỮ LIỆU MẪU (Thêm một trạng thái mới để demo bộ lọc) ---
-type TableStatus = 'đang sử dụng' | 'bàn trống' | 'chưa dọn';
+// --- DỮ LIỆU MẪU (Cập nhật chữ hoa để giống ảnh) ---
+type TableStatus = 'Đang Sử Dụng' | 'Bàn Trống' | 'Chưa Dọn';
 type PaymentStatus = 'Chưa thanh toán' | 'Đã thanh toán' | 'rỗng';
 type TableItemData = { id: string; name: string; status: TableStatus; paymentStatus: PaymentStatus; };
 
 const tableData: TableItemData[] = [ 
-  { id: '1', name: 'Bàn 01', status: 'đang sử dụng', paymentStatus: 'Chưa thanh toán' }, 
-  { id: '2', name: 'Bàn 02', status: 'bàn trống', paymentStatus: 'rỗng' }, 
-  { id: '3', name: 'Bàn 03', status: 'chưa dọn', paymentStatus: 'Đã thanh toán' },
-  { id: '4', name: 'Bàn 04', status: 'bàn trống', paymentStatus: 'rỗng' }, 
-  { id: '5', name: 'Bàn 05', status: 'đang sử dụng', paymentStatus: 'Chưa thanh toán' }, 
-  { id: '6', name: 'Bàn 06', status: 'đang sử dụng', paymentStatus: 'Đã thanh toán' },
+  { id: '1', name: 'Bàn 01', status: 'Đang Sử Dụng', paymentStatus: 'Chưa thanh toán' }, 
+  { id: '2', name: 'Bàn 02', status: 'Bàn Trống', paymentStatus: 'rỗng' }, 
+  { id: '3', name: 'Bàn 03', status: 'Chưa Dọn', paymentStatus: 'Đã thanh toán' },
+  { id: '4', name: 'Bàn 04', status: 'Bàn Trống', paymentStatus: 'rỗng' }, 
+  { id: '5', name: 'Bàn 05', status: 'Đang Sử Dụng', paymentStatus: 'Chưa thanh toán' }, 
+  { id: '6', name: 'Bàn 06', status: 'Đang Sử Dụng', paymentStatus: 'Đã thanh toán' },
 ];
 
-// --- [MỚI] Component chỉ báo trạng thái bằng màu sắc ---
+// --- Component chỉ báo trạng thái bằng màu sắc ---
 const StatusIndicator: React.FC<{ status: TableStatus }> = ({ status }) => {
   const getStatusColor = () => {
     switch (status) {
-      case 'bàn trống': return 'bg-green-500';
-      case 'đang sử dụng': return 'bg-orange-500';
-      case 'chưa dọn': return 'bg-red-500';
+      case 'Bàn Trống': return 'bg-green-500';
+      case 'Đang Sử Dụng': return 'bg-orange-500';
+      case 'Chưa Dọn': return 'bg-red-500';
       default: return 'bg-gray-400';
     }
   };
   return <View className={`w-3 h-3 rounded-full ${getStatusColor()}`} />;
 };
 
-// --- [THIẾT KẾ LẠI] Component Card thông tin bàn ---
+// --- [CẬP NHẬT] Component Card thông tin bàn ---
 const TableItem: React.FC<{ item: TableItemData }> = ({ item }) => {
   const getPaymentInfo = () => {
     switch (item.paymentStatus) {
@@ -55,34 +55,44 @@ const TableItem: React.FC<{ item: TableItemData }> = ({ item }) => {
   const paymentInfo = getPaymentInfo();
 
   return (
-    <TouchableOpacity style={styles.shadow} className="bg-white rounded-2xl mx-4 mb-4 p-4 flex-row items-center">
+    <TouchableOpacity style={styles.shadow} className="bg-white rounded-2xl mx-4 mb-4 p-4 flex-row">
       {/* Icon */}
       <View className="w-14 h-14 bg-blue-100 rounded-xl items-center justify-center mr-4">
         <Icon name="tablet-landscape-outline" size={30} color="#3461FD" />
       </View>
       
-      {/* Thông tin chính */}
-      <View className="flex-1">
-        <Text className="text-lg font-bold text-gray-800">{item.name}</Text>
-        <Text className="text-sm text-gray-500 mt-1 capitalize">{item.status}</Text>
-        {paymentInfo && (
-          <View className={`mt-2 self-start px-2 py-1 rounded-full flex-row items-center ${paymentInfo.bg}`}>
-            <Icon name="cash-outline" size={14} color={paymentInfo.color.replace('text-', '')} />
-            <Text className={`text-xs font-semibold ml-1 ${paymentInfo.color}`}>{paymentInfo.text}</Text>
-          </View>
-        )}
+      {/* Thông tin chính (quan trọng) */}
+      {/* Sử dụng justify-between để đẩy nội dung ra hai đầu trên và dưới */}
+      <View className="flex-1 justify-between">
+        {/* Phần trên: Tên bàn và trạng thái */}
+        <View>
+            <Text className="text-lg font-bold text-gray-800">{item.name}</Text>
+            <Text className="text-sm text-gray-500 mt-1">{item.status}</Text>
+        </View>
+
+        {/* Phần dưới: Luôn có một View chứa thẻ thanh toán */}
+        {/* View này có chiều cao cố định để đảm bảo mọi card đều bằng nhau */}
+        <View className="h-6 mt-2 items-start">
+            {paymentInfo && (
+            <View className={`px-2 py-1 rounded-full flex-row items-center ${paymentInfo.bg}`}>
+                <Icon name="cash-outline" size={14} color={paymentInfo.color.replace('text-', '')} />
+                <Text className={`text-xs font-semibold ml-1 ${paymentInfo.color}`}>{paymentInfo.text}</Text>
+            </View>
+            )}
+        </View>
       </View>
       
-      {/* Chỉ báo trạng thái và mũi tên */}
-      <View className="items-center ml-2">
+      {/* Cột bên phải (quan trọng) */}
+      {/* Sử dụng justify-between để đẩy chấm tròn và mũi tên ra hai đầu */}
+      <View className="justify-between items-center ml-2">
         <StatusIndicator status={item.status} />
-        <Icon name="chevron-forward-outline" size={24} color="#CBD5E0" className="mt-4" />
+        <Icon name="chevron-forward-outline" size={24} color="#CBD5E0" />
       </View>
     </TouchableOpacity>
   );
 };
 
-// --- [MỚI] Component nút lọc ---
+// --- Component nút lọc ---
 const FilterButton: React.FC<{ label: string; isActive: boolean; onPress: () => void }> = ({ label, isActive, onPress }) => (
   <TouchableOpacity
     onPress={onPress}
@@ -94,7 +104,7 @@ const FilterButton: React.FC<{ label: string; isActive: boolean; onPress: () => 
 
 type HomeScreenProps = NativeStackScreenProps<AppStackParamList, 'Home'>;
 
-// --- [THIẾT KẾ LẠI] Toàn bộ màn hình chính ---
+// --- Toàn bộ màn hình chính ---
 const HomeScreen = ({ navigation }: HomeScreenProps) => {
   const insets = useSafeAreaInsets();
   const [activeFilter, setActiveFilter] = useState<TableStatus | 'Tất cả'>('Tất cả');
@@ -108,7 +118,7 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
       <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
       
       {/* Header */}
-      <View style={{ paddingTop: insets.top, paddingBottom: 10, backgroundColor: '#F8F9FA' }} className="px-4">
+      <View style={{ paddingTop: insets.top + 20, paddingBottom: 10, backgroundColor: '#F8F9FA' }} className="px-4">
         <View className="flex-row items-center justify-between">
           <Text className="text-2xl font-bold text-gray-800">Danh sách bàn</Text>
           <TouchableOpacity className="w-10 h-10 bg-white rounded-full items-center justify-center" style={styles.shadow}>
@@ -119,9 +129,9 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
         {/* Bộ lọc */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-4">
           <FilterButton label="Tất cả" isActive={activeFilter === 'Tất cả'} onPress={() => setActiveFilter('Tất cả')} />
-          <FilterButton label="Bàn trống" isActive={activeFilter === 'bàn trống'} onPress={() => setActiveFilter('bàn trống')} />
-          <FilterButton label="Đang sử dụng" isActive={activeFilter === 'đang sử dụng'} onPress={() => setActiveFilter('đang sử dụng')} />
-          <FilterButton label="Chưa dọn" isActive={activeFilter === 'chưa dọn'} onPress={() => setActiveFilter('chưa dọn')} />
+          <FilterButton label="Bàn trống" isActive={activeFilter === 'Bàn Trống'} onPress={() => setActiveFilter('Bàn Trống')} />
+          <FilterButton label="Đang sử dụng" isActive={activeFilter === 'Đang Sử Dụng'} onPress={() => setActiveFilter('Đang Sử Dụng')} />
+          <FilterButton label="Chưa dọn" isActive={activeFilter === 'Chưa Dọn'} onPress={() => setActiveFilter('Chưa Dọn')} />
         </ScrollView>
       </View>
 
@@ -137,7 +147,6 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
   );
 };
 
-// --- [CẬP NHẬT] Style cho bóng đổ mềm mại hơn ---
 const styles = StyleSheet.create({
     shadow: {
         shadowColor: "#000",
