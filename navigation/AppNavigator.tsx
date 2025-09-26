@@ -18,16 +18,17 @@ import OtpScreen from "../screens/Auth/OtpScreen";
 import OtpScreenR from "../screens/Auth/OtpScreenR";
 import ResetPasswordScreen from "../screens/Auth/ResetPasswordScreen";
 import ResetSuccessScreen from "../screens/Auth/ResetSuccessScreen";
+
+// Màn hình chính của ứng dụng
+import BottomTabs from './BottomTabs';
 import MenuScreen from '../screens/Menu/MenuScreen';
-
-// Màn hình chính của ứng dụng (sau khi đăng nhập)
-import HomeScreen from "../screens/Tables/HomeScreen"; // <-- Import màn hình Home
-
+import OrderConfirmationScreen from '../screens/Menu/OrderConfirmationScreen'; // <-- [THÊM MỚI] 1. Import màn hình xác nhận order
+import { OrderProvider } from '../context/OrderContext';
 // 3. TẠO RA 2 "STACK" RIÊNG BIỆT
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const AppStack = createNativeStackNavigator<AppStackParamList>();
 
-// 4. TẠO COMPONENT NAVIGATOR CHO LUỒNG XÁC THỰC (CHƯA ĐĂNG NHẬP)
+// 4. TẠO COMPONENT NAVIGATOR CHO LUỒNG XÁC THỰC (CHƯA ĐĂNG NHẬP) - (Giữ nguyên, không thay đổi)
 const AuthNavigator = () => {
   return (
     <AuthStack.Navigator
@@ -49,23 +50,28 @@ const AuthNavigator = () => {
 const AppMainNavigator = () => {
   return (
     <AppStack.Navigator screenOptions={{ headerShown: false }}>
-      <AppStack.Screen name={ROUTES.HOME} component={HomeScreen} />
-      <AppStack.Screen name={ROUTES.MENU} component={MenuScreen} />
-      {/* <AppStack.Screen name={ROUTES.PROFILE} component={ProfileScreen} /> */}
-      {/* Thêm các màn hình khác của bạn ở đây */}
+       <AppStack.Screen name={ROUTES.APP_TABS} component={BottomTabs} />
+       <AppStack.Screen name={ROUTES.MENU} component={MenuScreen} />
+       
+       {/* // <-- [THÊM MỚI] 2. Đăng ký màn hình xác nhận order vào stack */}
+       <AppStack.Screen 
+          name={ROUTES.ORDER_CONFIRMATION} 
+          component={OrderConfirmationScreen} 
+       />
+       
     </AppStack.Navigator>
   );
 };
 
-// 6. COMPONENT CHÍNH (TRƯỚC ĐÂY LÀ AppNavigator) SẼ QUYẾT ĐỊNH HIỂN THỊ LUỒNG NÀO
+// 6. COMPONENT CHÍNH SẼ QUYẾT ĐỊNH HIỂN THỊ LUỒNG NÀO (Giữ nguyên, không thay đổi)
 export default function AppNavigator() {
-  // Đây là biến quyết định người dùng đã đăng nhập hay chưa.
-  // Trong ứng dụng thật, bạn sẽ lấy giá trị này từ Context, Redux, AsyncStorage, etc.
-  const { isAuthenticated } = useAuth();  // <-- THAY ĐỔI GIÁ TRỊ NÀY THÀNH `true` ĐỂ XEM MÀN HÌNH HOME
+  const { isAuthenticated } = useAuth();
 
   return (
-    <NavigationContainer>
-      {isAuthenticated ? <AppMainNavigator /> : <AuthNavigator />}
-    </NavigationContainer>
+    <OrderProvider>
+      <NavigationContainer>
+        {isAuthenticated ? <AppMainNavigator /> : <AuthNavigator />}
+      </NavigationContainer>
+    </OrderProvider>
   );
 }

@@ -4,6 +4,11 @@ module.exports = function (api) {
     presets: [
       ['babel-preset-expo', { jsxImportSource: 'nativewind' }],
     ],
-    plugins: [],
+    plugins: [
+      ['react-native-reanimated/plugin', {
+        // Option này sẽ tắt cảnh báo strict mode
+        globals: ['__scanCodes'],
+      }],
+    ],
   };
 };

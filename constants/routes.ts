@@ -1,8 +1,10 @@
+import { CartItem } from '../screens/Menu/MenuScreen'; 
 // constants/routes.ts
+import { NavigatorScreenParams } from '@react-navigation/native';
 
-// 1. GIỮ NGUYÊN ĐỐI TƯỢNG ROUTES CỦA BẠN VÀ THÊM KEY MỚI
+// 1. THÊM TÊN CÁC ROUTE MỚI
 export const ROUTES = {
-  // --- Các routes cũ của bạn ---
+  // --- Auth routes ---
   LOGIN: "Login",
   REGISTER: "Register",
   FORGOT_PASSWORD: "ForgotPassword",
@@ -10,14 +12,24 @@ export const ROUTES = {
   OTP_REGISTER: "OtpScreenR", 
   RESET_PASSWORD: "ResetPassword",
   RESET_SUCCESS: "ResetSuccess",
-  // --- Thêm route mới cho màn hình chính ---
+
+  // --- App routes ---
   HOME: "Home", 
   MENU: "Menu",
+  ORDER_CONFIRMATION: "OrderConfirmation", // <-- THÊM ROUTE MỚI
+
+  // --- Bottom Tab routes ---
+  HOME_TAB: "Sơ đồ", // Tên route cho tab Home
+  RETURN_ITEMS_TAB: "Trả món",
+  PROVISIONAL_BILL_TAB: "Tạm tính",
+  UTILITIES_TAB: "Tiện ích",
+  
+  // --- Navigator routes ---
+  APP_TABS: "AppTabs", // Tên route cho cả BottomTabNavigator
+
 } as const;
 
-
 // 2. GIỮ NGUYÊN TYPE CHO AUTH STACK
-// Nó vẫn sẽ dùng đối tượng ROUTES ở trên
 export type AuthStackParamList = {
   [ROUTES.LOGIN]: undefined;
   [ROUTES.REGISTER]: undefined;
@@ -26,16 +38,26 @@ export type AuthStackParamList = {
   [ROUTES.OTP_REGISTER]: { email: string };
   [ROUTES.RESET_PASSWORD]: { email: string };
   [ROUTES.RESET_SUCCESS]: undefined;
-  
 };
 
+// 3. TẠO TYPE MỚI CHO BOTTOM TABS
+export type AppTabParamList = {
+  [ROUTES.HOME_TAB]: undefined;
+  [ROUTES.RETURN_ITEMS_TAB]: { screenName: string };
+  [ROUTES.PROVISIONAL_BILL_TAB]: { screenName: string };
+  [ROUTES.UTILITIES_TAB]: { screenName: string };
+};
 
-// 3. TẠO MỘT TYPE MỚI CHO APP STACK (CÁC MÀN HÌNH SAU KHI ĐĂNG NHẬP)
-// Nó cũng sẽ dùng đối tượng ROUTES ở trên
+// Import CartItem từ MenuScreen (giả sử bạn đã export nó)
+
+// 4. CẬP NHẬT APP STACK PARAM LIST
 export type AppStackParamList = {
-  [ROUTES.HOME]: undefined;
+  [ROUTES.APP_TABS]: NavigatorScreenParams<AppTabParamList>;
   [ROUTES.MENU]: { tableId: string; tableName: string; }; 
-
-  // Thêm các màn hình khác của App vào đây, ví dụ:
-  // [ROUTES.PROFILE]: { userId: string };
+  // THÊM TYPE CHO MÀN HÌNH MỚI
+  [ROUTES.ORDER_CONFIRMATION]: { 
+    tableId: string; 
+    tableName: string; 
+    items: CartItem[]; 
+  };
 };

@@ -15,16 +15,10 @@ import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AuthStackParamList, ROUTES } from "../../constants/routes";
 import { loginUser } from "../../services/authService";
-import GoogleIconSVG from "../../assets/icons/GoogleIcon"; 
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useAuth } from '../../context/AuthContext';
 
 // --- Định nghĩa kiểu (Types) ---
-// type RootStackParamList = {
-//   Login: undefined;
-//   Register: undefined;
-//   ForgotPassword: undefined;
-// };
 type LoginScreenProps = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 type FormErrors = {
   email?: string;
@@ -50,7 +44,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
   const handleLogin = async () => {
     if (validateForm()) {
       try {
-        // Chỉ cần gọi hàm mà không cần gán kết quả cho biến nào
         await loginUser(email, password); 
         login(); 
       } catch (error: any) {
@@ -77,9 +70,9 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
             />
           </View>
 
-          {/* --- THAY THẾ KHỐI TEXT CŨ BẰNG ĐOẠN NÀY --- */}
+          {/* Tiêu đề */}
           <MaskedView
-            style={{ marginTop: 16 }} // NativeWind className không hoạt động tốt với MaskedView, nên dùng style
+            style={{ marginTop: 16 }}
             maskElement={
               <Text className="text-4xl font-bold text-center">
                 ĐĂNG NHẬP
@@ -96,80 +89,63 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
               </Text>
             </LinearGradient>
           </MaskedView>
-          {/* ------------------------------------------- */}
-
-          {/* Social Buttons */}
-          <View className="flex-row justify-between mt-8 gap-x-4">
-            <TouchableOpacity className="flex-1 flex-row items-center justify-center rounded-xl py-3 bg-[#F5F9FE]">
-              <Ionicons name="logo-facebook" size={34} color="#3461FD" />
-              <Text className="ml-2 text-lg font-semibold text-[#61677D]">Facebook</Text>
-            </TouchableOpacity>
-            <TouchableOpacity className="flex-1 flex-row items-center justify-center rounded-xl py-3 bg-[#F5F9FE]">
-              <GoogleIconSVG size={28} />
-              <Text className="ml-2 text-lg font-semibold text-[#61677D]">Google</Text>
-            </TouchableOpacity>
-          </View>
-
-
-          {/* Divider */}
-          <View className="flex-row items-center my-6">
-            <View className="flex-1 h-[1px] bg-gray-200" />
-            <Text className="px-3 text-gray-500 font-medium">Hoặc</Text>
-            <View className="flex-1 h-[1px] bg-gray-200" />
-          </View>
-
-          {/* Email Input */}
-          <View className="mb-4">
-            <TextInput
-              placeholder="Nhập Email"
-              placeholderTextColor="#61677D"
-              value={email}
-              onChangeText={(text) => {
-                setEmail(text);
-                if (errors.email) {
-                  setErrors(prev => ({ ...prev, email: undefined }));
-                }
-              }}
-              className={`rounded-xl px-5 py-4 text-base bg-[#F5F9FE] text-gray-800 border ${errors.email ? 'border-red-500' : 'border-transparent'}`}
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-            {errors.email && <Text className="text-red-500 mt-1 ml-1">{errors.email}</Text>}
-          </View>
-
-          {/* Password Input */}
-          <View className="mb-2">
-            <View className={`flex-row items-center rounded-xl bg-[#F5F9FE] border ${errors.password ? 'border-red-500' : 'border-transparent'}`}>
+          
+          {/* Form Inputs - Tăng khoảng cách trên sau khi xóa social login */}
+          <View className="mt-12">
+            {/* Email Input */}
+            <View className="mb-4">
               <TextInput
-                placeholder="Nhập Password"
+                placeholder="Nhập Email"
                 placeholderTextColor="#61677D"
-                value={password}
+                value={email}
                 onChangeText={(text) => {
-                  setPassword(text);
-                  if (errors.password) {
-                    setErrors(prev => ({ ...prev, password: undefined }));
+                  setEmail(text);
+                  if (errors.email) {
+                    setErrors(prev => ({ ...prev, email: undefined }));
                   }
                 }}
-                secureTextEntry={!isPasswordVisible}
-                className="flex-1 px-5 py-4 text-base text-gray-800"
+                className={`rounded-xl px-5 py-4 text-base bg-[#F5F9FE] text-gray-800 border ${errors.email ? 'border-red-500' : 'border-transparent'}`}
+                keyboardType="email-address"
+                autoCapitalize="none"
               />
-              <TouchableOpacity
-                onPress={() => setIsPasswordVisible(!isPasswordVisible)}
-                className="p-3"
-              >
-                <Ionicons
-                  name={isPasswordVisible ? "eye-outline" : "eye-off-outline"}
-                  size={22}
-                  color="gray"
-                />
-              </TouchableOpacity>
+              {errors.email && <Text className="text-red-500 mt-1 ml-1">{errors.email}</Text>}
             </View>
-            {errors.password && <Text className="text-red-500 mt-1 ml-1">{errors.password}</Text>}
+
+            {/* Password Input */}
+            <View className="mb-2">
+              <View className={`flex-row items-center rounded-xl bg-[#F5F9FE] border ${errors.password ? 'border-red-500' : 'border-transparent'}`}>
+                <TextInput
+                  placeholder="Nhập Password"
+                  placeholderTextColor="#61677D"
+                  value={password}
+                  onChangeText={(text) => {
+                    setPassword(text);
+                    if (errors.password) {
+                      setErrors(prev => ({ ...prev, password: undefined }));
+                    }
+                  }}
+                  secureTextEntry={!isPasswordVisible}
+                  className="flex-1 px-5 py-4 text-base text-gray-800"
+                />
+                <TouchableOpacity
+                  onPress={() => setIsPasswordVisible(!isPasswordVisible)}
+                  className="p-3"
+                >
+                  <Ionicons
+                    name={isPasswordVisible ? "eye-outline" : "eye-off-outline"}
+                    size={22}
+                    color="gray"
+                  />
+                </TouchableOpacity>
+              </View>
+              {errors.password && <Text className="text-red-500 mt-1 ml-1">{errors.password}</Text>}
+            </View>
           </View>
+
 
           {/* Quên mật khẩu */}
           <TouchableOpacity
-            onPress={() => navigation.navigate(ROUTES.FORGOT_PASSWORD)} // <-- Dùng hằng số
+            onPress={() => navigation.navigate(ROUTES.FORGOT_PASSWORD)}
             className="self-end mb-5"
           >
             <Text className="text-sm text-gray-500 font-medium">Quên Mật Khẩu?</Text>

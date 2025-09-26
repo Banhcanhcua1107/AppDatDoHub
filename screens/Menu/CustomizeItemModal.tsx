@@ -1,28 +1,29 @@
+// --- START OF FILE CustomizeItemModal.tsx ---
+
 import React, { useState, useEffect } from 'react';
-import { View, Text, Modal, TouchableOpacity, StyleSheet, ScrollView, Image } from 'react-native';
+import { View, Text, Modal, TouchableOpacity, StyleSheet, ScrollView, Image, ActivityIndicator } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
-import { MenuItem } from '../../constants/menuData';
+import { supabase } from '../../services/supabase'; // Import supabase
 
-// --- Dữ liệu giả cho các tùy chọn ---
-const sizeOptions = [
-  { id: 'size_m', name: 'Size M', price: 0 },
-  { id: 'size_l', name: 'Size L', price: 5000 },
-];
-const sugarOptions = [
-  { id: 'sugar_50', name: '50% Đường', price: 0 },
-  { id: 'sugar_70', name: '70% Đường', price: 0 },
-  { id: 'sugar_100', name: '100% Đường', price: 0 },
-];
-const toppingOptions = [
-  { id: 'topping_1', name: 'Trân châu đen', price: 7000 },
-  { id: 'topping_2', name: 'Thạch phô mai', price: 10000 },
-];
+// --- [MỚI] Định nghĩa kiểu dữ liệu cho Options từ DB ---
+type Choice = {
+  id: number;
+  name: string;
+  price_adjustment: number;
+};
 
-// --- Component con cho một dòng tùy chọn ---
+type OptionGroup = {
+  id: number;
+  name: string;
+  type: 'single' | 'multiple';
+  option_choices: Choice[];
+};
+
+// --- Component con cho một dòng tùy chọn (Không đổi) ---
 const OptionRow: React.FC<{ label: string, price: number, selected: boolean, onPress: () => void }> = ({ label, price, selected, onPress }) => (
   <TouchableOpacity 
     onPress={onPress}
-    className={`flex-row justify-between items-center py-3 border-b border-gray-100 ${selected ? 'bg-blue-50' : ''}`}
+    className={`flex-row justify-between items-center py-3 px-2 rounded-lg mb-2 ${selected ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'}`}
   >
     <View className="flex-row items-center">
       <Icon name={selected ? "checkmark-circle" : "ellipse-outline"} size={22} color={selected ? "#3461FD" : "#CBD5E0"} />
@@ -32,60 +33,120 @@ const OptionRow: React.FC<{ label: string, price: number, selected: boolean, onP
   </TouchableOpacity>
 );
 
+// --- [MỚI] Định nghĩa lại kiểu Item truyền vào ---
+type MenuItemForModal = {
+    id: string;
+    name: string;
+    image: string;
+    price: number;
+}
+
 type CustomizeItemModalProps = {
   visible: boolean;
   onClose: () => void;
-  item: MenuItem | null;
-  onAddToCart: (itemWithOptions: any) => void; // Sẽ truyền object chứa cả tùy chọn
+  item: MenuItemForModal | null;
+  onAddToCart: (itemWithOptions: any) => void;
 };
 
 const CustomizeItemModal: React.FC<CustomizeItemModalProps> = ({ visible, onClose, item, onAddToCart }) => {
+  const [loading, setLoading] = useState(true);
+  const [options, setOptions] = useState<OptionGroup[]>([]);
+  
   const [quantity, setQuantity] = useState(1);
-  const [selectedSize, setSelectedSize] = useState(sizeOptions[0]);
-  const [selectedSugar, setSelectedSugar] = useState(sugarOptions[2]);
-  const [selectedToppings, setSelectedToppings] = useState<typeof toppingOptions>([]);
+  const [selectedOptions, setSelectedOptions] = useState<Record<number, any>>({}); // Dùng object để lưu lựa chọn
   const [totalPrice, setTotalPrice] = useState(0);
 
-  // Reset state khi một item mới được chọn
+  // --- [MỚI] Lấy các tùy chọn động từ DB khi item thay đổi ---
   useEffect(() => {
-    if (item) {
-      setQuantity(1);
-      setSelectedSize(sizeOptions[0]);
-      setSelectedSugar(sugarOptions[2]);
-      setSelectedToppings([]);
-    }
+    if (!item) return;
+
+    const fetchOptions = async () => {
+      setLoading(true);
+      // Lấy các option_groups liên kết với menu_item_id này, và lấy luôn các choices con
+      const { data, error } = await supabase
+        .from('option_groups')
+        .select(`
+          id, name, type,
+          option_choices (id, name, price_adjustment)
+        `)
+        .in('id', (await supabase.from('menu_item_options').select('option_group_id').eq('menu_item_id', item.id)).data?.map(o => o.option_group_id) || []);
+
+      if (error) console.error("Lỗi lấy options:", error);
+      else {
+        setOptions(data || []);
+        // Set giá trị mặc định cho các tùy chọn
+        const defaults: Record<number, any> = {};
+        (data || []).forEach(group => {
+            if (group.type === 'single' && group.option_choices.length > 0) {
+                // Mặc định chọn cái đầu tiên cho single-choice
+                defaults[group.id] = group.option_choices[0];
+            } else if (group.type === 'multiple') {
+                // Mặc định là mảng rỗng cho multiple-choice
+                defaults[group.id] = [];
+            }
+        });
+        setSelectedOptions(defaults);
+      }
+      setLoading(false);
+    };
+
+    fetchOptions();
+    setQuantity(1); // Reset số lượng
   }, [item]);
 
   // Tính lại tổng tiền mỗi khi có thay đổi
   useEffect(() => {
     if (!item) return;
-    const toppingsPrice = selectedToppings.reduce((sum, topping) => sum + topping.price, 0);
-    const total = (item.price + selectedSize.price + toppingsPrice) * quantity;
+
+    let optionsPrice = 0;
+    Object.values(selectedOptions).forEach(selection => {
+        if (Array.isArray(selection)) { // multiple choices
+            optionsPrice += selection.reduce((sum, choice) => sum + choice.price_adjustment, 0);
+        } else if (selection?.price_adjustment) { // single choice
+            optionsPrice += selection.price_adjustment;
+        }
+    });
+
+    const total = (item.price + optionsPrice) * quantity;
     setTotalPrice(total);
-  }, [item, quantity, selectedSize, selectedToppings]);
+  }, [item, quantity, selectedOptions]);
 
   if (!item) return null;
 
-  const handleSelectTopping = (topping: typeof toppingOptions[0]) => {
-    setSelectedToppings(prev => {
-      const isSelected = prev.find(t => t.id === topping.id);
-      if (isSelected) {
-        return prev.filter(t => t.id !== topping.id);
-      } else {
-        return [...prev, topping];
-      }
+  const handleSelect = (group: OptionGroup, choice: Choice) => {
+    setSelectedOptions(prev => {
+        const newSelection = { ...prev };
+        if (group.type === 'single') {
+            newSelection[group.id] = choice;
+        } else { // multiple
+            const currentSelection = (newSelection[group.id] as Choice[]) || [];
+            const isSelected = currentSelection.some(c => c.id === choice.id);
+            if (isSelected) {
+                newSelection[group.id] = currentSelection.filter(c => c.id !== choice.id);
+            } else {
+                newSelection[group.id] = [...currentSelection, choice];
+            }
+        }
+        return newSelection;
     });
   };
 
   const handleAddToCart = () => {
+    // Chuyển đổi selectedOptions thành định dạng dễ đọc hơn để lưu
+    const formattedOptions = {
+        size: selectedOptions[1]?.name || 'Mặc định', // Giả sử ID 1 là Size
+        sugar: selectedOptions[2]?.name || 'Mặc định', // Giả sử ID 2 là Đường
+        toppings: (selectedOptions[3] || selectedOptions[4] || []).map((t: Choice) => ({name: t.name, price: t.price_adjustment}))
+    };
+    
     const itemWithOptions = {
       ...item,
+      menuItemId: item.id, // ID gốc của món
       quantity,
-      size: selectedSize,
-      sugar: selectedSugar,
-      toppings: selectedToppings,
+      size: { name: formattedOptions.size, price: selectedOptions[1]?.price_adjustment || 0 },
+      sugar: { name: formattedOptions.sugar, price: selectedOptions[2]?.price_adjustment || 0 },
+      toppings: formattedOptions.toppings,
       totalPrice,
-      note: 'Ghi chú ở đây' // Lấy từ TextInput
     };
     onAddToCart(itemWithOptions);
     onClose();
@@ -94,12 +155,41 @@ const CustomizeItemModal: React.FC<CustomizeItemModalProps> = ({ visible, onClos
   const increment = () => setQuantity(prev => prev + 1);
   const decrement = () => setQuantity(prev => (prev > 1 ? prev - 1 : 1));
 
+  // --- RENDER ---
+  const renderOptions = () => {
+      if (loading) return <ActivityIndicator size="large" className="my-10"/>;
+      if (options.length === 0) return <Text className="text-center text-gray-500 my-10">Món này không có tùy chọn.</Text>;
+
+      return options.map(group => (
+        <View key={group.id} className="mt-4">
+            <Text className="text-lg font-bold text-gray-700 mb-1">{group.name}</Text>
+            {group.option_choices.map(choice => {
+                let isSelected = false;
+                if(group.type === 'single') {
+                    isSelected = selectedOptions[group.id]?.id === choice.id;
+                } else {
+                    isSelected = (selectedOptions[group.id] as Choice[])?.some(c => c.id === choice.id);
+                }
+                return (
+                    <OptionRow 
+                        key={choice.id} 
+                        label={choice.name} 
+                        price={choice.price_adjustment} 
+                        selected={isSelected} 
+                        onPress={() => handleSelect(group, choice)} 
+                    />
+                );
+            })}
+        </View>
+      ));
+  }
+
   return (
     <Modal animationType="slide" transparent={true} visible={visible} onRequestClose={onClose}>
       <TouchableOpacity style={styles.centeredView} activeOpacity={1} onPressOut={onClose}>
         <TouchableOpacity activeOpacity={1} style={styles.modalView}>
           <View className="w-full">
-            {/* Header */}
+            {/* Header (Giữ nguyên) */}
             <View className="flex-row items-center mb-4">
               <Image source={{ uri: item.image }} className="w-20 h-20 rounded-xl mr-4" />
               <View className="flex-1">
@@ -111,33 +201,11 @@ const CustomizeItemModal: React.FC<CustomizeItemModalProps> = ({ visible, onClos
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={{ maxHeight: 500 }}>
-              {/* Size Options */}
-              <View className="mt-2">
-                <Text className="text-lg font-bold text-gray-700 mb-1">Chọn size</Text>
-                {sizeOptions.map(option => (
-                  <OptionRow key={option.id} label={option.name} price={option.price} selected={selectedSize.id === option.id} onPress={() => setSelectedSize(option)} />
-                ))}
-              </View>
-              
-              {/* Sugar Options */}
-              <View className="mt-4">
-                <Text className="text-lg font-bold text-gray-700 mb-1">Mức đường</Text>
-                {sugarOptions.map(option => (
-                  <OptionRow key={option.id} label={option.name} price={option.price} selected={selectedSugar.id === option.id} onPress={() => setSelectedSugar(option)} />
-                ))}
-              </View>
-
-              {/* Topping Options */}
-              <View className="mt-4">
-                <Text className="text-lg font-bold text-gray-700 mb-1">Topping (chọn nhiều)</Text>
-                {toppingOptions.map(option => (
-                  <OptionRow key={option.id} label={option.name} price={option.price} selected={!!selectedToppings.find(t => t.id === option.id)} onPress={() => handleSelectTopping(option)} />
-                ))}
-              </View>
+            <ScrollView style={{ maxHeight: 450 }}>
+              {renderOptions()}
             </ScrollView>
 
-            {/* Quantity & Total */}
+            {/* Quantity & Total (Giữ nguyên) */}
             <View className="flex-row items-center justify-between w-full mt-6">
               <View className="flex-row items-center">
                 <TouchableOpacity onPress={decrement} className="w-10 h-10 bg-gray-200 rounded-full items-center justify-center">
@@ -173,7 +241,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 10,
     elevation: 10,
-
   }
 });
 
