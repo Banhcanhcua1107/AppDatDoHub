@@ -7,12 +7,11 @@ import { Ionicons } from '@expo/vector-icons';
 // Import các hằng số và type
 import { ROUTES, AppTabParamList } from '../constants/routes';
 
-// Import các màn hình
+// Import TẤT CẢ các màn hình
 import HomeScreen from '../screens/Tables/HomeScreen';
-// [THÊM MỚI] Import 2 màn hình mới
+import OrderScreen from '../screens/Orders/OrderScreen'; // Đảm bảo dòng này tồn tại
 import ProvisionalBillScreen from '../screens/Orders/ProvisionalBillScreen';
 import ReturnItemsScreen from '../screens/Orders/ReturnItemsScreen';
-// [XÓA] Bạn có thể xóa PlaceholderScreen nếu không dùng ở tab khác
 import PlaceholderScreen from '../screens/Placeholders/PlaceholderScreen';
 
 const Tab = createBottomTabNavigator<AppTabParamList>();
@@ -20,10 +19,9 @@ const Tab = createBottomTabNavigator<AppTabParamList>();
 const BottomTabs = () => {
   return (
     <Tab.Navigator
-      // screenOptions giữ nguyên
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: '#007bff',
+        tabBarActiveTintColor: '#3B82F6',
         tabBarInactiveTintColor: 'gray',
         tabBarStyle: { paddingBottom: 5, height: 60 },
         tabBarLabelStyle: { fontSize: 12 },
@@ -31,9 +29,10 @@ const BottomTabs = () => {
           let iconName: React.ComponentProps<typeof Ionicons>['name'] = 'alert-circle-outline';
           if (route.name === ROUTES.HOME_TAB) {
             iconName = focused ? 'map' : 'map-outline';
+          } else if (route.name === ROUTES.ORDER_TAB) {
+            iconName = focused ? 'document-text' : 'document-text-outline';
           } else if (route.name === ROUTES.RETURN_ITEMS_TAB) {
-            // [THAY ĐỔI] Icon cho "Trả món"
-            iconName = focused ? 'arrow-undo-circle' : 'arrow-undo-circle-outline';
+            iconName = focused ? 'restaurant' : 'restaurant-outline';
           } else if (route.name === ROUTES.PROVISIONAL_BILL_TAB) {
             iconName = focused ? 'receipt' : 'receipt-outline';
           } else if (route.name === ROUTES.UTILITIES_TAB) {
@@ -43,36 +42,44 @@ const BottomTabs = () => {
         },
       })}
     >
-      <Tab.Screen 
-        name={ROUTES.HOME_TAB} 
-        component={HomeScreen} 
+      {/* Tab 1: Sơ đồ */}
+      <Tab.Screen
+        name={ROUTES.HOME_TAB}
+        component={HomeScreen}
         options={{ title: 'Sơ đồ' }}
       />
 
-      {/* [THAY ĐỔI] Tab 2: Trả món */}
-      <Tab.Screen 
-        name={ROUTES.RETURN_ITEMS_TAB} 
-        component={ReturnItemsScreen} // <-- Thay thế ở đây
-        // initialParams đã được xóa
+      {/* Tab 2: Order -> Gán đúng component là OrderScreen */}
+      <Tab.Screen
+        name={ROUTES.ORDER_TAB}
+        component={OrderScreen}
+        options={{
+          title: 'Order'
+        }}
+      />
+
+      {/* Tab 3: Trả món */}
+      <Tab.Screen
+        name={ROUTES.RETURN_ITEMS_TAB}
+        component={ReturnItemsScreen}
         options={{
           title: 'Trả món'
         }}
       />
 
-      {/* [THAY ĐỔI] Tab 3: Tạm tính */}
-      <Tab.Screen 
-        name={ROUTES.PROVISIONAL_BILL_TAB} 
-        component={ProvisionalBillScreen} // <-- Thay thế ở đây
-        // initialParams đã được xóa
+      {/* Tab 4: Tạm tính */}
+      <Tab.Screen
+        name={ROUTES.PROVISIONAL_BILL_TAB}
+        component={ProvisionalBillScreen}
         options={{
           title: 'Tạm tính'
         }}
       />
 
-      {/* Tab 4: Tiện ích (Vẫn dùng Placeholder) */}
-      <Tab.Screen 
-        name={ROUTES.UTILITIES_TAB} 
-        component={PlaceholderScreen} 
+      {/* Tab 5: Tiện ích */}
+      <Tab.Screen
+        name={ROUTES.UTILITIES_TAB}
+        component={PlaceholderScreen}
         initialParams={{ screenName: 'Tiện ích' }}
         options={{
           title: 'Tiện ích'
