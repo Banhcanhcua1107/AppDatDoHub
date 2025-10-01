@@ -1,5 +1,3 @@
-// --- File: OrderConfirmationScreen.tsx (Phiên bản cuối cùng, đã sửa lỗi hiển thị và nút Đóng bàn) ---
-
 import React, { useState, useCallback, useEffect } from 'react';
 import { 
     View, Text, StyleSheet, StatusBar, FlatList, TouchableOpacity, Alert, 
@@ -196,7 +194,10 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
     const handleSendToKitchen = async () => {
         setLoading(true);
         const successId = await sendNewItemsToKitchen();
-        if (successId !== null) { Alert.alert("Thành công", "Đã gửi yêu cầu cho bếp!"); }
+        if (successId !== null) {
+          Alert.alert("Thành công", "Đã gửi yêu cầu cho bếp!");
+          await fetchAllData(false);
+        }
         setLoading(false);
     };
     const handleSaveAndExit = () => navigation.goBack();
@@ -216,34 +217,19 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
           [{ text: "Hủy" }, { text: "Giữ phiên", onPress: () => handleKeepSessionAfterPayment(finalOrderId!, finalBillToPay) }, { text: "Kết thúc", onPress: () => handleEndSessionAfterPayment(finalOrderId!, finalBillToPay) }]
         );
     };
-
-    // =================================================================
-    // [SỬA LỖI QUAN TRỌNG] Tối ưu hóa cập nhật giao diện
-    // =================================================================
     const handleKeepSessionAfterPayment = async (orderId: number, finalBill: number) => {
         setLoading(true);
         try {
-            // Cập nhật lên database
             await supabase.from('orders').update({ status: 'paid', total_price: finalBill }).eq('id', orderId).throwOnError();
-            
-            // Cập nhật giao diện ngay lập tức (Optimistic Update)
-            setAllDisplayedItems(prevItems => 
-                prevItems.map(item => 
-                    !item.isPaid ? { ...item, isPaid: true, isNew: false } : item
-                )
-            );
-
+            setAllDisplayedItems(prevItems => prevItems.map(item => !item.isPaid ? { ...item, isPaid: true, isNew: false } : item));
             Alert.alert("Thành công", "Đã thanh toán. Bàn vẫn đang được phục vụ.");
-            // Đồng bộ lại với database ở chế độ nền để đảm bảo chính xác
             await fetchAllData(false);
         } catch (error: any) { 
             Alert.alert("Lỗi", `Không thể cập nhật trạng thái order: ${error.message}`); 
-            // Nếu có lỗi, tải lại dữ liệu gốc từ server
             await fetchAllData(false);
         } 
         finally { setLoading(false); }
     };
-
     const handleEndSessionAfterPayment = async (orderId: number, finalBill: number) => {
         setLoading(true);
         try {
@@ -255,14 +241,26 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
         } catch (error: any) { Alert.alert("Lỗi", `Không thể kết thúc phiên làm việc: ${error.message}`); }
         finally { setLoading(false); }
     };
+    
+    // =================================================================
+    // [SỬA LỖI] Thêm điều hướng về Home sau khi đóng bàn thành công
+    // =================================================================
     const handleCloseSessionAfterPayment = () => {
         Alert.alert("Xác nhận Đóng Bàn", "Bạn có chắc muốn kết thúc phiên và dọn bàn này không?",
             [{ text: "Hủy" }, { text: "Đồng ý", style: "destructive", onPress: async () => {
                 setLoading(true);
                 try {
+                    // Cập nhật các order đã paid thành closed
                     await supabase.from('orders').update({ status: 'closed' }).eq('table_id', tableId).eq('status', 'paid').throwOnError();
+                    // Cập nhật trạng thái bàn thành trống
                     await supabase.from('tables').update({ status: 'Trống' }).eq('id', tableId).throwOnError();
-                } catch(error: any) { Alert.alert("Lỗi", `Không thể đóng bàn: ${error.message}`); }
+                    
+                    Alert.alert("Thành công", "Đã đóng bàn và kết thúc phiên.");
+                    navigation.navigate(ROUTES.APP_TABS, { screen: ROUTES.HOME_TAB });
+
+                } catch(error: any) { 
+                    Alert.alert("Lỗi", `Không thể đóng bàn: ${error.message}`); 
+                }
                 finally { setLoading(false); }
             }}]
         )
