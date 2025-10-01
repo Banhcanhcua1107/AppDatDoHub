@@ -17,5 +17,5 @@
     "**/*.tsx",
     "declarations.d.ts",
     "nativewind-env.d.ts"
-  ]
+, "components/ConfirmationModal"  ]
 }

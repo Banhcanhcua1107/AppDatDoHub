@@ -1,4 +1,4 @@
-// navigation/RootNavigator.tsx (hoặc bạn có thể sửa file AppNavigator.tsx)
+// navigation/RootNavigator.tsx
 
 import React from "react";
 import { NavigationContainer } from "@react-navigation/native";
@@ -11,13 +11,17 @@ import {
   AppStackParamList
 } from "../constants/routes";
 
-// Import tất cả các màn hình
+// Import các màn hình Auth
 import LoginScreen from "../screens/Auth/LoginScreen";
 import RegisterScreen from "../screens/Auth/RegisterScreen";
 // ... import các màn hình Auth khác ...
 
-// Import màn hình Home từ đúng vị trí bạn đã đặt
-import HomeScreen from "../screens/Tables/HomeScreen"; 
+// Import các màn hình App (nằm ngoài Tabs)
+import MenuScreen from "../screens/Menu/MenuScreen";
+import OrderConfirmationScreen from "../screens/Menu/OrderConfirmationScreen";
+
+// Import AppTabsNavigator vừa tạo
+import AppTabsNavigator from "./AppNavigator";
 
 // 2. TẠO HAI STACK NAVIGATOR VỚI TYPE TƯƠNG ỨNG
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
@@ -26,7 +30,7 @@ const AppStack = createNativeStackNavigator<AppStackParamList>();
 // Component cho luồng xác thực (chưa đăng nhập)
 const AuthNavigator = () => (
   <AuthStack.Navigator
-    initialRouteName={ROUTES.LOGIN} // <-- Dùng ROUTES.LOGIN
+    initialRouteName={ROUTES.LOGIN}
     screenOptions={{ headerShown: false }}
   >
     <AuthStack.Screen name={ROUTES.LOGIN} component={LoginScreen} />
@@ -35,10 +39,28 @@ const AuthNavigator = () => (
   </AuthStack.Navigator>
 );
 
-// Component cho luồng ứng dụng chính (đã đăng nhập)
+// [SỬA LỖI Ở ĐÂY] Component cho luồng ứng dụng chính (đã đăng nhập)
 const AppNavigator = () => (
-    <AppStack.Navigator screenOptions={{ headerShown: false }}>
-        <AppStack.Screen name={ROUTES.HOME} component={HomeScreen} />
+    <AppStack.Navigator 
+        screenOptions={{ headerShown: false }}
+        // Route ban đầu của AppStack là AppTabs
+        initialRouteName={ROUTES.APP_TABS} 
+    >
+        {/* Màn hình chính sẽ là cả cụm Bottom Tabs */}
+        <AppStack.Screen 
+            name={ROUTES.APP_TABS} 
+            component={AppTabsNavigator} 
+        />
+
+        {/* Các màn hình khác trong AppStack (có thể điều hướng tới từ bên trong Tabs) */}
+        <AppStack.Screen 
+            name={ROUTES.MENU} 
+            component={MenuScreen} 
+        />
+        <AppStack.Screen 
+            name={ROUTES.ORDER_CONFIRMATION} 
+            component={OrderConfirmationScreen} 
+        />
     </AppStack.Navigator>
 );
 
@@ -47,7 +69,7 @@ const AppNavigator = () => (
 export default function RootNavigator() {
   // Giả sử bạn có một state để kiểm tra người dùng đã đăng nhập hay chưa
   // Ví dụ: const { isAuthenticated } = useAuth();
-  const isAuthenticated = false; // <-- Thay đổi giá trị này để test (true/false)
+  const isAuthenticated = true; // <-- Thay đổi giá trị này để test (true/false)
 
   return (
     <NavigationContainer>

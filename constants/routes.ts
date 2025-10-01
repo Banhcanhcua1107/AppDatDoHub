@@ -1,6 +1,5 @@
 // constants/routes.ts
 import { NavigatorScreenParams } from '@react-navigation/native';
-import { CartItem } from '../screens/Menu/MenuScreen'; // Đảm bảo đường dẫn này đúng
 
 // 1. THÊM TÊN ROUTE CHO TAB MỚI
 export const ROUTES = {
@@ -57,6 +56,5 @@ export type AppStackParamList = {
   [ROUTES.ORDER_CONFIRMATION]: {
     tableId: string;
     tableName: string;
-    items: CartItem[];
   };
 };

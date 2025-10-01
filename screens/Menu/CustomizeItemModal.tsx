@@ -1,7 +1,7 @@
 // --- START OF FILE CustomizeItemModal.tsx ---
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, Modal, TouchableOpacity, StyleSheet, ScrollView, Image, ActivityIndicator } from 'react-native';
+import { View, Text, Modal, TouchableOpacity, StyleSheet, ScrollView, Image, ActivityIndicator, TextInput } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { supabase } from '../../services/supabase'; // Import supabase
 
@@ -55,6 +55,7 @@ const CustomizeItemModal: React.FC<CustomizeItemModalProps> = ({ visible, onClos
   const [quantity, setQuantity] = useState(1);
   const [selectedOptions, setSelectedOptions] = useState<Record<number, any>>({}); // Dùng object để lưu lựa chọn
   const [totalPrice, setTotalPrice] = useState(0);
+  const [note, setNote] = useState(''); 
 
   // --- [MỚI] Lấy các tùy chọn động từ DB khi item thay đổi ---
   useEffect(() => {
@@ -92,6 +93,7 @@ const CustomizeItemModal: React.FC<CustomizeItemModalProps> = ({ visible, onClos
 
     fetchOptions();
     setQuantity(1); // Reset số lượng
+    setNote('');
   }, [item]);
 
   // Tính lại tổng tiền mỗi khi có thay đổi
@@ -147,6 +149,7 @@ const CustomizeItemModal: React.FC<CustomizeItemModalProps> = ({ visible, onClos
       sugar: { name: formattedOptions.sugar, price: selectedOptions[2]?.price_adjustment || 0 },
       toppings: formattedOptions.toppings,
       totalPrice,
+      note: note.trim(),
     };
     onAddToCart(itemWithOptions);
     onClose();
@@ -204,6 +207,17 @@ const CustomizeItemModal: React.FC<CustomizeItemModalProps> = ({ visible, onClos
             <ScrollView style={{ maxHeight: 450 }}>
               {renderOptions()}
             </ScrollView>
+            <View className="mt-5">
+                <Text className="text-lg font-bold text-gray-700 mb-2">Ghi chú</Text>
+                <TextInput
+                  style={styles.noteInput}
+                  placeholder="Ví dụ: không cay, nhiều đá..."
+                  placeholderTextColor="#9CA3AF"
+                  value={note}
+                  onChangeText={setNote}
+                  multiline
+                />
+              </View>
 
             {/* Quantity & Total (Giữ nguyên) */}
             <View className="flex-row items-center justify-between w-full mt-6">
@@ -241,6 +255,19 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 10,
     elevation: 10,
+  },
+  noteInput: {
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E5E7EB',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 12,
+    minHeight: 80,
+    textAlignVertical: 'top',
+    fontSize: 16,
+    color: '#1F2937',
   }
 });
 

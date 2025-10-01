@@ -5,8 +5,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { AppTabParamList, ROUTES } from '../../constants/routes';
 
-// 1. Định nghĩa kiểu cho props của màn hình này
-// Nó sẽ nhận route name là một trong các tab placeholder
+// 1. Định nghĩa kiểu cho props của màn hình này (giữ nguyên)
 type PlaceholderScreenProps = BottomTabScreenProps<
   AppTabParamList, 
   | typeof ROUTES.RETURN_ITEMS_TAB 
@@ -14,13 +13,18 @@ type PlaceholderScreenProps = BottomTabScreenProps<
   | typeof ROUTES.UTILITIES_TAB
 >;
 
-// 2. Áp dụng kiểu đã định nghĩa vào component
+// 2. Áp dụng kiểu và sửa lỗi
 const PlaceholderScreen = ({ route }: PlaceholderScreenProps) => {
-  const { screenName } = route.params;
+  // [SỬA LỖI Ở ĐÂY]
+  // Dùng optional chaining (?.) để truy cập an toàn vào 'params'.
+  // Nếu route.params không tồn tại hoặc không có screenName,
+  // thì sẽ lấy tên của route hiện tại (route.name) làm giá trị dự phòng.
+  const screenNameToDisplay = route.params?.screenName ?? route.name;
+
   return (
     <View style={styles.container}>
       <Text style={styles.text}>Màn hình</Text>
-      <Text style={styles.name}>{screenName}</Text>
+      <Text style={styles.name}>{screenNameToDisplay}</Text>
     </View>
   );
 };

@@ -29,7 +29,7 @@ type ActiveOrder = {
   totalItemCount: number;
 };
 
-// --- COMPONENT THẺ ORDER (ĐÃ ĐƯỢC THIẾT KẾ LẠI) ---
+// --- COMPONENT THẺ ORDER ---
 type OrderItemCardProps = {
     item: ActiveOrder;
     navigation: CompositeScreenProps<
@@ -62,28 +62,24 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation }) => {
   return (
     <View style={styles.cardShadow} className="bg-white rounded-lg mb-4 mx-4">
       <TouchableOpacity onPress={handlePressCard}>
-        {/* [SỬA] Header của thẻ */}
         <View style={{ backgroundColor: '#3B82F6' }} className="flex-row justify-end items-center p-3 rounded-t-lg">
           <View className="flex-row items-center">
-            {/* [SỬA] Đổi icon cho giống với hình ảnh */}
             <Ionicons name="copy-outline" size={16} color="white" />
             <Text className="text-white font-bold text-sm ml-1">{item.totalItemCount}</Text>
           </View>
         </View>
 
-        {/* [SỬA] Nội dung chính của thẻ với bố cục mới */}
         <View className="flex-row p-4 items-start">
-          {/* Cột trái: Tên bàn */}
           <View className="w-1/2 items-start justify-center border-r border-gray-200 pr-4">
-            <Text className="text-gray-800 font-bold text-xl pl-4 pt-4">{item.tableName}</Text>
+            <Text className="text-gray-800 font-bold text-xl">{item.tableName}</Text>
           </View>
-          {/* Cột phải: Thông tin giá tiền và thời gian */}
           <View className="w-1/2 pl-4 items-end">
             <Text className="text-gray-900 font-bold text-2xl">
               {item.totalPrice.toLocaleString('vi-VN')}
             </Text>
-            <View className="flex-row items-center justify-end mt-1">
-               <View className="flex-row items-center mr-3">
+            {/* [SỬA] Bọc thời gian và icon trong View và dùng justify-between */}
+            <View className="flex-row items-center justify-between w-full mt-1">
+               <View className="flex-row items-center">
                   <Ionicons name="time-outline" size={15} color="gray" />
                   <Text className="text-gray-600 text-sm ml-1">{formatTimeElapsed(item.createdAt)}</Text>
                </View>
@@ -93,7 +89,6 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation }) => {
         </View>
       </TouchableOpacity>
       
-      {/* Thanh công cụ action (giữ nguyên) */}
       <View className="flex-row justify-around items-center bg-gray-50 border-t border-gray-200 rounded-b-lg">
           <TouchableOpacity className="py-3 items-center justify-center flex-1"><Ionicons name="calculator-outline" size={24} color="gray" /></TouchableOpacity>
           <TouchableOpacity className="py-3 items-center justify-center flex-1"><Ionicons name="restaurant-outline" size={24} color="gray" /></TouchableOpacity>
