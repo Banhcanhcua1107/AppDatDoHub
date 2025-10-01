@@ -1,9 +1,9 @@
-// --- File: OrderConfirmationScreen.tsx (Phiên bản cuối cùng, đã sửa tất cả cảnh báo) ---
+// --- File: OrderConfirmationScreen.tsx (Phiên bản cuối cùng, đã sửa lỗi hiển thị và nút Đóng bàn) ---
 
 import React, { useState, useCallback, useEffect } from 'react';
 import { 
     View, Text, StyleSheet, StatusBar, FlatList, TouchableOpacity, Alert, 
-    ActivityIndicator, InteractionManager, Modal, TextInput, AlertButton
+    ActivityIndicator, InteractionManager, Modal, TextInput
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -77,7 +77,10 @@ const OrderListItem: React.FC<{
                 <Text className={`text-lg font-semibold ${isPaid ? 'text-gray-500 line-through' : 'text-gray-900'}`}>{item.totalPrice.toLocaleString('vi-VN')}đ</Text>
               </View>
             </View>
-            <View className="border-t border-dashed border-gray-200 mt-3 pt-2"><Text className={`text-base ${isPaid ? 'text-gray-500' : 'text-gray-600'}`}>{item.quantity} x {item.unit_price.toLocaleString('vi-VN')}đ</Text></View>
+            <View className="border-t border-dashed border-gray-200 mt-3 pt-2 flex-row justify-between items-center">
+              <Text className={`text-base ${isPaid ? 'text-gray-500' : 'text-gray-600'}`}>{item.quantity} x {item.unit_price.toLocaleString('vi-VN')}đ</Text>
+              {(!isNew && !isPaid) && <Icon name="flame-outline" size={20} color="#F97316" />}
+            </View>
         </TouchableOpacity>
         {isExpanded && <ExpandedView />}
       </View>
@@ -97,7 +100,6 @@ type Props = NativeStackScreenProps<AppStackParamList, 'OrderConfirmation'>;
 const OrderConfirmationScreen = ({ route, navigation }: Props) => {
     const { tableId, tableName } = route.params;
     const insets = useSafeAreaInsets();
-
     const [loading, setLoading] = useState(true);
     const [activeOrderId, setActiveOrderId] = useState<number | null>(null);
     const [allDisplayedItems, setAllDisplayedItems] = useState<DisplayItem[]>([]);
@@ -111,7 +113,6 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
             const { data: cartData, error: cartError } = await supabase.from('cart_items').select('*').eq('table_id', tableId);
             if (cartError) throw cartError;
             const newItems: DisplayItem[] = (cartData || []).map(item => ({ id: item.id, uniqueKey: `new-${item.id}`, name: item.customizations.name || 'Món mới', quantity: item.quantity, unit_price: item.unit_price, totalPrice: item.total_price, menuItemId: item.menu_item_id, customizations: item.customizations, isNew: true, isPaid: false }));
-
             const { data: pendingOrder, error: pendingOrderError } = await supabase.from('orders').select('id').eq('table_id', tableId).eq('status', 'pending').maybeSingle();
             if (pendingOrderError) throw pendingOrderError;
             let pendingItems: DisplayItem[] = [];
@@ -121,7 +122,6 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
                 if (pendingItemsError) throw pendingItemsError;
                 pendingItems = (items || []).map(item => ({ id: item.id, uniqueKey: `pending-${item.id}`, name: item.menu_items?.name || 'Món đã xóa', quantity: item.quantity, unit_price: item.unit_price, totalPrice: item.quantity * item.unit_price, menuItemId: item.menu_item_id, customizations: item.customizations, isNew: false, isPaid: false }));
             } else { setActiveOrderId(null); }
-
             const { data: paidOrders, error: paidOrdersError } = await supabase.from('orders').select('id').eq('table_id', tableId).eq('status', 'paid');
             if (paidOrdersError) throw paidOrdersError;
             let paidItems: DisplayItem[] = [];
@@ -135,67 +135,49 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
         } catch (error: any) { Alert.alert("Lỗi", `Không thể tải dữ liệu: ${error.message}`);
         } finally { if (isInitialLoad) setLoading(false); }
     }, [tableId]);
-
     useFocusEffect(useCallback(() => { 
         const task = InteractionManager.runAfterInteractions(() => { fetchAllData(true); });
-        const channel = supabase.channel(`table-channel-${tableId}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'cart_items', filter: `table_id=eq.${tableId}` }, () => fetchAllData(false))
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, () => fetchAllData(false))
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `table_id=eq.${tableId}` }, () => fetchAllData(false))
-            .subscribe();
+        const channel = supabase.channel(`table-channel-${tableId}`).on('postgres_changes', { event: '*', schema: 'public', table: 'cart_items', filter: `table_id=eq.${tableId}` }, () => fetchAllData(false)).on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, () => fetchAllData(false)).on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `table_id=eq.${tableId}` }, () => fetchAllData(false)).subscribe();
         return () => { task.cancel(); supabase.removeChannel(channel); };
     }, [fetchAllData, tableId]));
-
     const handleUpdateQuantity = async (item: DisplayItem, newQuantity: number) => {
         if (!item.isNew) return; 
         try {
             if (newQuantity < 1) { await handleRemoveItem(item); } else {
-                const newTotalPrice = item.unit_price * newQuantity;
-                await supabase.from('cart_items').update({ quantity: newQuantity, total_price: newTotalPrice }).eq('id', item.id).throwOnError();
+                await supabase.from('cart_items').update({ quantity: newQuantity, total_price: item.unit_price * newQuantity }).eq('id', item.id).throwOnError();
                 await fetchAllData(false);
             }
         } catch(error: any) { Alert.alert("Lỗi", `Không thể cập nhật số lượng: ${error.message}`); }
     };
     const handleRemoveItem = (itemToRemove: DisplayItem) => {
         Alert.alert( "Xác nhận Hủy Món", `Bạn có chắc muốn hủy món "${itemToRemove.name}"?`,
-            [{ text: "Không" }, { text: "Đồng ý", style: "destructive",
-                onPress: async () => {
-                    try {
-                        const tableToUpdate = itemToRemove.isNew ? 'cart_items' : 'order_items';
-                        await supabase.from(tableToUpdate).delete().eq("id", itemToRemove.id).throwOnError();
-                        await fetchAllData(false);
-                    } catch (error: any) { Alert.alert("Lỗi", `Không thể hủy món: ${error.message}`); }
-                },
-            }]
+            [{ text: "Không" }, { text: "Đồng ý", style: "destructive", onPress: async () => {
+                try {
+                    await supabase.from(itemToRemove.isNew ? 'cart_items' : 'order_items').delete().eq("id", itemToRemove.id).throwOnError();
+                    await fetchAllData(false);
+                } catch (error: any) { Alert.alert("Lỗi", `Không thể hủy món: ${error.message}`); }
+            }}]
         );
     };
     const handleOpenItemMenu = (item: DisplayItem) => {
         setEditingItem(item);
-        const options: AlertButton[] = [
-            { text: "Ghi chú nhanh", onPress: () => setNoteModalVisible(true) },
-            { text: "Hủy món", style: "destructive", onPress: () => handleRemoveItem(item) },
-            { text: "Thoát" },
-        ];
-        Alert.alert(`Tùy chỉnh "${item.name}"`, undefined, options);
+        Alert.alert(`Tùy chỉnh "${item.name}"`, undefined, [ { text: "Ghi chú nhanh", onPress: () => setNoteModalVisible(true) }, { text: "Hủy món", style: "destructive", onPress: () => handleRemoveItem(item) }, { text: "Thoát" }]);
     };
     const handleSaveNote = async (newNote: string) => {
         if (!editingItem) return;
         try {
-            const tableToUpdate = editingItem.isNew ? 'cart_items' : 'order_items';
             const updatedCustomizations = { ...editingItem.customizations, note: newNote };
-            await supabase.from(tableToUpdate).update({ customizations: updatedCustomizations }).eq('id', editingItem.id).throwOnError();
+            await supabase.from(editingItem.isNew ? 'cart_items' : 'order_items').update({ customizations: updatedCustomizations }).eq('id', editingItem.id).throwOnError();
             await fetchAllData(false);
         } catch (error: any) { Alert.alert("Lỗi", `Không thể lưu ghi chú: ${error.message}`);
         } finally { setNoteModalVisible(false); setEditingItem(null); }
     };
-
     const newItemsFromCart = allDisplayedItems.filter(item => item.isNew);
     const billableItems = allDisplayedItems.filter(item => !item.isPaid);
     const paidItems = allDisplayedItems.filter(item => item.isPaid);
     const hasNewItems = newItemsFromCart.length > 0;
     const totalBill = billableItems.reduce((sum, item) => sum + item.totalPrice, 0);
     const handleExitToHome = useCallback(() => navigation.goBack(), [navigation]);
-
     const sendNewItemsToKitchen = async (): Promise<number | null> => {
         if (!hasNewItems) return activeOrderId;
         try {
@@ -203,19 +185,14 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
             if (!orderIdToUse) {
                 await supabase.from('tables').update({ status: 'Đang phục vụ' }).eq('id', tableId).throwOnError();
                 const { data: newOrder } = await supabase.from('orders').insert({ table_id: tableId, status: 'pending', total_price: 0 }).select('id').single().throwOnError();
-                if (!newOrder) throw new Error("Không thể tạo order mới.");
                 orderIdToUse = newOrder.id;
             }
             const itemsToInsert = newItemsFromCart.map(item => ({ order_id: orderIdToUse, menu_item_id: item.menuItemId, quantity: item.quantity, unit_price: item.unit_price, customizations: item.customizations }));
             await supabase.from('order_items').insert(itemsToInsert).throwOnError();
             await supabase.from('cart_items').delete().eq('table_id', tableId).throwOnError();
             return orderIdToUse;
-        } catch (error: any) {
-            Alert.alert("Lỗi Gửi Bếp", error.message);
-            return null;
-        }
+        } catch (error: any) { Alert.alert("Lỗi Gửi Bếp", error.message); return null; }
     };
-
     const handleSendToKitchen = async () => {
         setLoading(true);
         const successId = await sendNewItemsToKitchen();
@@ -239,14 +216,34 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
           [{ text: "Hủy" }, { text: "Giữ phiên", onPress: () => handleKeepSessionAfterPayment(finalOrderId!, finalBillToPay) }, { text: "Kết thúc", onPress: () => handleEndSessionAfterPayment(finalOrderId!, finalBillToPay) }]
         );
     };
+
+    // =================================================================
+    // [SỬA LỖI QUAN TRỌNG] Tối ưu hóa cập nhật giao diện
+    // =================================================================
     const handleKeepSessionAfterPayment = async (orderId: number, finalBill: number) => {
         setLoading(true);
         try {
+            // Cập nhật lên database
             await supabase.from('orders').update({ status: 'paid', total_price: finalBill }).eq('id', orderId).throwOnError();
+            
+            // Cập nhật giao diện ngay lập tức (Optimistic Update)
+            setAllDisplayedItems(prevItems => 
+                prevItems.map(item => 
+                    !item.isPaid ? { ...item, isPaid: true, isNew: false } : item
+                )
+            );
+
             Alert.alert("Thành công", "Đã thanh toán. Bàn vẫn đang được phục vụ.");
-        } catch (error: any) { Alert.alert("Lỗi", `Không thể cập nhật trạng thái order: ${error.message}`); } 
+            // Đồng bộ lại với database ở chế độ nền để đảm bảo chính xác
+            await fetchAllData(false);
+        } catch (error: any) { 
+            Alert.alert("Lỗi", `Không thể cập nhật trạng thái order: ${error.message}`); 
+            // Nếu có lỗi, tải lại dữ liệu gốc từ server
+            await fetchAllData(false);
+        } 
         finally { setLoading(false); }
     };
+
     const handleEndSessionAfterPayment = async (orderId: number, finalBill: number) => {
         setLoading(true);
         try {
@@ -260,16 +257,14 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
     };
     const handleCloseSessionAfterPayment = () => {
         Alert.alert("Xác nhận Đóng Bàn", "Bạn có chắc muốn kết thúc phiên và dọn bàn này không?",
-            [{ text: "Hủy" }, { text: "Đồng ý", style: "destructive",
-                onPress: async () => {
-                    setLoading(true);
-                    try {
-                        await supabase.from('orders').update({ status: 'closed' }).eq('table_id', tableId).eq('status', 'paid').throwOnError();
-                        await supabase.from('tables').update({ status: 'Trống' }).eq('id', tableId).throwOnError();
-                    } catch(error: any) { Alert.alert("Lỗi", `Không thể đóng bàn: ${error.message}`); }
-                    finally { setLoading(false); }
-                }
-            }]
+            [{ text: "Hủy" }, { text: "Đồng ý", style: "destructive", onPress: async () => {
+                setLoading(true);
+                try {
+                    await supabase.from('orders').update({ status: 'closed' }).eq('table_id', tableId).eq('status', 'paid').throwOnError();
+                    await supabase.from('tables').update({ status: 'Trống' }).eq('id', tableId).throwOnError();
+                } catch(error: any) { Alert.alert("Lỗi", `Không thể đóng bàn: ${error.message}`); }
+                finally { setLoading(false); }
+            }}]
         )
     };
     
@@ -279,9 +274,7 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
     return (
         <View style={styles.flex1}>
             <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-            <View style={{ paddingTop: insets.top + 10 }} className="px-4 pb-3">
-                <View className="flex-row items-center justify-between"><TouchableOpacity onPress={handleExitToHome} className="p-2 -ml-2"><Icon name="arrow-back-outline" size={26} color="#1F2937" /></TouchableOpacity><Text className="text-xl font-bold text-gray-800">Order cho {tableName}</Text><View className="w-8" /></View>
-            </View>
+            <View style={{ paddingTop: insets.top + 10 }} className="px-4 pb-3"><View className="flex-row items-center justify-between"><TouchableOpacity onPress={handleExitToHome} className="p-2 -ml-2"><Icon name="arrow-back-outline" size={26} color="#1F2937" /></TouchableOpacity><Text className="text-xl font-bold text-gray-800">Order cho {tableName}</Text><View className="w-8" /></View></View>
             <FlatList
                 data={allDisplayedItems}
                 renderItem={({ item }) => (<OrderListItem item={item} isExpanded={expandedItemKey === item.uniqueKey} onPress={() => setExpandedItemKey(prevKey => (prevKey === item.uniqueKey ? null : item.uniqueKey))} onUpdateQuantity={(newQuantity) => handleUpdateQuantity(item, newQuantity)} onOpenMenu={() => handleOpenItemMenu(item)} />)}
@@ -303,7 +296,6 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
         </View>
     );
 };
-
 const styles = StyleSheet.create({
     flex1: { flex: 1, backgroundColor: '#F8F9FA' },
     containerCenter: { flex: 1, justifyContent: 'center', alignItems: 'center' },
