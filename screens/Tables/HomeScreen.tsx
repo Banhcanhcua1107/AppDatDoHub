@@ -1,6 +1,6 @@
 // --- START OF FILE HomeScreen.tsx ---
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -19,7 +19,7 @@ import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppTabParamList, AppStackParamList, ROUTES } from '../../constants/routes';
 import { supabase } from '../../services/supabase';
-
+import OrderInfoBox from '../Menu/OrderInfoBox'; // Giữ nguyên import này
 // --- KIỂU DỮ LIỆU ---
 type TableStatus = 'Trống' | 'Đang phục vụ' | 'Đặt trước';
 type TableItemData = {
@@ -38,9 +38,7 @@ const StatusLegend: React.FC<{ color: string; text: string }> = ({ color, text }
 
 // --- COMPONENT Ô BÀN (CẬP NHẬT ĐỂ NHẬN onLongPress) ---
 const TableGridItem: React.FC<{ 
-  item: TableItemData; 
-  onPress: () => void;
-  onLongPress: () => void; // Thêm prop onLongPress
+  item: TableItemData; onPress: () => void; onLongPress: () => void;
 }> = ({ item, onPress, onLongPress }) => {
   const getStatusTheme = () => {
     switch (item.status) {
@@ -50,20 +48,15 @@ const TableGridItem: React.FC<{
       default: return { color: '#A1A1AA', textColor: 'text-zinc-400' };
     }
   };
+
+
   const theme = getStatusTheme();
   return (
     <View className="w-1/2 p-2">
-      <Pressable 
-        onPress={onPress} 
-        onLongPress={onLongPress} // Gắn sự kiện nhấn giữ
-        style={({ pressed }) => [{ transform: [{ scale: pressed ? 0.98 : 1 }] }]}
-      >
+      <Pressable onPress={onPress} onLongPress={onLongPress} style={({ pressed }) => [{ transform: [{ scale: pressed ? 0.98 : 1 }] }]}>
         <View className="bg-white rounded-2xl p-4 flex-row items-center" style={styleSheet.shadow}>
           <Icon name="tablet-landscape-outline" size={30} color={theme.color} />
-          <View className="ml-3 flex-1">
-            <Text className="text-base font-bold text-gray-800">{item.name}</Text>
-            <Text className={`text-sm font-semibold ${theme.textColor}`}>{item.status}</Text>
-          </View>
+          <View className="ml-3 flex-1"><Text className="text-base font-bold text-gray-800">{item.name}</Text><Text className={`text-sm font-semibold ${theme.textColor}`}>{item.status}</Text></View>
         </View>
       </Pressable>
     </View>
@@ -82,6 +75,9 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
   const [tables, setTables] = React.useState<TableItemData[]>([]);
   const [loading, setLoading] = React.useState(true);
 
+
+  const [isBoxVisible, setBoxVisible] = useState(false);
+  const [selectedTable, setSelectedTable] = useState<{id: string, name: string} | null>(null);
   // Hàm lấy danh sách bàn từ Supabase
   const fetchTables = React.useCallback(async () => {
     const { data, error } = await supabase
@@ -126,19 +122,18 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
   
   // --- [MỚI] Hàm xử lý khi nhấn vào bàn ---
   const handlePressTable = (table: TableItemData) => {
-    if (table.status === 'Đặt trước') {
-      Alert.alert(
-        `Bàn ${table.name} đã được đặt`,
-        "Bạn muốn thực hiện hành động nào?",
-        [
-          { text: "Hủy" },
-          { text: "Hủy đặt", style: 'destructive', onPress: () => updateTableStatus(table.id, 'Trống') },
-          { text: "Bắt đầu phục vụ", onPress: () => navigation.navigate(ROUTES.MENU, { tableId: table.id, tableName: table.name }) },
-        ]
-      );
-    } else {
-      // Bàn 'Trống' hoặc 'Đang phục vụ' thì vào thẳng màn hình menu
+    if (table.status === 'Trống') {
       navigation.navigate(ROUTES.MENU, { tableId: table.id, tableName: table.name });
+    } 
+    else if (table.status === 'Đang phục vụ') {
+      // Mở OrderInfoBox
+      setSelectedTable({ id: table.id, name: table.name });
+      setBoxVisible(true);
+    }
+    else if (table.status === 'Đặt trước') {
+        Alert.alert(`Bàn ${table.name} đã được đặt`, "Hành động?",
+            [ { text: "Hủy" }, { text: "Hủy đặt", style: 'destructive', onPress: () => updateTableStatus(table.id, 'Trống') }, { text: "Bắt đầu phục vụ", onPress: () => navigation.navigate(ROUTES.MENU, { tableId: table.id, tableName: table.name }) }]
+        );
     }
   };
 
@@ -166,6 +161,25 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
 
     if (error) Alert.alert("Lỗi", `Không thể cập nhật trạng thái bàn thành "${status}".`);
   };
+  const handleOrderAction = (action: string, data?: any) => {
+    setBoxVisible(false); // Đóng box sau khi chọn
+    console.log(`Action: ${action}, Data:`, data);
+    
+    // Điều hướng hoặc xử lý logic dựa trên action
+    if (action === 'go_to_payment' || action === 'go_to_order_details') {
+        navigation.navigate(ROUTES.ORDER_CONFIRMATION, { tableId: data.tableId, tableName: data.tableName });
+    }
+    else if (action === 'cancel_order') {
+        Alert.alert("Xác nhận", `Bạn có chắc muốn hủy toàn bộ order của bàn ${data.tableName}?`, [
+            { text: "Không" },
+            { text: "Đồng ý", style: "destructive", onPress: () => { /* Logic hủy order ở đây */ } }
+        ]);
+    }
+    // ... Thêm các xử lý khác cho chuyển bàn, ghép order...
+    else {
+        Alert.alert("Thông báo", `Chức năng "${action}" đang được phát triển.`);
+    }
+  };
 
   // Giao diện loading
   if (loading) {
@@ -176,7 +190,7 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
     );
   }
 
-  return (
+   return (
     <View style={{ flex: 1, backgroundColor: '#F8F9FA' }}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
 
@@ -222,6 +236,18 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
       >
         <Icon name="add" size={30} color="#FFF" />
       </TouchableOpacity>
+
+      {/* --- [MỚI] Tích hợp OrderInfoBox --- */}
+      {/* Component này chỉ render khi selectedTable có dữ liệu */}
+      {selectedTable && (
+        <OrderInfoBox
+          isVisible={isBoxVisible}
+          onClose={() => setBoxVisible(false)}
+          tableId={selectedTable.id}
+          tableName={selectedTable.name}
+          onActionPress={handleOrderAction}
+        />
+      )}
     </View>
   );
 };
