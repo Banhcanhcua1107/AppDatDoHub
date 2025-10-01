@@ -1,4 +1,4 @@
-// src/screens/Home/OrderInfoBox.tsx (Lưu file này trong thư mục Home)
+// src/screens/Home/OrderInfoBox.tsx
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, Modal, StyleSheet, Pressable, ActivityIndicator, Alert } from 'react-native';
@@ -35,7 +35,7 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({ isVisible, onClose, tableId
   const [loading, setLoading] = useState(true);
   const [orderDetails, setOrderDetails] = useState<OrderDetails | null>(null);
 
-  const fetchOrderDetails = useCallback(async () => {
+   const fetchOrderDetails = useCallback(async () => {
     if (!tableId) return;
     setLoading(true);
     try {
@@ -46,16 +46,18 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({ isVisible, onClose, tableId
         .eq('status', 'pending')
         .single();
       
-      if (error) throw error;
+      if (error && error.code !== 'PGRST116') throw error;
 
       if (data) {
         const totalItems = data.order_items.reduce((sum, item) => sum + item.quantity, 0);
         const totalPrice = data.order_items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
         const orderTime = new Date(data.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
         setOrderDetails({ totalItems, totalPrice, orderTime });
+      } else {
+        setOrderDetails(null);
       }
     } catch (err: any) {
-      Alert.alert("Lỗi", "Không thể tải chi tiết order.");
+      Alert.alert("Lỗi", `Không thể tải chi tiết order: ${err.message}`);
       onClose();
     } finally {
       setLoading(false);
@@ -89,10 +91,15 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({ isVisible, onClose, tableId
 
   const renderContent = () => {
     if (loading) {
-      return <ActivityIndicator size="large" color="#FFF" style={{ padding: 60 }} />;
+      return <ActivityIndicator size="large" color="#3B82F6" style={{ paddingVertical: 60, backgroundColor: '#F8F9FA' }} />;
     }
     if (!orderDetails) {
-      return <Text style={styles.statusText}>Không tìm thấy thông tin order.</Text>
+      return (
+        <View style={styles.noOrderContainer}>
+            <Text style={styles.noOrderText}>Bàn chưa có order.</Text>
+            <Text style={styles.noOrderSubText}>Bạn có thể thêm order mới cho bàn này.</Text>
+        </View>
+      )
     }
     return (
         <>
@@ -103,15 +110,15 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({ isVisible, onClose, tableId
               </View>
               <View style={styles.priceContainer}>
                 <View style={styles.itemCountContainer}>
-                  <Icon name="person" size={14} color="white" />
-                  <Text style={styles.itemCountText}>{orderDetails.totalItems}</Text>
+                  <Icon name="file-tray-stacked-outline" size={14} color="white" />
+                  <Text style={styles.itemCountText}>{orderDetails.totalItems} món</Text>
                 </View>
-                <Text style={styles.priceText}>{orderDetails.totalPrice.toLocaleString('vi-VN')}</Text>
+                <Text style={styles.priceText}>{orderDetails.totalPrice.toLocaleString('vi-VN')}đ</Text>
               </View>
             </View>
 
             <View style={styles.actionsContainer}>
-              <TouchableOpacity style={styles.actionButton} onPress={() => handleQuickAction('request_payment')}><Icon name="calculator-outline" size={24} color="#555" /></TouchableOpacity>
+              <TouchableOpacity style={styles.actionButton} onPress={() => handleQuickAction('go_to_payment')}><Icon name="cash-outline" size={24} color="#555" /></TouchableOpacity>
               <TouchableOpacity style={styles.actionButton} onPress={() => handleQuickAction('go_to_order_details')}><Icon name="restaurant-outline" size={24} color="#555" /></TouchableOpacity>
               <TouchableOpacity style={styles.actionButton} onPress={() => handleQuickAction('print_check')}><Icon name="receipt-outline" size={24} color="#555" /></TouchableOpacity>
               <TouchableOpacity style={styles.actionButton} onPress={() => setMenuVisible(true)}><Icon name="ellipsis-horizontal" size={24} color="#555" /></TouchableOpacity>
@@ -123,13 +130,21 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({ isVisible, onClose, tableId
   return (
     <Modal transparent={true} visible={isVisible} animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.overlay} onPress={onClose}><BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} /></Pressable>
+      
       <View style={styles.container}>
-        <Pressable>
-            <View style={styles.header}><Text style={styles.headerText}>Bàn: {tableName}</Text></View>
+        {/* --- [THAY ĐỔI] Box thông tin giờ đã chứa cả nút ĐÓNG --- */}
+        <View style={styles.infoBoxWrapper}>
+            <View style={styles.header}><Text style={styles.headerText}>Thông tin {tableName}</Text></View>
             {renderContent()}
-        </Pressable>
+
+            {/* --- Nút Đóng đã được chuyển vào bên trong box --- */}
+            <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+                <Text style={styles.closeButtonText}>ĐÓNG</Text>
+            </TouchableOpacity>
+        </View>
       </View>
-      <View style={styles.closeButtonContainer}><TouchableOpacity style={styles.closeButton} onPress={onClose}><Text style={styles.closeButtonText}>ĐÓNG</Text></TouchableOpacity></View>
+
+      {/* Modal menu phụ (giữ nguyên) */}
       <Modal transparent={true} visible={menuVisible} animationType="fade" onRequestClose={() => setMenuVisible(false)}>
         <Pressable style={styles.menuOverlay} onPress={() => setMenuVisible(false)}>
             <View style={styles.menuContainer}>{menuActions.map(item => (<MenuActionItem key={item.action} item={item} onPress={handleActionPress} />))}</View>
@@ -138,8 +153,145 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({ isVisible, onClose, tableId
     </Modal>
   );
 };
-// --- Stylesheet (giữ nguyên từ trước) ---
+
+// --- Stylesheet đã được cập nhật ---
 const styles = StyleSheet.create({
-    overlay:{flex:1},container:{position:'absolute',bottom:100,left:10,right:10,backgroundColor:'#F8F9FA',borderRadius:8,elevation:10,shadowColor:'#000',shadowOffset:{width:0,height:-4},shadowOpacity:0.1,shadowRadius:10},header:{backgroundColor:'#3B82F6',paddingVertical:12,paddingHorizontal:16,borderTopLeftRadius:8,borderTopRightRadius:8},headerText:{color:'white',fontSize:18,fontWeight:'bold'},infoContainer:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',backgroundColor:'#007AFF',padding:16},orderTimeText:{color:'white',fontSize:16,fontWeight:'bold'},statusText:{color:'#E0E0E0',fontSize:14},priceContainer:{alignItems:'flex-end'},itemCountContainer:{flexDirection:'row',alignItems:'center',marginBottom:4},itemCountText:{color:'white',marginLeft:4,fontWeight:'bold'},priceText:{color:'white',fontSize:22,fontWeight:'bold'},actionsContainer:{flexDirection:'row',backgroundColor:'white',borderBottomLeftRadius:8,borderBottomRightRadius:8,borderTopWidth:1,borderTopColor:'#EEE'},actionButton:{flex:1,paddingVertical:12,alignItems:'center',justifyContent:'center',borderRightWidth:1,borderRightColor:'#EEE'},closeButtonContainer:{position:'absolute',bottom:30,left:0,right:0,alignItems:'center'},closeButton:{backgroundColor:'white',paddingVertical:12,paddingHorizontal:30,borderRadius:8,elevation:5},closeButtonText:{color:'#333',fontWeight:'bold',fontSize:16},menuOverlay:{flex:1,backgroundColor:'rgba(0,0,0,0.3)',justifyContent:'center',alignItems:'center'},menuContainer:{backgroundColor:'white',borderRadius:12,padding:10,width:'85%',maxWidth:350,elevation:5},menuItem:{flexDirection:'row',alignItems:'center',paddingVertical:14,paddingHorizontal:10},menuIcon:{width:40,textAlign:'center'},menuText:{fontSize:16,marginLeft:10}
+    overlay:{
+        flex:1
+    },
+    container:{
+        position:'absolute',
+        bottom: 350, 
+        left:10,
+        right:10,
+    },
+    infoBoxWrapper: {
+        backgroundColor:'#F8F9FA',
+        borderRadius:12,
+        elevation:10,
+        shadowColor:'#000',
+        shadowOffset:{width:0,height:4},
+        shadowOpacity:0.1,
+        shadowRadius:10,
+        overflow: 'hidden', // Quan trọng: Giúp bo góc áp dụng cho cả nút ĐÓNG
+    },
+    header:{
+        backgroundColor:'#3B82F6',
+        paddingVertical:12,
+        paddingHorizontal:16,
+    },
+    headerText:{
+        color:'white',
+        fontSize:18,
+        fontWeight:'bold'
+    },
+    infoContainer:{
+        flexDirection:'row',
+        justifyContent:'space-between',
+        alignItems:'center',
+        backgroundColor:'#007AFF',
+        padding:16
+    },
+    orderTimeText:{
+        color:'white',
+        fontSize:16,
+        fontWeight:'bold'
+    },
+    statusText:{
+        color:'#E0E0E0',
+        fontSize:14,
+        marginTop: 2,
+    },
+    priceContainer:{
+        alignItems:'flex-end'
+    },
+    itemCountContainer:{
+        flexDirection:'row',
+        alignItems:'center',
+        marginBottom:4
+    },
+    itemCountText:{
+        color:'white',
+        marginLeft:6,
+        fontWeight:'bold'
+    },
+    priceText:{
+        color:'white',
+        fontSize:22,
+        fontWeight:'bold'
+    },
+    actionsContainer:{
+        flexDirection:'row',
+        backgroundColor:'white',
+    },
+    actionButton:{
+        flex:1,
+        paddingVertical:14,
+        alignItems:'center',
+        justifyContent:'center',
+        borderRightWidth:1,
+        borderRightColor:'#EEE'
+    },
+    noOrderContainer: {
+        padding: 24,
+        alignItems: 'center',
+        backgroundColor: 'white',
+    },
+    noOrderText: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#374151'
+    },
+    noOrderSubText: {
+        fontSize: 14,
+        color: '#6B7280',
+        marginTop: 4,
+    },
+
+    // --- [THAY ĐỔI] Style cho nút Đóng để nó trở thành footer của box ---
+    closeButton:{
+        backgroundColor:'white',
+        paddingVertical: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderTopWidth: 1, // Tạo đường kẻ ngăn cách
+        borderTopColor: '#E5E7EB',
+    },
+    closeButtonText:{
+        color:'#3B82F6', // Đổi màu chữ cho nổi bật
+        fontWeight:'bold',
+        fontSize:16
+    },
+
+    // --- Style cho menu phụ (giữ nguyên) ---
+    menuOverlay:{
+        flex:1,
+        backgroundColor:'rgba(0,0,0,0.4)',
+        justifyContent:'center',
+        alignItems:'center'
+    },
+    menuContainer:{
+        backgroundColor:'white',
+        borderRadius:12,
+        padding:10,
+        width:'85%',
+        maxWidth:350,
+        elevation:5
+    },
+    menuItem:{
+        flexDirection:'row',
+        alignItems:'center',
+        paddingVertical:14,
+        paddingHorizontal:10
+    },
+    menuIcon:{
+        width:40,
+        textAlign:'center'
+    },
+    menuText:{
+        fontSize:16,
+        marginLeft:10
+    }
 });
+
 export default OrderInfoBox;
