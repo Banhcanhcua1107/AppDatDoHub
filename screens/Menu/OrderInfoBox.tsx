@@ -1,4 +1,4 @@
-// screens/Home/OrderInfoBox.tsx
+// screens/Menu/OrderInfoBox.tsx
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, Modal, StyleSheet, Pressable, ActivityIndicator, Alert } from 'react-native';
@@ -11,7 +11,10 @@ interface MenuItemProps { icon: string; text: string; action: string; color?: st
 interface OrderDetails { orderId: string; orderTime: string; totalItems: number; totalPrice: number; }
 
 const MenuActionItem: React.FC<{ item: MenuItemProps; onPress: (action: string) => void }> = ({ item, onPress }) => (
-  <TouchableOpacity onPress={() => onPress(item.action)} style={styles.menuItem}><Icon name={item.icon} size={24} color={item.color || '#4B5563'} style={styles.menuIcon} /><Text style={[styles.menuText, { color: item.color || '#1F2937' }]}>{item.text}</Text></TouchableOpacity>
+  <TouchableOpacity onPress={() => onPress(item.action)} style={styles.menuItem}>
+    <Icon name={item.icon as any} size={24} color={item.color || '#4B5563'} style={styles.menuIcon} />
+    <Text style={[styles.menuText, { color: item.color || '#1F2937' }]}>{item.text}</Text>
+  </TouchableOpacity>
 );
 
 const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({ isVisible, onClose, tableId, tableName, onActionPress: handleParentAction }) => {
@@ -23,15 +26,32 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({ isVisible, onClose, tableId
     if (!tableId) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase.from('orders').select(`id, created_at, order_items(quantity, unit_price)`).eq('table_id', tableId).eq('status', 'pending').single();
-      if (error && error.code !== 'PGRST116') throw error;
+      // [SỬA LỖI] Thay đổi cách truy vấn để sử dụng bảng order_tables
+      const { data, error } = await supabase
+        .from('orders')
+        .select(`
+            id, created_at, 
+            order_items(quantity, unit_price), 
+            order_tables!inner(table_id)
+        `)
+        .eq('order_tables.table_id', tableId)
+        .eq('status', 'pending')
+        .single();
+        
+      if (error && error.code !== 'PGRST116') throw error; // Bỏ qua lỗi 'không tìm thấy'
+      
       if (data) {
         const totalItems = data.order_items.reduce((sum, item) => sum + item.quantity, 0);
         const totalPrice = data.order_items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
         const orderTime = new Date(data.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
         setOrderDetails({ orderId: data.id, totalItems, totalPrice, orderTime });
-      } else { setOrderDetails(null); }
-    } catch (err: any) { Alert.alert("Lỗi", `Không thể tải chi tiết order: ${err.message}`); onClose(); }
+      } else { 
+        setOrderDetails(null); 
+      }
+    } catch (err: any) { 
+        Alert.alert("Lỗi", `Không thể tải chi tiết order: ${err.message}`); 
+        onClose(); 
+    }
     finally { setLoading(false); }
   }, [tableId, onClose]);
 
@@ -40,7 +60,8 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({ isVisible, onClose, tableId
   const menuActions: MenuItemProps[] = [
     { icon: 'cash-outline', text: 'Thanh toán', action: 'go_to_payment' },
     { icon: 'swap-horizontal-outline', text: 'Chuyển bàn', action: 'transfer_table', color: '#3B82F6' },
-    { icon: 'layers-outline', text: 'Ghép order', action: 'merge_order' },
+    { icon: 'layers-outline', text: 'Ghép Order', action: 'merge_order' },
+    { icon: 'apps-outline', text: 'Gộp Bàn', action: 'group_tables', color: '#10B981'},
     { icon: 'close-circle-outline', text: 'Hủy order', action: 'cancel_order', color: '#EF4444' },
     { icon: 'git-compare-outline', text: 'Tách order', action: 'split_order' },
     { icon: 'print-outline', text: 'In phiếu kiểm đồ', action: 'print_check' },

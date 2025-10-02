@@ -24,6 +24,12 @@ import BottomTabs from './BottomTabs';
 import MenuScreen from '../screens/Menu/MenuScreen';
 import OrderConfirmationScreen from '../screens/Menu/OrderConfirmationScreen';
 
+// =================================================================
+// BƯỚC 1: Import màn hình TableSelectionScreen vào đây
+import TableSelectionScreen from '../screens/Menu/TableSelectionScreen'; 
+// (Hãy chắc chắn đường dẫn `../screens/TableSelectionScreen` là chính xác)
+// =================================================================
+
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const AppStack = createNativeStackNavigator<AppStackParamList>();
 
@@ -47,6 +53,17 @@ const AppNavigatorComponent = () => (
     <AppStack.Screen name={ROUTES.APP_TABS} component={BottomTabs} />
     <AppStack.Screen name={ROUTES.MENU} component={MenuScreen} />
     <AppStack.Screen name={ROUTES.ORDER_CONFIRMATION} component={OrderConfirmationScreen} />
+    
+    {/* ================================================================= */}
+    {/* BƯỚC 2: Thêm màn hình TableSelectionScreen vào Stack Navigator */}
+    <AppStack.Screen 
+      name={ROUTES.TABLE_SELECTION} 
+      component={TableSelectionScreen} 
+      // Thêm các tùy chọn nếu cần, ví dụ: để hiển thị header
+      options={{ headerShown: true }} 
+    />
+    {/* ================================================================= */}
+
   </AppStack.Navigator>
 );
 

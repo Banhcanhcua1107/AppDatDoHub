@@ -52,10 +52,11 @@ export type AppTabParamList = {
 
 export type AppStackParamList = {
   [ROUTES.APP_TABS]: NavigatorScreenParams<AppTabParamList>;
-  [ROUTES.MENU]: { tableId: string; tableName: string; };
+  [ROUTES.MENU]: { tableId: string; tableName: string; orderId?: string;};
   [ROUTES.ORDER_CONFIRMATION]: {
     tableId: string;
     tableName: string;
+    orderId?: string;
   };
   // <-- [ĐÃ THÊM] Đăng ký màn hình chọn bàn và các tham số của nó
   [ROUTES.TABLE_SELECTION]: TableSelectionParams; 

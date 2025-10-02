@@ -103,18 +103,15 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
 
   const fetchMenuAndData = useCallback(async (isInitialLoad = false) => {
     if(isInitialLoad) setLoading(true);
-    
     try {
-        const [menuResponse, hotItemsResponse, ordersResponse, cartResponse] = await Promise.all([
+        const [menuResponse, hotItemsResponse, cartResponse] = await Promise.all([
             supabase.from('categories').select(`id, name, menu_items (id, name, description, price, image_url)`),
             supabase.from('menu_items').select('*').eq('is_hot', true).limit(10),
-            supabase.from('orders').select('id').eq('table_id', tableId).in('status', ['pending', 'paid']),
             supabase.from('cart_items').select(`*`).eq('table_id', tableId).order('created_at')
         ]);
 
         if (menuResponse.error) throw menuResponse.error;
         if (hotItemsResponse.error) throw hotItemsResponse.error;
-        if (ordersResponse.error) throw ordersResponse.error;
         if (cartResponse.error) throw cartResponse.error;
 
         if (menuResponse.data) {
@@ -128,17 +125,48 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
         }
         setHotItems(hotItemsResponse.data || []);
         setCartItems(cartResponse.data || []);
+        
+        const { data: orderLinkData, error: orderLinkError } = await supabase
+            .from('order_tables')
+            .select('orders!inner(id, status)')
+            .eq('table_id', tableId)
+            .eq('orders.status', 'pending');
+            
+        if (orderLinkError) throw orderLinkError;
 
-        if (ordersResponse.data && ordersResponse.data.length > 0) {
-            const orderIds = ordersResponse.data.map(o => o.id);
-            const { data: items, error: itemsError } = await supabase.from('order_items').select(`id, quantity, unit_price, menu_items(name)`).in('order_id', orderIds);
-            if (itemsError) throw itemsError;
-            setExistingItems(items?.map(item => ({ id: String(item.id), name: item.menu_items?.[0]?.name || 'Món đã bị xóa', quantity: item.quantity, unit_price: item.unit_price, totalPrice: item.quantity * item.unit_price })) || []);
+        if (orderLinkData && orderLinkData.length > 0) {
+            const pendingOrderIds = orderLinkData
+                .map(link => link.orders?.[0]?.id)
+                .filter((id): id is string => !!id);
+
+            if (pendingOrderIds.length > 0) {
+              const { data: items, error: itemsError } = await supabase
+                  .from('order_items')
+                  .select(`id, quantity, unit_price, menu_items(name)`)
+                  .in('order_id', pendingOrderIds);
+
+              if (itemsError) throw itemsError;
+              
+              const mappedItems = (items || []).map(item => {
+                  const menuItemName = item.menu_items?.[0]?.name;
+                  return { 
+                      id: String(item.id), 
+                      name: menuItemName || 'Món đã bị xóa', 
+                      quantity: item.quantity, 
+                      unit_price: item.unit_price, 
+                      totalPrice: item.quantity * item.unit_price 
+                  }
+              });
+              setExistingItems(mappedItems);
+            } else {
+              setExistingItems([]);
+            }
         } else {
             setExistingItems([]);
         }
+
     } catch (error: any) {
-        console.error("Lỗi khi tải dữ liệu:", error.message);
+        console.error("Lỗi khi tải dữ liệu MenuScreen:", error.message);
         Alert.alert("Lỗi", "Không thể tải dữ liệu. Vui lòng kiểm tra kết nối và thử lại.");
     } finally {
         if (isInitialLoad) setLoading(false);

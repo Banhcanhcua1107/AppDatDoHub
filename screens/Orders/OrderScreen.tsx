@@ -1,7 +1,7 @@
 // screens/Orders/OrderScreen.tsx
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { View, Text, StyleSheet, StatusBar, FlatList, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, StatusBar, FlatList, TouchableOpacity, ActivityIndicator, Alert, Modal, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CompositeScreenProps, useFocusEffect } from '@react-navigation/native';
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
@@ -10,14 +10,25 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../services/supabase';
 import { AppTabParamList, AppStackParamList, ROUTES } from '../../constants/routes';
 
-type ActiveOrder = { orderId: string; tableId: string; tableName: string; totalPrice: number; createdAt: string; totalItemCount: number; };
+// [THAY ĐỔI] Thêm orderId và đổi tableName thành tables
+type ActiveOrder = { orderId: string; representativeTableId: string; tables: {id: string, name: string}[]; totalPrice: number; createdAt: string; totalItemCount: number; };
+interface MenuItemProps { icon: string; text: string; action: string; color?: string; }
+
+// Component con cho từng mục trong Menu Modal (Giữ nguyên)
+const MenuActionItem: React.FC<{ item: MenuItemProps; onPress: (action: string) => void }> = ({ item, onPress }) => (
+  <TouchableOpacity onPress={() => onPress(item.action)} style={styles.menuItem}>
+    <Ionicons name={item.icon as any} size={24} color={item.color || '#4B5563'} style={styles.menuIcon} />
+    <Text style={[styles.menuText, { color: item.color || '#1F2937' }]}>{item.text}</Text>
+  </TouchableOpacity>
+);
 
 type OrderItemCardProps = {
     item: ActiveOrder;
     navigation: CompositeScreenProps<BottomTabScreenProps<AppTabParamList, typeof ROUTES.ORDER_TAB>, NativeStackScreenProps<AppStackParamList>>['navigation'];
+    onShowMenu: (item: ActiveOrder) => void;
 };
 
-const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation }) => {
+const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowMenu }) => {
   const formatTimeElapsed = (startTime: string) => {
     const start = new Date(startTime).getTime(); const now = new Date().getTime(); const diff = Math.floor((now - start) / 1000);
     if (diff < 60) return `${diff}s`;
@@ -26,33 +37,21 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation }) => {
     return `${remainingMinutes}'`;
   };
 
-  const handlePressCard = () => { navigation.navigate(ROUTES.ORDER_CONFIRMATION, { tableId: item.tableId, tableName: item.tableName }); };
+  // [THAY ĐỔI] Hiển thị tên các bàn được gộp
+  const displayTableName = item.tables.map(t => t.name).join(', ');
+  // Lấy bàn đại diện để điều hướng
+  const representativeTable = item.tables[0];
 
-  const handleAction = (action: string) => {
-      switch(action) {
-          case 'view_order': navigation.navigate(ROUTES.ORDER_CONFIRMATION, { tableId: item.tableId, tableName: item.tableName }); break;
-          case 'add_items': navigation.navigate(ROUTES.MENU, { tableId: item.tableId, tableName: item.tableName }); break;
-          case 'print_check': Alert.alert("Thông báo", "Chức năng in phiếu kiểm đồ đang được phát triển."); break;
-          case 'more_options':
-              Alert.alert(`Tùy chọn cho ${item.tableName}`, 'Chọn một hành động:',
-                  [
-                      { text: 'Chuyển bàn', onPress: () => navigation.navigate(ROUTES.TABLE_SELECTION, { mode: 'single', action: 'transfer', sourceRoute: ROUTES.ORDER_TAB, sourceTable: { id: item.tableId, name: item.tableName } }) },
-                      { text: 'Ghép order', onPress: () => navigation.navigate(ROUTES.TABLE_SELECTION, { mode: 'multiple', action: 'merge', sourceRoute: ROUTES.ORDER_TAB, sourceTable: { id: item.tableId, name: item.tableName } }) },
-                      { text: 'Tách order', onPress: () => Alert.alert("Tách order", "Chức năng đang phát triển") },
-                      { text: 'Hủy', style: 'cancel' },
-                  ]
-              );
-              break;
-          default: break;
-      }
-  }
+  const handlePressCard = () => { navigation.navigate(ROUTES.ORDER_CONFIRMATION, { tableId: representativeTable.id, tableName: displayTableName }); };
 
   return (
     <View style={styles.cardShadow} className="bg-white rounded-lg mb-4 mx-4">
       <TouchableOpacity onPress={handlePressCard}>
         <View style={{ backgroundColor: '#3B82F6' }} className="flex-row justify-end items-center p-3 rounded-t-lg"><View className="flex-row items-center"><Ionicons name="copy-outline" size={16} color="white" /><Text className="text-white font-bold text-sm ml-1">{item.totalItemCount}</Text></View></View>
         <View className="flex-row p-4 items-start">
-          <View className="w-1/2 items-start justify-center border-r border-gray-200 pr-4"><Text className="text-gray-800 font-bold text-xl">{item.tableName}</Text></View>
+          <View className="w-1/2 items-start justify-center border-r border-gray-200 pr-4">
+              <Text className="text-gray-800 font-bold text-xl">{displayTableName}</Text>
+          </View>
           <View className="w-1/2 pl-4 items-end">
             <Text className="text-gray-900 font-bold text-2xl">{item.totalPrice.toLocaleString('vi-VN')}</Text>
             <View className="flex-row items-center justify-between w-full mt-1"><View className="flex-row items-center"><Ionicons name="time-outline" size={15} color="gray" /><Text className="text-gray-600 text-sm ml-1">{formatTimeElapsed(item.createdAt)}</Text></View><Ionicons name="restaurant" size={22} color="#2E8540" /></View>
@@ -60,10 +59,10 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation }) => {
         </View>
       </TouchableOpacity>
       <View className="flex-row justify-around items-center bg-gray-50 border-t border-gray-200 rounded-b-lg">
-          <TouchableOpacity onPress={() => handleAction('view_order')} className="py-3 items-center justify-center flex-1"><Ionicons name="calculator-outline" size={24} color="gray" /></TouchableOpacity>
-          <TouchableOpacity onPress={() => handleAction('add_items')} className="py-3 items-center justify-center flex-1"><Ionicons name="restaurant-outline" size={24} color="gray" /></TouchableOpacity>
-          <TouchableOpacity onPress={() => handleAction('print_check')} className="py-3 items-center justify-center flex-1"><Ionicons name="receipt-outline" size={24} color="gray" /></TouchableOpacity>
-          <TouchableOpacity onPress={() => handleAction('more_options')} className="py-3 items-center justify-center flex-1"><Ionicons name="ellipsis-horizontal" size={24} color="gray" /></TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.navigate(ROUTES.ORDER_CONFIRMATION, { tableId: representativeTable.id, tableName: displayTableName })} className="py-3 items-center justify-center flex-1"><Ionicons name="calculator-outline" size={24} color="gray" /></TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.navigate(ROUTES.MENU, { tableId: representativeTable.id, tableName: displayTableName })} className="py-3 items-center justify-center flex-1"><Ionicons name="restaurant-outline" size={24} color="gray" /></TouchableOpacity>
+          <TouchableOpacity onPress={() => Alert.alert("Thông báo", "Chức năng in phiếu kiểm đồ đang được phát triển.")} className="py-3 items-center justify-center flex-1"><Ionicons name="receipt-outline" size={24} color="gray" /></TouchableOpacity>
+          <TouchableOpacity onPress={() => onShowMenu(item)} className="py-3 items-center justify-center flex-1"><Ionicons name="ellipsis-horizontal" size={24} color="gray" /></TouchableOpacity>
       </View>
     </View>
   );
@@ -75,16 +74,36 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
   const insets = useSafeAreaInsets();
   const [activeOrders, setActiveOrders] = useState<ActiveOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isMenuVisible, setMenuVisible] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<ActiveOrder | null>(null);
 
+  // [THAY ĐỔI LỚN] Cập nhật logic lấy order
   const fetchActiveOrders = async () => {
-    const { data, error } = await supabase.from('tables').select(`id, name, orders!inner(id, created_at, status, order_items(quantity, unit_price))`).eq('status', 'Đang phục vụ').eq('orders.status', 'pending');
+    const { data, error } = await supabase
+        .from('orders')
+        .select(`
+            id, created_at, status,
+            order_items(quantity, unit_price),
+            order_tables(tables(id, name))
+        `)
+        .eq('status', 'pending');
+
     if (error) { Alert.alert('Lỗi', `Không thể tải danh sách order: ${error.message}`); return; }
-    const formattedOrders: ActiveOrder[] = data.flatMap(table => (table.orders.map(order => {
+
+    const formattedOrders: ActiveOrder[] = data.map(order => {
         const totalPrice = order.order_items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
         const totalItemCount = order.order_items.reduce((sum, item) => sum + item.quantity, 0);
-        return { orderId: order.id, tableId: table.id, tableName: table.name, totalPrice, createdAt: order.created_at, totalItemCount };
-      })
-    ));
+        const tables = order.order_tables.map((ot: any) => ot.tables);
+        return {
+            orderId: order.id,
+            representativeTableId: tables[0]?.id, // Lấy bàn đầu tiên làm đại diện
+            tables: tables,
+            totalPrice,
+            createdAt: order.created_at,
+            totalItemCount,
+        };
+    }).filter(order => order.tables.length > 0); // Lọc những order không có bàn (lỗi dữ liệu)
+
     formattedOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     setActiveOrders(formattedOrders);
   };
@@ -95,18 +114,95 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
     const channel = supabase.channel('public:orders_and_items').on('postgres_changes', { event: '*', schema: 'public' }, fetchActiveOrders).subscribe();
     return () => { supabase.removeChannel(channel); };
   }, []);
+  
+  // [MỚI] Thêm action "Gộp Bàn"
+  const menuActions: MenuItemProps[] = [
+    { icon: 'swap-horizontal-outline', text: 'Chuyển bàn', action: 'transfer_table', color: '#3B82F6' },
+    { icon: 'layers-outline', text: 'Ghép Order (Thêm món)', action: 'merge_order' },
+    { icon: 'apps-outline', text: 'Gộp Bàn (Chung bill)', action: 'group_tables', color: '#10B981'},
+    { icon: 'git-compare-outline', text: 'Tách order', action: 'split_order' },
+    { icon: 'close-circle-outline', text: 'Hủy order', action: 'cancel_order', color: '#EF4444' },
+  ];
 
+  const handleShowMenu = (order: ActiveOrder) => {
+      setSelectedOrder(order);
+      setMenuVisible(true);
+  }
+  
+  const handleMenuAction = (action: string) => {
+      setMenuVisible(false);
+      if (!selectedOrder) return;
+      const isSingleTable = selectedOrder.tables.length === 1;
+      const representativeTable = selectedOrder.tables[0];
+      const displayTableName = selectedOrder.tables.map(t => t.name).join(', ');
+
+      setTimeout(() => {
+          switch(action) {
+              case 'transfer_table':
+                  if (isSingleTable) {
+                      navigation.navigate(ROUTES.TABLE_SELECTION, { 
+                          mode: 'single', 
+                          action: 'transfer', 
+                          sourceRoute: ROUTES.ORDER_TAB, 
+                          sourceTable: { id: representativeTable.id, name: representativeTable.name, orderId: selectedOrder.orderId } 
+                      });
+                  } else {
+                      Alert.alert("Thông báo", "Chức năng chuyển cả nhóm bàn đang được phát triển.");
+                  }
+                  break;
+              case 'merge_order':
+                  navigation.navigate(ROUTES.TABLE_SELECTION, { mode: 'multiple', action: 'merge', sourceRoute: ROUTES.ORDER_TAB, sourceTable: { id: representativeTable.id, name: displayTableName } });
+                  break;
+              // [MỚI] Xử lý Gộp Bàn
+              case 'group_tables':
+                  navigation.navigate(ROUTES.TABLE_SELECTION, { 
+                      mode: 'multiple', 
+                      action: 'group', // Action mới
+                      sourceRoute: ROUTES.ORDER_TAB, 
+                      sourceTable: { id: representativeTable.id, name: displayTableName } 
+                  });
+                  break;
+              case 'split_order':
+                  Alert.alert("Tách order", "Chức năng đang phát triển");
+                  break;
+              case 'cancel_order':
+                  Alert.alert("Hủy order", `Bạn có chắc muốn hủy order cho nhóm bàn ${displayTableName}?`, [{text: 'Không'}, {text: 'Hủy', style: 'destructive'}]);
+                  break;
+              default: break;
+          }
+      }, 200);
+  }
+
+  // Các phần còn lại của OrderScreen giữ nguyên...
+  const renderMenuModal = () => (
+    <Modal transparent={true} visible={isMenuVisible} animationType="fade" onRequestClose={() => setMenuVisible(false)}>
+      <Pressable style={styles.menuOverlay} onPress={() => setMenuVisible(false)}>
+        <View style={styles.menuContainer}>
+          <Text style={styles.menuTitle}>Tùy chọn cho {selectedOrder?.tables.map(t=>t.name).join(', ')}</Text>
+          {menuActions.map(item => (<MenuActionItem key={item.action} item={item} onPress={handleMenuAction} />))}
+        </View>
+      </Pressable>
+    </Modal>
+  );
   if (loading) { return (<View className="flex-1 justify-center items-center bg-gray-50"><ActivityIndicator size="large" color="#3B82F6" /><Text className="mt-2 text-gray-600">Đang tải danh sách order...</Text></View>); }
-
   return (
     <View style={{ flex: 1, backgroundColor: '#F0F2F5' }}>
       <StatusBar barStyle="light-content" backgroundColor="#3B82F6" />
       <View style={{ paddingTop: insets.top, backgroundColor: '#3B82F6' }} className="pb-4 px-4 shadow-lg"><View className="flex-row items-center justify-center h-12"><TouchableOpacity className="flex-row items-center"><Text className="text-white font-bold text-xl">Order</Text><Text className="text-white text-lg ml-2">Đang phục vụ</Text><Ionicons name="caret-down" size={16} color="white" className="ml-1" /></TouchableOpacity></View></View>
-      <FlatList data={activeOrders} renderItem={({ item }) => <OrderItemCard item={item} navigation={navigation} />} keyExtractor={(item) => item.orderId.toString()} contentContainerStyle={{ paddingTop: 16, paddingBottom: 100 }} ListEmptyComponent={<View className="mt-20 items-center"><Ionicons name="file-tray-outline" size={60} color="#9CA3AF"/><Text className="text-gray-500 text-lg mt-4">Không có order nào đang phục vụ</Text></View>} />
+      <FlatList data={activeOrders} renderItem={({ item }) => <OrderItemCard item={item} navigation={navigation} onShowMenu={handleShowMenu} />} keyExtractor={(item) => item.orderId.toString()} contentContainerStyle={{ paddingTop: 16, paddingBottom: 100 }} ListEmptyComponent={<View className="mt-20 items-center"><Ionicons name="file-tray-outline" size={60} color="#9CA3AF"/><Text className="text-gray-500 text-lg mt-4">Không có order nào đang phục vụ</Text></View>} />
+      {renderMenuModal()}
     </View>
   );
 };
 
-const styles = StyleSheet.create({ cardShadow: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 5 } });
+const styles = StyleSheet.create({ 
+    cardShadow: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 5 },
+    menuOverlay:{ flex:1, backgroundColor:'rgba(0,0,0,0.4)', justifyContent:'center', alignItems:'center' }, 
+    menuContainer:{ backgroundColor:'white', borderRadius:12, paddingVertical: 10, width:'85%', maxWidth:350, elevation:5 },
+    menuTitle: { fontSize: 18, fontWeight: 'bold', color: '#1F2937', paddingHorizontal: 20, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#E5E7EB', marginBottom: 5 },
+    menuItem:{ flexDirection:'row', alignItems:'center', paddingVertical:14, paddingHorizontal:20 }, 
+    menuIcon:{ width:40, textAlign:'center' }, 
+    menuText:{ fontSize:16, marginLeft:10 }
+});
 
 export default OrderScreen;
