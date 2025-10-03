@@ -175,13 +175,94 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
 
   useFocusEffect(
     useCallback(() => {
-        const task = InteractionManager.runAfterInteractions(() => fetchMenuAndData(true));
-        const channel = supabase.channel(`public:cart_items:table_id=eq.${tableId}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'cart_items', filter: `table_id=eq.${tableId}` },
-                () => { console.log('Giỏ hàng thay đổi, tải lại...'); fetchMenuAndData(false); }
-            ).subscribe();
-        return () => { task.cancel(); supabase.removeChannel(channel); };
-    }, [tableId, fetchMenuAndData])
+      let isActive = true; // Cờ để tránh cập nhật state trên component đã unmount
+
+      const loadData = async () => {
+        console.log(`[Focus] Bắt đầu tải dữ liệu cho bàn: ${tableId}`);
+        if (!tableId) {
+            console.warn("[Focus] Không tìm thấy tableId, bỏ qua tải dữ liệu.");
+            return;
+        }
+        
+        setLoading(true);
+        try {
+            const [menuResponse, hotItemsResponse, cartResponse, orderLinkData] = await Promise.all([
+                supabase.from('categories').select(`id, name, menu_items (id, name, description, price, image_url)`),
+                supabase.from('menu_items').select('*').eq('is_hot', true).limit(10),
+                supabase.from('cart_items').select(`*`).eq('table_id', tableId).order('created_at'),
+                supabase.from('order_tables').select('orders!inner(id, status)').eq('table_id', tableId).eq('orders.status', 'pending')
+            ]);
+            
+            if (!isActive) return;
+
+            // Xử lý lỗi cho từng promise
+            if (menuResponse.error) throw menuResponse.error;
+            if (hotItemsResponse.error) throw hotItemsResponse.error;
+            if (cartResponse.error) throw cartResponse.error;
+            if (orderLinkData.error) throw orderLinkData.error;
+
+            // Cập nhật state menu và món hot
+            if (menuResponse.data) {
+                const formattedData = menuResponse.data.map(cat => ({ ...cat, id: String(cat.id), menu_items: cat.menu_items.map(item => ({ ...item, id: String(item.id) })) }));
+                const hotCategory = { id: HOT_CATEGORY_ID, name: '🔥 Món Hot', menu_items: [] };
+                formattedData.unshift(hotCategory);
+                setMenuData(formattedData);
+            }
+            setHotItems(hotItemsResponse.data || []);
+            
+            // Cập nhật state giỏ hàng (món mới)
+            setCartItems(cartResponse.data || []);
+            console.log(`[Focus] Tải thành công ${cartResponse.data?.length || 0} món trong giỏ hàng.`);
+
+            // Cập nhật state các món đã gọi (pending)
+            if (orderLinkData.data && orderLinkData.data.length > 0) {
+                const pendingOrderIds = orderLinkData.data.map(link => link.orders?.[0]?.id).filter((id): id is string => !!id);
+                if (pendingOrderIds.length > 0) {
+                    const { data: items, error: itemsError } = await supabase.from('order_items').select(`id, quantity, unit_price, menu_items(name)`).in('order_id', pendingOrderIds);
+                    if (itemsError) throw itemsError;
+                    
+                    const mappedItems = (items || []).map(item => ({ id: String(item.id), name: item.menu_items?.[0]?.name || 'Món đã bị xóa', quantity: item.quantity, unit_price: item.unit_price, totalPrice: item.quantity * item.unit_price }));
+                    setExistingItems(mappedItems);
+                    console.log(`[Focus] Tải thành công ${mappedItems.length} món đã gọi.`);
+                } else {
+                    setExistingItems([]);
+                }
+            } else {
+                setExistingItems([]);
+            }
+
+        } catch (error: any) {
+            if (isActive) {
+                console.error("[Focus] Lỗi khi tải dữ liệu:", error.message);
+                Alert.alert("Lỗi", "Không thể tải dữ liệu. Vui lòng kiểm tra kết nối và thử lại.");
+            }
+        } finally {
+            if (isActive) setLoading(false);
+        }
+      };
+      
+      const task = InteractionManager.runAfterInteractions(() => {
+        loadData();
+      });
+
+      // Thiết lập realtime subscription
+      const channel = supabase.channel(`public:cart_items:table_id=eq.${tableId}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'cart_items', filter: `table_id=eq.${tableId}` },
+            () => { 
+                console.log('Realtime: Giỏ hàng thay đổi, tải lại...'); 
+                // Không cần gọi loadData() ở đây vì các hàm thêm/sửa/xóa đã gọi fetchMenuAndData() rồi.
+                // Việc này tránh gọi fetch 2 lần không cần thiết.
+            }
+        ).subscribe();
+      
+      // Hàm dọn dẹp
+      return () => {
+        isActive = false;
+        task.cancel();
+        supabase.removeChannel(channel);
+        console.log(`[Focus] Dọn dẹp cho bàn: ${tableId}`);
+      };
+    }, [tableId]) // Chỉ phụ thuộc vào tableId
   );
   
   const handleSelectItem = (item: MenuItemFromDB) => {
