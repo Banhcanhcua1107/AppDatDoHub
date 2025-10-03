@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 import { 
-    View, Text, StyleSheet, StatusBar, FlatList, TouchableOpacity, Alert, 
+    View, Text, StyleSheet, StatusBar, SectionList, TouchableOpacity, Alert, 
     ActivityIndicator, Modal, TextInput
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,10 +13,14 @@ import { supabase } from '../../services/supabase';
 import { useFocusEffect } from '@react-navigation/native';
 
 // --- Interfaces and Components (Không thay đổi) ---
+interface OrderSection {
+    title: string;
+    data: DisplayItem[];
+}
 interface DisplayItem {
     id: number; uniqueKey: string; name: string; quantity: number;
     unit_price: number; totalPrice: number; menuItemId?: number;
-    customizations: any; isNew: boolean; isPaid: boolean;
+    customizations: any; isNew: boolean; isPaid: boolean; created_at?: string;
 }
 const NoteInputModal: React.FC<{
     visible: boolean; initialValue: string; onClose: () => void; onSave: (note: string) => void;
@@ -101,7 +105,8 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
     const insets = useSafeAreaInsets();
     const [loading, setLoading] = useState(true);
     const [activeOrderId, setActiveOrderId] = useState<string | null>(routeOrderId || null);
-    const [allDisplayedItems, setAllDisplayedItems] = useState<DisplayItem[]>([]);
+    
+    const [displayedSections, setDisplayedSections] = useState<OrderSection[]>([]);
     const [expandedItemKey, setExpandedItemKey] = useState<string | null>(null);
     const [isNoteModalVisible, setNoteModalVisible] = useState(false);
     const [editingItem, setEditingItem] = useState<DisplayItem | null>(null);
@@ -128,7 +133,8 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
             let freshTables: {id: string, name: string}[] = [];
 
             if (orderIdToFetch) {
-                const { data: orderDetails, error: orderError } = await supabase.from('orders').select(`id, status, order_items(*, menu_items(name)), order_tables(tables(id, name))`).eq('id', orderIdToFetch).single();
+                // [CẬP NHẬT] Lấy cả cột created_at của order_items
+                const { data: orderDetails, error: orderError } = await supabase.from('orders').select(`id, status, order_items(id, quantity, unit_price, customizations, created_at), order_tables(tables(id, name))`).eq('id', orderIdToFetch).single();
                 if (orderError) throw orderError;
                 if (orderDetails) {
                     freshTables = orderDetails.order_tables.map((ot: any) => ot.tables).filter(Boolean);
@@ -136,9 +142,9 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
 
                     (orderDetails.order_items || []).forEach((item: any) => {
                         const displayItem: DisplayItem = {
-                            id: item.id, uniqueKey: `${orderDetails.status}-${item.id}`, name: item.menu_items?.name || 'Món đã xóa', quantity: item.quantity,
+                            id: item.id, uniqueKey: `${orderDetails.status}-${item.id}`, name: item.customizations?.name || 'Món đã xóa', quantity: item.quantity,
                             unit_price: item.unit_price, totalPrice: item.quantity * item.unit_price, menuItemId: item.menu_item_id,
-                            customizations: item.customizations, isNew: false, isPaid: orderDetails.status === 'paid' || orderDetails.status === 'closed'
+                            customizations: item.customizations, created_at: item.created_at, isNew: false, isPaid: orderDetails.status === 'paid' || orderDetails.status === 'closed'
                         };
                         if (displayItem.isPaid) paidItems.push(displayItem); else pendingItems.push(displayItem);
                     });
@@ -152,7 +158,43 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
                 newItems = (cartData || []).map(item => ({ id: item.id, uniqueKey: `new-${item.id}`, name: item.customizations.name || 'Món mới', quantity: item.quantity, unit_price: item.unit_price, totalPrice: item.total_price, menuItemId: item.menu_item_id, customizations: item.customizations, isNew: true, isPaid: false }));
             }
             
-            setAllDisplayedItems([...paidItems, ...pendingItems, ...newItems]);
+            // --- [LOGIC MỚI] Nhóm các món theo từng đợt ---
+            const sections: OrderSection[] = [];
+
+            // 1. Section cho các món mới (chưa gửi bếp)
+            if (newItems.length > 0) {
+                sections.push({ title: 'Món mới chờ gửi bếp', data: newItems });
+            }
+
+            // 2. Nhóm các món đã gửi bếp theo thời gian
+            const groupedPendingItems = pendingItems.reduce((acc, item) => {
+                // [SỬA LỖI] Đảm bảo timestamp là một chuỗi hợp lệ
+                const timestamp = item.created_at || new Date().toISOString();
+                if (!acc[timestamp]) {
+                    acc[timestamp] = [];
+                }
+                acc[timestamp].push(item);
+                return acc;
+            }, {} as Record<string, DisplayItem[]>);
+
+            // 3. Chuyển các nhóm thành các section và sắp xếp theo thời gian
+            const pendingSections = Object.keys(groupedPendingItems)
+                .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
+                .map((timestamp, index) => ({
+                    title: `Đợt ${index + 1} - ${new Date(timestamp).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`,
+                    data: groupedPendingItems[timestamp],
+                }));
+            
+            sections.push(...pendingSections);
+
+            // 4. Section cho các món đã thanh toán
+            if (paidItems.length > 0) {
+                sections.push({ title: 'Món đã thanh toán', data: paidItems });
+            }
+
+            setDisplayedSections(sections);
+            // --------------------------------------------------
+
         } catch (error: any) { 
             if (error.code !== 'PGRST116') Alert.alert("Lỗi", `Không thể tải dữ liệu: ${error.message}`);
         } finally { 
@@ -203,12 +245,12 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
         } catch (error: any) { Alert.alert("Lỗi", `Không thể lưu ghi chú: ${error.message}`);
         } finally { setNoteModalVisible(false); setEditingItem(null); }
     };
-
+    const allItems = displayedSections.flatMap(s => s.data);
     const representativeTable = currentTables[0] || {id: initialTableId, name: initialTableName};
     const currentTableNameForDisplay = currentTables.map(t => t.name).join(', ');
-    const newItemsFromCart = allDisplayedItems.filter(item => item.isNew);
-    const billableItems = allDisplayedItems.filter(item => !item.isPaid);
-    const paidItems = allDisplayedItems.filter(item => item.isPaid);
+    const newItemsFromCart = allItems.filter(item => item.isNew);
+    const billableItems = allItems.filter(item => !item.isPaid);
+    const paidItems = allItems.filter(item => item.isPaid);
     const hasNewItems = newItemsFromCart.length > 0;
     const totalBill = billableItems.reduce((sum, item) => sum + item.totalPrice, 0);
     const handleExitToHome = useCallback(() => navigation.goBack(), [navigation]);
@@ -233,17 +275,26 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
     const handleSendToKitchen = async () => { setLoading(true); const s = await sendNewItemsToKitchen(); if (s) { fetchAllData(false); } setLoading(false); };
     const handleSaveAndExit = () => navigation.goBack();
     const handlePayment = async () => {
+        const allItems = displayedSections.flatMap(s => s.data);
+        const billableItems = allItems.filter(item => !item.isPaid);
+        
         if (billableItems.length === 0) { Alert.alert("Thông báo", "Không có món nào cần thanh toán."); return; }
+
         setLoading(true);
         let finalOrderId = activeOrderId;
-        if (hasNewItems) {
+        if (allItems.some(i => i.isNew)) {
             const returnedOrderId = await sendNewItemsToKitchen();
             if (!returnedOrderId) { setLoading(false); return; }
             finalOrderId = returnedOrderId;
+            // Tải lại dữ liệu sau khi gửi bếp để tính tổng tiền cuối cùng cho chính xác
+            await fetchAllData(false); 
         }
         if (!finalOrderId) { Alert.alert("Lỗi", "Không tìm thấy order để thanh toán."); setLoading(false); return; }
+        
+        // Tính lại tổng tiền sau khi đã gửi bếp (nếu có)
+        const finalBillToPay = displayedSections.flatMap(s => s.data).filter(i => !i.isPaid).reduce((s, i) => s + i.totalPrice, 0);
+
         setLoading(false);
-        const finalBillToPay = allDisplayedItems.filter(i => !i.isPaid).reduce((s, i) => s + i.totalPrice, 0);
         Alert.alert("Xác nhận thanh toán", `Tổng hóa đơn là ${finalBillToPay.toLocaleString('vi-VN')}đ.`,
           [{ text: "Hủy" }, { text: "Giữ phiên", onPress: () => handleKeepSessionAfterPayment(finalOrderId!, finalBillToPay) }, { text: "Kết thúc", onPress: () => handleEndSessionAfterPayment(finalOrderId!, finalBillToPay) }]
         );
@@ -252,7 +303,7 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
         setLoading(true);
         try {
             await supabase.from('orders').update({ status: 'paid', total_price: finalBill }).eq('id', orderId).throwOnError();
-            fetchAllData(false);
+            fetchAllData(true);
             Alert.alert("Thành công", "Đã thanh toán. Bàn vẫn đang được phục vụ.");
         } catch (error: any) { 
             Alert.alert("Lỗi", `Không thể cập nhật trạng thái order: ${error.message}`); 
@@ -292,8 +343,9 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
         )
     };
     
+    
     // --- Render ---
-     if (loading) { return <View style={styles.containerCenter}><ActivityIndicator size="large" color="#3B82F6" /></View>; }
+    if (loading) { return <View style={styles.containerCenter}><ActivityIndicator size="large" color="#3B82F6" /></View>; }
     
     const AddMoreItemsButton = () => (
         <TouchableOpacity style={styles.addMoreButton} onPress={() => navigation.navigate(ROUTES.MENU, { tableId: representativeTable.id, tableName: currentTableNameForDisplay, orderId: activeOrderId || undefined })}>
@@ -314,14 +366,27 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
                     <View className="w-8" />
                 </View>
             </View>
-            <FlatList
-                data={allDisplayedItems}
-                renderItem={({ item }) => (<OrderListItem item={item} isExpanded={expandedItemKey === item.uniqueKey} onPress={() => setExpandedItemKey(prevKey => (prevKey === item.uniqueKey ? null : item.uniqueKey))} onUpdateQuantity={(newQuantity) => handleUpdateQuantity(item, newQuantity)} onOpenMenu={() => handleOpenItemMenu(item)} />)}
+            
+            <SectionList
+                sections={displayedSections}
                 keyExtractor={(item) => item.uniqueKey}
+                renderItem={({ item }) => (
+                    <OrderListItem 
+                        item={item} 
+                        isExpanded={expandedItemKey === item.uniqueKey} 
+                        onPress={() => setExpandedItemKey(prevKey => (prevKey === item.uniqueKey ? null : item.uniqueKey))} 
+                        onUpdateQuantity={(newQuantity) => handleUpdateQuantity(item, newQuantity)} 
+                        onOpenMenu={() => handleOpenItemMenu(item)} 
+                    />
+                )}
+                renderSectionHeader={({ section: { title } }) => (
+                    <Text style={styles.sectionHeader}>{title}</Text>
+                )}
                 contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 220 }}
                 ListEmptyComponent={<View className="mt-20 items-center"><Text className="text-gray-500 mb-6">Chưa có món nào được gọi.</Text><AddMoreItemsButton /></View>}
-                ListFooterComponent={allDisplayedItems.length > 0 ? <AddMoreItemsButton /> : null}
+                ListFooterComponent={allItems.length > 0 ? <AddMoreItemsButton /> : null}
             />
+
             <View style={[styles.bottomBar, { paddingBottom: insets.bottom > 0 ? insets.bottom : 20 }]}>
                 <View className="flex-row items-center justify-between w-full mb-6 px-2"><Text className="text-gray-500 text-base font-medium">Cần thanh toán</Text><Text className="text-3xl font-bold text-gray-900">{totalBill.toLocaleString('vi-VN')}đ</Text></View>
                 <View className="flex-row justify-around w-full">
@@ -340,6 +405,14 @@ const styles = StyleSheet.create({
     containerCenter: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     shadow: { shadowColor: "#475569", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 15, elevation: 5 },
     paidItem: { backgroundColor: '#F9FAFB', opacity: 0.8 },
+    sectionHeader: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#4B5563',
+        backgroundColor: '#F8F9FA',
+        paddingTop: 20,
+        paddingBottom: 8,
+    },
     bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingTop: 20, paddingHorizontal: 16, backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, elevation: 15, alignItems: 'center', shadowColor: "#000", shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.1, shadowRadius: 10 },
     addMoreButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#A5B4FC', borderStyle: 'dashed', borderRadius: 16, paddingVertical: 16, marginTop: 16, marginBottom: 8 },
     addMoreButtonText: { color: '#3B82F6', fontSize: 16, fontWeight: '600', marginLeft: 8 },
