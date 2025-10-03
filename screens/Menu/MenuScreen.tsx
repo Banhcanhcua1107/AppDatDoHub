@@ -14,6 +14,24 @@ import CustomizeItemModal from './CustomizeItemModal';
 import CartDetailModal from './CartDetailModal';
 import { supabase } from '../../services/supabase';
 
+
+const normalizeText = (text: string): string => {
+  if (!text) return '';
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d");
+};
+
+// Hàm lấy các chữ cái đầu của một chuỗi
+const getAcronym = (text: string): string => {
+  if (!text) return '';
+  return normalizeText(text)
+    .split(' ')
+    .map(word => word[0])
+    .join('');
+};
 // --- Interfaces ---
 interface ExistingItem {
     id: string; name: string; quantity: number; unit_price: number; totalPrice: number;
@@ -100,7 +118,7 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
   const [existingItems, setExistingItems] = useState<ExistingItem[]>([]);
   const [hotItems, setHotItems] = useState<MenuItemFromDB[]>([]);
   const [cartItems, setCartItems] = useState<CartItemFromDB[]>([]);
-
+  const [searchQuery, setSearchQuery] = useState('');
   const fetchMenuAndData = useCallback(async (isInitialLoad = false) => {
     if(isInitialLoad) setLoading(true);
     try {
@@ -369,8 +387,48 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
   const existingItemsPrice = existingItems.reduce((total, item) => total + item.totalPrice, 0);
   const totalCartQuantity = newItemsQuantity + existingItemsQuantity;
   const totalCartPrice = newItemsPrice + existingItemsPrice;
-  const itemsToDisplay = activeCategoryId === HOT_CATEGORY_ID ? hotItems : menuData.find(cat => cat.id === activeCategoryId)?.menu_items;
 
+  let sourceItems: MenuItemFromDB[];
+  if (searchQuery) {
+      // Nếu có tìm kiếm, gộp TẤT CẢ các món từ TẤT CẢ các danh mục (trừ Món Hot)
+      sourceItems = menuData.flatMap(category => category.menu_items);
+  } else {
+      // Nếu không tìm kiếm, chỉ hiển thị món từ danh mục đang chọn
+      sourceItems = activeCategoryId === HOT_CATEGORY_ID 
+          ? hotItems 
+          : menuData.find(cat => cat.id === activeCategoryId)?.menu_items || [];
+  }
+  // const originalItemsToDisplay = activeCategoryId === HOT_CATEGORY_ID 
+  //     ? hotItems 
+  //     : menuData.find(cat => cat.id === activeCategoryId)?.menu_items || [];
+
+  // const filteredItemsToDisplay = !searchQuery
+  //   ? originalItemsToDisplay // Nếu không tìm kiếm, trả về danh sách gốc
+  //   : originalItemsToDisplay.filter(item => {
+  //       const normalizedQuery = normalizeText(searchQuery);
+  //       const normalizedItemName = normalizeText(item.name);
+  //       const itemAcronym = getAcronym(item.name);
+        
+  //       // Trả về true nếu tên món chứa chuỗi tìm kiếm, HOẶC
+  //       // chữ cái đầu của tên món chứa chuỗi tìm kiếm
+  //       return (
+  //           normalizedItemName.includes(normalizedQuery) ||
+  //           itemAcronym.includes(normalizedQuery)
+  //       );
+  //     });
+
+      const itemsToDisplay = !searchQuery
+    ? sourceItems // Nếu không tìm kiếm, trả về danh sách nguồn (đã được xác định ở trên)
+    : sourceItems.filter(item => {
+        const normalizedQuery = normalizeText(searchQuery);
+        const normalizedItemName = normalizeText(item.name);
+        const itemAcronym = getAcronym(item.name);
+        
+        return (
+            normalizedItemName.includes(normalizedQuery) ||
+            itemAcronym.includes(normalizedQuery)
+        );
+      });
   if (loading) {
     return (
       <View style={styles.containerCenter}><ActivityIndicator size="large" color="#3B82F6" /><Text className="mt-3 text-gray-600">Đang tải thực đơn...</Text></View>
@@ -385,26 +443,51 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
           <TouchableOpacity onPress={handleGoBackWithConfirmation} className="p-2 -ml-2"><Icon name="arrow-back-outline" size={24} color="#111827" /></TouchableOpacity>
           <Text className="text-xl font-bold text-gray-800">Order cho {tableName}</Text><View className="w-8" />
         </View>
-        <View className="flex-row items-center bg-gray-100 rounded-full px-4">
-          <TextInput placeholder="Tìm kiếm" className="flex-1 h-12" />
-          <TouchableOpacity><Icon name="filter-outline" size={20} color="gray" /></TouchableOpacity>
+        
+        <View style={styles.searchContainer}>
+          <Icon name="search-outline" size={20} color="gray" style={styles.searchIcon} />
+          <TextInput 
+            placeholder="Tìm kiếm món (vd: cf sữa hoặc cfsua)" 
+            style={styles.searchInput}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
+              <Icon name="close-circle" size={20} color="gray" />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
-      <View className="py-3 bg-white border-b-8 border-gray-50">
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16 }}>
-          {menuData.map(category => (
-            <TouchableOpacity key={category.id} onPress={() => setActiveCategoryId(category.id)}
-              className={`px-4 py-2 rounded-full mr-3 ${activeCategoryId === category.id ? 'bg-blue-200' : 'bg-gray-100'}`}>
-              <Text className={`font-semibold ${activeCategoryId === category.id ? 'text-blue-800' : 'text-gray-600'}`}>{category.name}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
+      {/* [CẬP NHẬT] Ẩn thanh danh mục khi đang tìm kiếm */}
+      {!searchQuery && (
+        <View className="py-3 bg-white border-b-8 border-gray-50">
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16 }}>
+            {menuData.map(category => (
+              <TouchableOpacity key={category.id} onPress={() => setActiveCategoryId(category.id)}
+                className={`px-4 py-2 rounded-full mr-3 ${activeCategoryId === category.id ? 'bg-blue-200' : 'bg-gray-100'}`}>
+                <Text className={`font-semibold ${activeCategoryId === category.id ? 'text-blue-800' : 'text-gray-600'}`}>{category.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
 
-      <FlatList ListHeaderComponent={<ExistingItemsList items={existingItems} />} data={itemsToDisplay || []}
-        keyExtractor={item => item.id} numColumns={2} contentContainerStyle={{ padding: 8, paddingBottom: 120 }}
+      <FlatList 
+        ListHeaderComponent={<ExistingItemsList items={existingItems} />} 
+        data={itemsToDisplay}
+        keyExtractor={item => item.id} 
+        numColumns={2} 
+        contentContainerStyle={{ padding: 8, paddingBottom: 120 }}
         renderItem={({ item }) => <MenuItemGrid item={item} onSelect={() => handleSelectItem(item)} />}
+        ListEmptyComponent={
+            <View style={{marginTop: 50, alignItems: 'center'}}>
+                <Text style={{color: 'gray', fontSize: 16}}>
+                    {searchQuery ? 'Không tìm thấy món nào' : 'Danh mục này chưa có món'}
+                </Text>
+            </View>
+        }
       />
 
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom > 0 ? insets.bottom : 16 }]}>
@@ -436,6 +519,24 @@ const styles = StyleSheet.create({
     containerCenter: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8F9FA' },
     shadow: { shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 },
     gridItem: { width: '50%', padding: 8, height: 270 },
+    searchContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#F3F4F6',
+      borderRadius: 999,
+      paddingHorizontal: 16,
+    },
+    searchIcon: {
+      marginRight: 8,
+    },
+    searchInput: {
+      flex: 1,
+      height: 48,
+      fontSize: 16,
+    },
+    clearButton: {
+      padding: 4,
+    },
     bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 16, backgroundColor: 'white', borderTopWidth: 1, borderTopColor: '#E5E7EB', elevation: 10, shadowColor: "#000", shadowOffset: { width: 0, height: -2 }, shadowOpacity: 0.05, shadowRadius: 10, },
     badgeContainer: { position: 'absolute', top: -5, left: 20, backgroundColor: '#EF4444', borderRadius: 10, width: 20, height: 20, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'white' },
     badgeText: { color: 'white', fontSize: 12, fontWeight: 'bold' },
