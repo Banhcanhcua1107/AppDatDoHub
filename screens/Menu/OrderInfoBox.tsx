@@ -8,7 +8,13 @@ import { supabase } from '../../services/supabase';
 
 interface OrderInfoBoxProps { isVisible: boolean; onClose: () => void; tableId: string | null; tableName: string | null; onActionPress: (action: string, data?: any) => void; }
 interface MenuItemProps { icon: string; text: string; action: string; color?: string; }
-interface OrderDetails { orderId: string; orderTime: string; totalItems: number; totalPrice: number; }
+interface OrderDetails { 
+  orderId: string | null; 
+  orderTime: string; 
+  totalItems: number; 
+  totalPrice: number; 
+}
+
 
 const MenuActionItem: React.FC<{ item: MenuItemProps; onPress: (action: string) => void }> = ({ item, onPress }) => (
   <TouchableOpacity onPress={() => onPress(item.action)} style={styles.menuItem}>
@@ -28,32 +34,45 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({ isVisible, onClose, tableId
     try {
       const { data, error } = await supabase
         .from('orders')
-        .select(`
-            id, created_at, 
-            order_items(quantity, unit_price), 
-            order_tables!inner(table_id)
-        `)
+        .select(`id, created_at, order_items(quantity, unit_price), order_tables!inner(table_id)`)
         .eq('order_tables.table_id', tableId)
         .eq('status', 'pending')
         .single();
         
-      if (error && error.code !== 'PGRST116') throw error;
-      
       if (data) {
         const totalItems = data.order_items.reduce((sum, item) => sum + item.quantity, 0);
         const totalPrice = data.order_items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
         const orderTime = new Date(data.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
         setOrderDetails({ orderId: data.id, totalItems, totalPrice, orderTime });
-      } else { 
-        setOrderDetails(null); 
+      } else if (error && error.code === 'PGRST116') {
+        const { data: cartData, error: cartError } = await supabase
+          .from('cart_items')
+          .select('quantity, total_price')
+          .eq('table_id', tableId);
+        
+        if (cartError) throw cartError;
+
+        if (cartData && cartData.length > 0) {
+          const totalItems = cartData.reduce((sum, item) => sum + item.quantity, 0);
+          const totalPrice = cartData.reduce((sum, item) => sum + item.total_price, 0);
+          setOrderDetails({
+            orderId: null, 
+            totalItems: totalItems,
+            totalPrice: totalPrice,
+            orderTime: 'Trong giỏ'
+          });
+        } else {
+          setOrderDetails(null);
+        }
+      } else {
+        throw error;
       }
     } catch (err: any) { 
-        Alert.alert("Lỗi", `Không thể tải chi tiết order: ${err.message}`); 
+        Alert.alert("Lỗi", `Không thể tải chi tiết bàn: ${err.message}`); 
         onClose(); 
     }
     finally { setLoading(false); }
   }, [tableId, onClose]);
-
   useEffect(() => { if (isVisible) { fetchOrderDetails(); } }, [isVisible, fetchOrderDetails]);
 
   const menuActions: MenuItemProps[] = [

@@ -1,6 +1,6 @@
 // --- START OF FILE HomeScreen.tsx ---
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, StatusBar, FlatList,
   Pressable, TouchableOpacity, ActivityIndicator, Alert,
@@ -12,7 +12,7 @@ import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppTabParamList, AppStackParamList, ROUTES } from '../../constants/routes';
 import { supabase } from '../../services/supabase';
-
+import OrderInfoBox from '../Menu/OrderInfoBox';
 type TableStatus = 'Trống' | 'Đang phục vụ' | 'Đặt trước';
 type TableItemData = { id: string; name: string; status: TableStatus; };
 
@@ -54,10 +54,11 @@ type HomeScreenProps = CompositeScreenProps<
 
 const HomeScreen = ({ navigation }: HomeScreenProps) => {
   const insets = useSafeAreaInsets();
-  // [SỬA LỖI] Xóa các state không còn sử dụng
   const [tables, setTables] = React.useState<TableItemData[]>([]);
   const [loading, setLoading] = React.useState(true);
-
+  // [PHỤC HỒI] State để quản lý OrderInfoBox
+  const [isBoxVisible, setBoxVisible] = useState(false);
+  const [selectedTable, setSelectedTable] = useState<{id: string, name: string} | null>(null);
 
   const fetchTables = React.useCallback(async () => {
     setLoading(true);
@@ -95,11 +96,10 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
   // [SỬA LỖI TRIỆT ĐỂ] Thay đổi luồng xử lý khi nhấn vào bàn
   const handlePressTable = (table: TableItemData) => {
     if (table.status === 'Trống') {
-      // Bàn trống: vào màn hình Menu để tạo order
       navigation.navigate(ROUTES.MENU, { tableId: table.id, tableName: table.name });
     } else if (table.status === 'Đang phục vụ') {
-      // Bàn đang phục vụ: vào thẳng màn hình Order Confirmation để xem chi tiết
-      navigation.navigate(ROUTES.ORDER_CONFIRMATION, { tableId: table.id, tableName: table.name });
+      setSelectedTable({ id: table.id, name: table.name });
+      setBoxVisible(true);
     } else if (table.status === 'Đặt trước') {
         Alert.alert(`Bàn ${table.name} đã được đặt`, "Hành động?",
             [ { text: "Hủy" }, { text: "Hủy đặt", style: 'destructive', onPress: () => updateTableStatus(table.id, 'Trống') }, { text: "Bắt đầu phục vụ", onPress: () => navigation.navigate(ROUTES.MENU, { tableId: table.id, tableName: table.name }) }]
@@ -117,7 +117,6 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
         ]
       );
     }
-    // Note: Có thể thêm các tùy chọn cho bàn đang phục vụ ở đây nếu cần, ví dụ: Chuyển bàn trực tiếp
   };
 
   const updateTableStatus = async (tableId: string, status: TableStatus) => {
@@ -125,15 +124,38 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
     if (error) Alert.alert("Lỗi", `Không thể cập nhật trạng thái bàn thành "${status}".`);
   };
 
+  const handleOrderAction = (action: string, data?: any) => {
+    setBoxVisible(false);
+    if (!data?.tableId) {
+      return;
+    }
+    // Chuyển thẳng đến OrderConfirmation cho mọi hành động chính
+    if (action === 'go_to_order_details' || action === 'go_to_payment') {
+        navigation.navigate(ROUTES.ORDER_CONFIRMATION, { tableId: data.tableId, tableName: data.tableName, orderId: data.orderId });
+    } else if (action === 'add_new_order' || action === 'add_items') {
+        navigation.navigate(ROUTES.MENU, { tableId: data.tableId, tableName: data.tableName, orderId: data.orderId });
+    } else if (action === 'transfer_table') {
+        navigation.navigate(ROUTES.TABLE_SELECTION, {
+            mode: 'single',
+            action: 'transfer',
+            sourceRoute: ROUTES.HOME_TAB,
+            sourceTable: { id: data.tableId, name: data.tableName, orderId: data.orderId }
+        });
+    }
+    else {
+        Alert.alert("Thông báo", `Chức năng "${action}" đang được phát triển.`);
+    }
+  };
   
 
-   if (loading) {
+  if (loading) {
     return (<View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8F9FA' }}><ActivityIndicator size="large" color="#3B82F6" /></View>);
   }
 
    return (
     <View style={{ flex: 1, backgroundColor: '#F8F9FA' }}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
+      {/* ... (Phần Header không đổi) ... */}
       <View style={{ paddingTop: insets.top + 20 }} className="px-5 pt-4 pb-3">
         <View className="flex-row items-center justify-between">
           <View>
@@ -162,7 +184,17 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
         onPress={handleAddTable} >
         <Icon name="add" size={30} color="#FFF" />
       </TouchableOpacity>
-      {/* [SỬA LỖI] Loại bỏ OrderInfoBox */}
+      
+      {/* [PHỤC HỒI] Render lại OrderInfoBox */}
+      {selectedTable && (
+        <OrderInfoBox
+          isVisible={isBoxVisible}
+          onClose={() => setBoxVisible(false)}
+          tableId={selectedTable.id}
+          tableName={selectedTable.name}
+          onActionPress={handleOrderAction}
+        />
+      )}
     </View>
   );
 };
