@@ -172,7 +172,18 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
           });
           break;
         case 'split_order':
-          Alert.alert("Tách order", "Chức năng đang phát triển");
+          // Bước 1: Điều hướng đến màn hình chọn bàn TRỐNG
+          navigation.navigate(ROUTES.TABLE_SELECTION, { 
+              mode: 'single', 
+              action: 'split', // Sử dụng action 'split' để lọc bàn trống
+              sourceRoute: ROUTES.ORDER_TAB,
+              // Truyền thông tin cần thiết để sau đó điều hướng đến SplitOrderScreen
+              sourceTable: { 
+                  id: representativeTable.id, 
+                  name: displayTableName, 
+                  orderId: selectedOrder.orderId 
+              } 
+          });
           break;
         case 'cancel_order':
           Alert.alert("Hủy order", `Bạn có chắc muốn hủy order cho nhóm bàn ${displayTableName}?`, [{text: 'Không'}, {text: 'Hủy', style: 'destructive'}]);
@@ -196,7 +207,7 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
   return (
     <View style={{ flex: 1, backgroundColor: '#F0F2F5' }}>
       <StatusBar barStyle="light-content" backgroundColor="#3B82F6" />
-      <View style={{ paddingTop: insets.top, backgroundColor: '#3B82F6' }} className="pb-4 px-4 shadow-lg"><View className="flex-row items-center justify-center h-12"><TouchableOpacity className="flex-row items-center"><Text className="text-white font-bold text-xl">Order</Text><Text className="text-white text-lg ml-2">Đang phục vụ</Text><Ionicons name="caret-down" size={16} color="white" className="ml-1" /></TouchableOpacity></View></View>
+      <View style={{ paddingTop: insets.top + 20  , backgroundColor: '#3B82F6' }} className="pb-4 px-4 shadow-lg"><View className="flex-row items-center justify-center h-12"><TouchableOpacity className="flex-row items-center"><Text className="text-white font-bold text-xl">Order</Text><Text className="text-white text-lg ml-2">Đang phục vụ</Text><Ionicons name="caret-down" size={16} color="white" className="ml-1" /></TouchableOpacity></View></View>
       <FlatList data={activeOrders} renderItem={({ item }) => <OrderItemCard item={item} navigation={navigation} onShowMenu={handleShowMenu} />} keyExtractor={(item) => item.orderId.toString()} contentContainerStyle={{ paddingTop: 16, paddingBottom: 100 }} ListEmptyComponent={<View className="mt-20 items-center"><Ionicons name="file-tray-outline" size={60} color="#9CA3AF"/><Text className="text-gray-500 text-lg mt-4">Không có order nào đang phục vụ</Text></View>} />
       {renderMenuModal()}
     </View>

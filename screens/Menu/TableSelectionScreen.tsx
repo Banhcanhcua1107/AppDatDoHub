@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useLayoutEffect, useCallback } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, SafeAreaView } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { AppStackParamList } from '../../constants/routes';
+import { AppStackParamList, ROUTES  } from '../../constants/routes';
 import { supabase } from '../../services/supabase';
 import Icon from 'react-native-vector-icons/Ionicons';
 
@@ -41,29 +41,34 @@ const handleTransferTable = async (sourceTableId: string, targetTable: Table) =>
 // Giữ nguyên các hàm handleGroupTables, handleMergeOrder
 const handleGroupTables = async (orderId: string, targetTables: Table[]) => {
     if (!orderId || targetTables.length === 0) throw new Error("Thiếu thông tin order hoặc bàn đích.");
+    
     const targetTableIds = targetTables.map(t => t.id);
-    const linksToInsert = targetTableIds.map(tableId => ({ order_id: orderId, table_id: tableId }));
-    const { error: insertLinksError } = await supabase.from('order_tables').insert(linksToInsert);
-    if (insertLinksError) throw insertLinksError;
-    const { error: updateStatusError } = await supabase.from('tables').update({ status: 'Đang phục vụ' }).in('id', targetTableIds);
-    if (updateStatusError) throw updateStatusError;
+
+    const { error } = await supabase.rpc('handle_table_grouping', {
+        source_order_id_input: orderId,
+        target_table_ids_input: targetTableIds
+    });
+
+    if (error) throw error;
+    
     return true;
 }
 
+
 const handleMergeOrder = async (sourceOrderId: string, targetTables: Table[]) => {
-    if (!sourceOrderId || targetTables.length === 0) throw new Error("Thiếu thông tin.");
+    if (!sourceOrderId || targetTables.length === 0) throw new Error("Thiếu thông tin order nguồn hoặc bàn đích.");
+    
+    // Lấy danh sách ID của các bàn cần ghép
     const targetTableIds = targetTables.map(t => t.id);
-    const { data: targetLinks, error: linksError } = await supabase
-        .from('order_tables')
-        .select('orders!inner(id)')
-        .in('table_id', targetTableIds)
-        .eq('orders.status', 'pending');
-    if (linksError || !targetLinks) throw new Error("Không tìm thấy order của các bàn được chọn.");
-    const targetOrderIds = targetLinks.map(link => (Array.isArray(link.orders) ? link.orders[0] : link.orders)?.id).filter(id => !!id);
-    if(targetOrderIds.length !== targetTableIds.length) throw new Error("Một vài bàn được chọn không có order hợp lệ.");
-    await supabase.from('order_items').update({ order_id: sourceOrderId }).in('order_id', targetOrderIds);
-    await supabase.from('orders').delete().in('id', targetOrderIds);
-    await supabase.from('tables').update({ status: 'Trống' }).in('id', targetTableIds);
+
+    // Gọi hàm RPC trên Supabase
+    const { error } = await supabase.rpc('handle_order_merge', {
+        source_order_id_input: sourceOrderId,
+        target_table_ids_input: targetTableIds
+    });
+
+    if (error) throw error;
+
     return true;
 }
 
@@ -114,7 +119,9 @@ const TableSelectionScreen = ({ route, navigation }: Props) => {
 
         case 'merge':
              if (!sourceTable.orderId) { Alert.alert("Lỗi", "Không tìm thấy order của bàn gốc."); return; }
-             Alert.alert( "Xác nhận Ghép order", `Toàn bộ order của bàn [${selectedTablesInfo}] sẽ được gộp vào bàn ${sourceTable.name}. Các bàn được gộp sẽ bị xóa order. Bạn có chắc chắn?`,
+             Alert.alert( 
+                "Xác nhận Ghép Order", 
+                `Toàn bộ order của các bàn [${selectedTablesInfo}] sẽ được gộp vào order của bàn/nhóm bàn "${sourceTable.name}". Các bàn được ghép sẽ trở thành bàn trống. Bạn có chắc chắn?`,
                 [{ text: "Hủy" }, { text: "Xác nhận", onPress: async () => {
                     setLoading(true);
                     try {
@@ -125,6 +132,16 @@ const TableSelectionScreen = ({ route, navigation }: Props) => {
                     finally { setLoading(false); }
                 }}]
             );
+            break;
+
+            case 'split':
+            const targetTableForSplit = selectedTables[0];
+            // Điều hướng đến màn hình chọn món để tách
+            navigation.navigate(ROUTES.SPLIT_ORDER, {
+                sourceOrderId: sourceTable.orderId!,
+                sourceTableNames: sourceTable.name,
+                targetTable: { id: targetTableForSplit.id, name: targetTableForSplit.name }
+            });
             break;
     }
   }, [action, selectedTableIds, navigation, sourceTable, tables]);

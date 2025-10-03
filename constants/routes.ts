@@ -30,6 +30,8 @@ export const ROUTES = {
   // --- Navigator routes ---
   APP_TABS: "AppTabs",
 
+  SPLIT_ORDER: 'SplitOrder',
+
 } as const;
 
 export type AuthStackParamList = {
@@ -60,4 +62,10 @@ export type AppStackParamList = {
   };
   // <-- [ĐÃ THÊM] Đăng ký màn hình chọn bàn và các tham số của nó
   [ROUTES.TABLE_SELECTION]: TableSelectionParams; 
+
+  [ROUTES.SPLIT_ORDER]: { 
+    sourceOrderId: string; 
+    sourceTableNames: string; 
+    targetTable: { id: string; name: string };
+  };
 };
