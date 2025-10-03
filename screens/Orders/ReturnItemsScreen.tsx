@@ -1,202 +1,177 @@
-// --- START OF FILE ReturnItemsScreen.tsx ---
+// --- START OF FILE screens/Orders/ReturnItemsScreen.tsx ---
 
 import React, { useState, useCallback } from 'react';
-import { View, Text, FlatList, TouchableOpacity, TextInput, Alert, StatusBar, ActivityIndicator, StyleSheet } from 'react-native'; // [FIX] Thêm Alert
+import { View, Text, FlatList, StatusBar, ActivityIndicator, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { supabase } from '../../services/supabase';
 
-interface Table {
+interface ReturnedItem {
+  name: string;
+  quantity: number;
+}
+
+interface ReturnSlip {
+  id: number;
+  created_at: string;
+  reason: string;
+  order_id: string;
+  returned_items: ReturnedItem[];
+  table_names: string;
+}
+
+// [SỬA LỖI] Cập nhật lại cấu trúc kiểu dữ liệu cho đúng với query mới
+type SlipFromDB = {
     id: number;
-    name: string;
+    created_at: string;
+    reason: string;
+    order_id: string;
+    return_slip_items: {
+        quantity: number;
+        // Mối quan hệ đúng là tới 'order_items', không phải 'item_details'
+        order_items: { 
+            customizations: { 
+                name: string 
+            } 
+        } | null;
+    }[];
+    orders: {
+        order_tables: {
+            tables: { name: string };
+        }[];
+    }[] | null; 
 }
 
-interface ReturnableItem {
-    id: number; // id của order_item
-    name: string;
-    quantity: number; // số lượng đã gọi
-}
 
-type MenuItemName = {
-    name: string;
+const ReturnSlipCard: React.FC<{ item: ReturnSlip }> = ({ item }) => {
+    const time = new Date(item.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    const date = new Date(item.created_at).toLocaleDateString('vi-VN');
+
+    return (
+        <View style={styles.card}>
+            <View style={styles.cardHeader}>
+                <Text style={styles.cardTitle}>Phiếu trả cho bàn {item.table_names}</Text>
+                <Text style={styles.cardTimestamp}>{time} - {date}</Text>
+            </View>
+            <View style={styles.cardBody}>
+                {item.returned_items.map((returnedItem, index) => (
+                    <View key={index} style={styles.itemRow}>
+                        <Text style={styles.itemName}>{returnedItem.quantity}x {returnedItem.name}</Text>
+                    </View>
+                ))}
+            </View>
+            {item.reason && (
+                <View style={styles.reasonContainer}>
+                    <Icon name="chatbox-ellipses-outline" size={16} color="#4B5563" />
+                    <Text style={styles.reasonText}>Lý do: {item.reason}</Text>
+                </View>
+            )}
+        </View>
+    );
 }
 
 const ReturnItemsScreen = () => {
     const insets = useSafeAreaInsets();
     const [loading, setLoading] = useState(true);
-    const [tablesWithOrders, setTablesWithOrders] = useState<Table[]>([]);
-    const [selectedTable, setSelectedTable] = useState<Table | null>(null);
-    const [returnableItems, setReturnableItems] = useState<ReturnableItem[]>([]);
-    
-    const [itemsToReturn, setItemsToReturn] = useState<{[itemId: number]: number}>({});
-    const [reason, setReason] = useState('');
+    const [slips, setSlips] = useState<ReturnSlip[]>([]);
 
-    const fetchServingTables = useCallback(async () => {
-        setLoading(true);
-        const { data, error } = await supabase.from('tables').select('id, name').eq('status', 'Đang phục vụ');
-        if (error) { Alert.alert("Lỗi", "Không thể tải danh sách bàn."); } 
-        else { setTablesWithOrders(data || []); }
-        setLoading(false);
-    }, []);
-
-    useFocusEffect(useCallback(() => {
-        if (!selectedTable) {
-            fetchServingTables();
-        }
-    }, [selectedTable, fetchServingTables]));
-
-    const handleSelectTable = async (table: Table) => {
-        setLoading(true);
-        setSelectedTable(table);
-        const { data: pendingOrder } = await supabase.from('orders').select('id').eq('table_id', table.id).eq('status', 'pending').maybeSingle();
-        if (pendingOrder) {
-            const { data, error } = await supabase.from('order_items').select('id, quantity, menu_items(name)').eq('order_id', pendingOrder.id);
-            if(error) { Alert.alert("Lỗi", "Không thể tải danh sách món của bàn."); }
-            else {
-                const formattedItems = (data || []).map(item => ({
-                    id: item.id,
-                    // [FIX] Ép kiểu an toàn cho dữ liệu trả về từ Supabase
-                    name: (item.menu_items as MenuItemName[])?.[0]?.name || 'Món đã xóa',
-                    quantity: item.quantity,
-                }));
-                setReturnableItems(formattedItems);
-            }
-        } else {
-            setReturnableItems([]);
-        }
-        setLoading(false);
-    };
-    const handleUpdateReturnQuantity = (item: ReturnableItem, amount: number) => {
-        const currentReturnQty = itemsToReturn[item.id] || 0;
-        let newQty = currentReturnQty + amount;
-
-        if (newQty < 0) newQty = 0;
-        if (newQty > item.quantity) newQty = item.quantity;
-
-        setItemsToReturn(prev => ({ ...prev, [item.id]: newQty }));
-    };
-
-    const handleConfirmReturn = async () => {
-        const totalReturnQuantity = Object.values(itemsToReturn).reduce((sum: number, qty: number) => sum + qty, 0);
-        if (totalReturnQuantity === 0) { Alert.alert("Chưa chọn món", "Vui lòng chọn số lượng món cần trả."); return; }
-        if (!reason.trim()) { Alert.alert("Thiếu lý do", "Vui lòng nhập lý do trả món."); return; }
-
+    const fetchReturnSlips = useCallback(async () => {
         setLoading(true);
         try {
-            const updates = Object.entries(itemsToReturn).map(([itemId, returnQty]) => {
-                if (returnQty === 0) return null;
-                const originalItem = returnableItems.find(item => item.id === Number(itemId));
-                if (!originalItem) return null;
+            const { data, error } = await supabase
+                .from('return_slips')
+                .select(`
+                    id, created_at, reason, order_id,
+                    return_slip_items (
+                        *,
+                        order_items ( customizations ) 
+                    ),
+                    orders ( order_tables ( tables ( name ) ) )
+                `)
+                .order('created_at', { ascending: false });
 
-                const newQuantity = originalItem.quantity - returnQty;
-                if (newQuantity <= 0) {
-                    return supabase.from('order_items').delete().eq('id', itemId);
-                } else {
-                    return supabase.from('order_items').update({ quantity: newQuantity }).eq('id', itemId);
-                }
-            }).filter(Boolean);
+            if (error) throw error;
+            
+            const formattedSlips: ReturnSlip[] = ((data as unknown) as SlipFromDB[]).map(slip => {
+                const items = slip.return_slip_items.map(item => ({
+                    // [SỬA LỖI] Lấy tên món từ đúng đường dẫn dữ liệu mới
+                    name: item.order_items?.customizations?.name || 'Món không xác định',
+                    quantity: item.quantity,
+                }));
 
-            await Promise.all(updates);
+                const tables = slip.orders?.[0]?.order_tables.map(ot => ot.tables.name).join(', ') || 'Không rõ';
 
-            Alert.alert("Thành công", "Đã cập nhật trả món thành công.");
-            setSelectedTable(null);
-            setItemsToReturn({});
-            setReason('');
-        } catch (error: any) {
-            Alert.alert("Lỗi", "Đã xảy ra lỗi khi cập nhật trả món.");
-            console.error(error.message);
+                return {
+                    id: slip.id,
+                    created_at: slip.created_at,
+                    reason: slip.reason,
+                    order_id: slip.order_id,
+                    returned_items: items,
+                    table_names: tables
+                };
+            });
+
+            setSlips(formattedSlips);
+        } catch (err: any) {
+            Alert.alert("Lỗi", "Không thể tải lịch sử trả món: " + err.message);
         } finally {
             setLoading(false);
         }
-    };
-    
-    const ReturnDetails = () => {
-        const totalReturnQuantity = Object.values(itemsToReturn).reduce((sum: number, qty: number) => sum + qty, 0);
-        return (
-            <View style={styles.flex1}>
-                <View className="flex-row items-center p-4">
-                    <TouchableOpacity onPress={() => { setSelectedTable(null); setItemsToReturn({}); }} className="p-2 -ml-2">
-                        <Icon name="arrow-back" size={24} color="#333" />
-                    </TouchableOpacity>
-                    <Text className="text-xl font-bold ml-4 text-gray-800">Trả món cho {selectedTable?.name}</Text>
-                </View>
-                <FlatList
-                    data={returnableItems}
-                    keyExtractor={item => String(item.id)}
-                    contentContainerStyle={{ paddingHorizontal: 16 }}
-                    renderItem={({item}) => (
-                        <View className="bg-white p-4 rounded-xl mb-3 shadow">
-                            <Text className="text-base font-bold text-gray-800">{item.name}</Text>
-                            <Text className="text-sm text-gray-500 mb-3">Đã gọi: {item.quantity}</Text>
-                            <View className="flex-row items-center justify-between">
-                                <Text className="text-base font-semibold text-blue-600">Số lượng trả:</Text>
-                                <View className="flex-row items-center">
-                                    <TouchableOpacity onPress={() => handleUpdateReturnQuantity(item, -1)} className="w-9 h-9 bg-gray-200 rounded-full items-center justify-center">
-                                        <Icon name="remove" size={20} color="black" />
-                                    </TouchableOpacity>
-                                    <Text className="text-lg font-bold w-12 text-center">{itemsToReturn[item.id] || 0}</Text>
-                                    <TouchableOpacity onPress={() => handleUpdateReturnQuantity(item, 1)} className="w-9 h-9 bg-blue-500 rounded-full items-center justify-center">
-                                        <Icon name="add" size={20} color="white" />
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
-                        </View>
-                    )}
-                    ListEmptyComponent={<View className="mt-20 items-center"><Text>Bàn này không có món nào có thể trả.</Text></View>}
-                />
-                <View className="p-4 mt-auto border-t border-gray-200 bg-white">
-                    <TextInput value={reason} onChangeText={setReason} placeholder="Nhập lý do trả món..."
-                        className="bg-gray-100 rounded-lg p-3 text-base h-24" multiline textAlignVertical="top" />
-                    <TouchableOpacity onPress={handleConfirmReturn} disabled={totalReturnQuantity === 0}
-                        className={`mt-3 rounded-xl p-4 items-center justify-center ${totalReturnQuantity > 0 ? 'bg-red-500' : 'bg-gray-300'}`}>
-                        <Text className="text-white text-lg font-bold">Xác nhận trả {totalReturnQuantity > 0 ? totalReturnQuantity : ''} món</Text>
-                    </TouchableOpacity>
-                </View>
-            </View>
-        );
-    };
+    }, []);
 
-    const TableSelection = () => (
-      <FlatList
-        data={tablesWithOrders}
-        keyExtractor={item => String(item.id)}
-        numColumns={2}
-        contentContainerStyle={{ padding: 8 }}
-        renderItem={({ item }) => (
-          <TouchableOpacity onPress={() => handleSelectTable(item)} className="w-1/2 p-2">
-            <View className="bg-white p-6 rounded-2xl items-center justify-center shadow">
-              <Icon name="tablet-landscape-outline" size={40} color="#4B5563" />
-              <Text className="text-lg font-bold text-gray-800 mt-3">{item.name}</Text>
-            </View>
-          </TouchableOpacity>
-        )}
-        ListEmptyComponent={<View className="flex-1 items-center justify-center mt-20"><Text className="text-gray-500">Không có bàn nào đang phục vụ.</Text></View>}
-      />
+    useFocusEffect(
+        useCallback(() => {
+            fetchReturnSlips();
+        }, [fetchReturnSlips])
     );
 
     if (loading) {
         return (
-            <View className="flex-1 justify-center items-center bg-gray-50">
+            <View style={styles.center}>
                 <ActivityIndicator size="large" />
             </View>
-        )
+        );
     }
 
     return (
         <View style={styles.flex1}>
             <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-            <View style={{ paddingTop: insets.top + 10 }} className="px-4 pb-3">
-                <Text className="text-3xl font-bold text-gray-800">Trả món</Text>
+            <View style={{ paddingTop: insets.top + 10 }} className="px-4 pb-3 flex-row justify-between items-center">
+                <Text className="text-3xl font-bold text-gray-800">Lịch sử trả món</Text>
+                <TouchableOpacity onPress={fetchReturnSlips}>
+                    <Icon name="refresh-outline" size={26} color="#333" />
+                </TouchableOpacity>
             </View>
-            {selectedTable ? <ReturnDetails /> : <TableSelection />}
+            <FlatList
+                data={slips}
+                keyExtractor={item => item.id.toString()}
+                renderItem={({ item }) => <ReturnSlipCard item={item} />}
+                contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
+                ListEmptyComponent={
+                    <View style={styles.center}>
+                        <Icon name="document-text-outline" size={60} color="#9CA3AF" />
+                        <Text style={styles.emptyText}>Chưa có phiếu trả món nào.</Text>
+                    </View>
+                }
+            />
         </View>
     );
 };
 
 const styles = StyleSheet.create({
     flex1: { flex: 1, backgroundColor: '#F8F9FA' },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 50 },
+    emptyText: { color: 'gray', marginTop: 16, fontSize: 16 },
+    card: { backgroundColor: 'white', borderRadius: 12, marginBottom: 16, elevation: 3, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 10 },
+    cardHeader: { backgroundColor: '#F3F4F6', padding: 12, borderTopLeftRadius: 12, borderTopRightRadius: 12, borderBottomWidth: 1, borderColor: '#E5E7EB' },
+    cardTitle: { fontSize: 16, fontWeight: 'bold', color: '#1F2937' },
+    cardTimestamp: { fontSize: 12, color: 'gray', marginTop: 2 },
+    cardBody: { padding: 16 },
+    itemRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+    itemName: { fontSize: 15, color: '#374151' },
+    reasonContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F9FAFB', padding: 12, borderTopWidth: 1, borderColor: '#E5E7EB', borderBottomLeftRadius: 12, borderBottomRightRadius: 12 },
+    reasonText: { fontSize: 14, color: '#4B5563', marginLeft: 8, fontStyle: 'italic' },
 });
 
 export default ReturnItemsScreen;
-// --- END OF FILE ReturnItemsScreen.tsx ---

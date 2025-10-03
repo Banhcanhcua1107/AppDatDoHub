@@ -12,7 +12,7 @@ import { AppTabParamList, AppStackParamList, ROUTES } from '../../constants/rout
 
 // --- [SỬA LỖI] Định nghĩa kiểu dữ liệu rõ ràng ---
 type TableInfo = { id: string; name: string };
-type ActiveOrder = { orderId: string; representativeTableId: string; tables: TableInfo[]; totalPrice: number; createdAt: string; totalItemCount: number; };
+type ActiveOrder = { orderId: string; representativeTableId: string; tables: TableInfo[]; totalPrice: number; createdAt: string; totalItemCount: number; is_provisional: boolean; };
 interface MenuItemProps { icon: string; text: string; action: string; color?: string; }
 
 const MenuActionItem: React.FC<{ item: MenuItemProps; onPress: (action: string) => void }> = ({ item, onPress }) => (
@@ -29,6 +29,9 @@ type OrderItemCardProps = {
 };
 
 const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowMenu }) => {
+  // [SỬA LỖI] Thêm dòng này để khai báo state
+  const [isToggling, setIsToggling] = useState(false);
+    
   const formatTimeElapsed = (startTime: string) => {
     const start = new Date(startTime).getTime(); const now = new Date().getTime(); const diff = Math.floor((now - start) / 1000);
     if (diff < 60) return `${diff}s`;
@@ -42,29 +45,63 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
 
   const handlePressCard = () => { navigation.navigate(ROUTES.ORDER_CONFIRMATION, { tableId: representativeTable.id, tableName: displayTableName, orderId: item.orderId }); };
 
+  const handleProvisionalBill = async () => {
+    setIsToggling(true);
+    try {
+        const { error } = await supabase.rpc('toggle_provisional_bill_status', {
+            p_order_id: item.orderId
+        });
+        if (error) throw error;
+        // Dựa vào real-time để tự cập nhật UI, không cần làm gì thêm ở đây
+    } catch (error: any) {
+        Alert.alert("Lỗi", "Không thể cập nhật trạng thái tạm tính: " + error.message);
+    } finally {
+        setIsToggling(false);
+    }
+  };
   return (
+    // [SỬA LỖI] Cấu trúc JSX được thay đổi ở đây
     <View style={styles.cardShadow} className="bg-white rounded-lg mb-4 mx-4">
+      {/* TouchableOpacity này CHỈ bao bọc phần thông tin trên */}
       <TouchableOpacity onPress={handlePressCard}>
-        <View style={{ backgroundColor: '#3B82F6' }} className="flex-row justify-end items-center p-3 rounded-t-lg"><View className="flex-row items-center"><Ionicons name="copy-outline" size={16} color="white" /><Text className="text-white font-bold text-sm ml-1">{item.totalItemCount}</Text></View></View>
+        <View style={{ backgroundColor: '#3B82F6' }} className="flex-row justify-between items-center p-3 rounded-t-lg">
+            <View />
+            <View className="flex-row items-center">
+                <Ionicons name="copy-outline" size={16} color="white" />
+                <Text className="text-white font-bold text-sm ml-1">{item.totalItemCount}</Text>
+            </View>
+        </View>
         <View className="flex-row p-4 items-start">
           <View className="w-1/2 items-start justify-center border-r border-gray-200 pr-4">
               <Text className="text-gray-800 font-bold text-xl">{displayTableName}</Text>
           </View>
           <View className="w-1/2 pl-4 items-end">
             <Text className="text-gray-900 font-bold text-2xl">{item.totalPrice.toLocaleString('vi-VN')}</Text>
-            <View className="flex-row items-center justify-between w-full mt-1"><View className="flex-row items-center"><Ionicons name="time-outline" size={15} color="gray" /><Text className="text-gray-600 text-sm ml-1">{formatTimeElapsed(item.createdAt)}</Text></View><Ionicons name="restaurant" size={22} color="#2E8540" /></View>
+            <View className="flex-row items-center justify-between w-full mt-1">
+                <View className="flex-row items-center">
+                    <Ionicons name="time-outline" size={15} color="gray" />
+                    <Text className="text-gray-600 text-sm ml-1">{formatTimeElapsed(item.createdAt)}</Text>
+                </View>
+                {item.is_provisional && <Ionicons name="restaurant" size={22} color="#2E8540" />}
+            </View>
           </View>
         </View>
-      </TouchableOpacity>
+      </TouchableOpacity> 
+      {/* TouchableOpacity trên kết thúc tại đây */}
+
+      {/* View chứa các icon nằm ở ngoài, là sibling, không còn bị lồng vào trong */}
       <View className="flex-row justify-around items-center bg-gray-50 border-t border-gray-200 rounded-b-lg">
           <TouchableOpacity onPress={() => navigation.navigate(ROUTES.ORDER_CONFIRMATION, { tableId: representativeTable.id, tableName: displayTableName, orderId: item.orderId })} className="py-3 items-center justify-center flex-1"><Ionicons name="calculator-outline" size={24} color="gray" /></TouchableOpacity>
           <TouchableOpacity onPress={() => navigation.navigate(ROUTES.MENU, { tableId: representativeTable.id, tableName: displayTableName, orderId: item.orderId })} className="py-3 items-center justify-center flex-1"><Ionicons name="restaurant-outline" size={24} color="gray" /></TouchableOpacity>
-          <TouchableOpacity onPress={() => Alert.alert("Thông báo", "Chức năng in phiếu kiểm đồ đang được phát triển.")} className="py-3 items-center justify-center flex-1"><Ionicons name="receipt-outline" size={24} color="gray" /></TouchableOpacity>
+          <TouchableOpacity onPress={handleProvisionalBill} disabled={isToggling} className="py-3 items-center justify-center flex-1">
+            {isToggling ? <ActivityIndicator size="small" color="#3B82F6"/> : <Ionicons name="receipt-outline" size={24} color={item.is_provisional ? "#2E8540" : "gray"} />}
+          </TouchableOpacity>
           <TouchableOpacity onPress={() => onShowMenu(item)} className="py-3 items-center justify-center flex-1"><Ionicons name="ellipsis-horizontal" size={24} color="gray" /></TouchableOpacity>
       </View>
     </View>
   );
 };
+
 
 type OrderScreenProps = CompositeScreenProps<BottomTabScreenProps<AppTabParamList, typeof ROUTES.ORDER_TAB>, NativeStackScreenProps<AppStackParamList>>;
 
@@ -78,22 +115,23 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
    const fetchActiveOrders = useCallback(async (isInitialLoad = false) => {
     if (isInitialLoad) setLoading(true);
     try {
+      // [CẬP NHẬT] Lấy thêm cột is_provisional
       const { data, error } = await supabase
         .from('orders')
         .select(`
           id, 
           created_at, 
+          is_provisional,
           order_items(quantity, unit_price), 
           order_tables(tables(id, name))
         `)
-        .eq('status', 'pending');
+        .in('status', ['pending', 'paid']);
         
       if (error) throw error;
       
       const formattedOrders: ActiveOrder[] = data.map(order => {
         const totalPrice = order.order_items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
         const totalItemCount = order.order_items.reduce((sum, item) => sum + item.quantity, 0);
-        // Lấy thông tin bàn từ bảng join
         const tables = order.order_tables.map((ot: any) => ot.tables).filter(Boolean);
         
         return {
@@ -103,17 +141,20 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
           totalPrice,
           createdAt: order.created_at,
           totalItemCount,
+          is_provisional: order.is_provisional, // Thêm trạng thái vào object
         };
-      }).filter(order => order.tables.length > 0); // Chỉ hiển thị order có liên kết với bàn
+      }).filter(order => order.tables.length > 0);
 
       formattedOrders.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
       setActiveOrders(formattedOrders);
     } catch (error: any) {
-      Alert.alert('Lỗi', `Không thể tải danh sách order: ${error.message}`);
+      if (isInitialLoad) Alert.alert('Lỗi', `Không thể tải danh sách order: ${error.message}`);
+      else console.log("Lỗi fetch nền:", error.message);
     } finally {
       if (isInitialLoad) setLoading(false);
     }
   }, []);
+  
   useFocusEffect(
     useCallback(() => {
       fetchActiveOrders(true);

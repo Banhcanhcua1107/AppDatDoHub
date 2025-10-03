@@ -25,6 +25,7 @@ import MenuScreen from '../screens/Menu/MenuScreen';
 import OrderConfirmationScreen from '../screens/Menu/OrderConfirmationScreen';
 import TableSelectionScreen from '../screens/Menu/TableSelectionScreen'; 
 import SplitOrderScreen from '../screens/Menu/SplitOrderScreen';
+import ReturnSelectionScreen from '../screens/Orders/ReturnSelectionScreen';
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const AppStack = createNativeStackNavigator<AppStackParamList>();
 
@@ -43,7 +44,8 @@ const AuthNavigator = () => (
   </AuthStack.Navigator>
 );
 
-const AppNavigatorComponent = () => (
+// [SỬA LỖI] Đổi tên component này thành MainAppStack để rõ ràng hơn
+const MainAppStack = () => (
   <AppStack.Navigator screenOptions={{ headerShown: false }}>
     <AppStack.Screen name={ROUTES.APP_TABS} component={BottomTabs} />
     <AppStack.Screen name={ROUTES.MENU} component={MenuScreen} />
@@ -51,11 +53,18 @@ const AppNavigatorComponent = () => (
     <AppStack.Screen 
       name={ROUTES.TABLE_SELECTION} 
       component={TableSelectionScreen} 
-      // Thêm các tùy chọn nếu cần, ví dụ: để hiển thị header
+      // Giữ nguyên header cho màn hình này nếu bạn muốn
       options={{ headerShown: true }} 
     />
-  <AppStack.Screen name={ROUTES.SPLIT_ORDER} component={SplitOrderScreen} options={{ headerShown: false }} />
 
+    {/* [SỬA LỖI] Xóa 'options' đi. Vì mặc định của Stack này là headerShown: false,
+        nên màn hình này sẽ không có header mặc định nữa, chỉ còn header custom của bạn. */}
+    <AppStack.Screen 
+        name={ROUTES.RETURN_SELECTION} 
+        component={ReturnSelectionScreen} 
+    />
+    
+    <AppStack.Screen name={ROUTES.SPLIT_ORDER} component={SplitOrderScreen} />
   </AppStack.Navigator>
 );
 
@@ -64,7 +73,8 @@ export default function AppNavigator() {
 
   return (
       <NavigationContainer>
-        {isAuthenticated ? <AppNavigatorComponent /> : <AuthNavigator />}
+        {/* [SỬA LỖI] Gọi đúng tên component đã đổi */}
+        {isAuthenticated ? <MainAppStack /> : <AuthNavigator />}
       </NavigationContainer>
   );
 }

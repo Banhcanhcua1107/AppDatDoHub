@@ -1,116 +1,151 @@
 // --- START OF FILE ProvisionalBillScreen.tsx ---
 
 import React, { useState, useCallback } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StatusBar, ActivityIndicator, Alert } from 'react-native'; // [FIX] Thêm Alert
+import { View, Text, FlatList, TouchableOpacity, StatusBar, ActivityIndicator, Alert, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { supabase } from '../../services/supabase';
+import { Ionicons } from '@expo/vector-icons';
 
-interface Table {
-    id: number;
-    name: string;
-}
-
-interface BillItem {
-    name: string;
-    quantity: number;
-    unit_price: number;
+// --- Định nghĩa kiểu dữ liệu ---
+type TableInfo = { id: string; name: string };
+interface BillItem { name: string; quantity: number; unit_price: number; totalPrice: number; }
+interface ProvisionalOrder { 
+    orderId: string;
+    tables: TableInfo[];
     totalPrice: number;
+    totalItemCount: number;
+    createdAt: string;
 }
+
+// --- Component Card hiển thị Order (tái sử dụng từ OrderScreen) ---
+const OrderCard: React.FC<{ item: ProvisionalOrder; onPress: () => void; }> = ({ item, onPress }) => {
+    const displayTableName = item.tables.map(t => t.name).join(', ');
+    const formatTimeElapsed = (startTime: string) => {
+        const start = new Date(startTime).getTime(); const now = new Date().getTime(); const diff = Math.floor((now - start) / 1000);
+        if (diff < 60) return `${diff}s ago`;
+        const minutes = Math.floor(diff / 60); const hours = Math.floor(minutes / 60); const remainingMinutes = minutes % 60;
+        if (hours > 0) return `${hours}h ${remainingMinutes}'`;
+        return `${remainingMinutes}'`;
+    };
+
+    return (
+        <TouchableOpacity onPress={onPress} style={styles.cardShadow} className="bg-white rounded-lg mb-4 mx-4">
+            <View className="flex-row p-4 items-center">
+                <View className="flex-1 pr-4">
+                    <Text className="text-gray-800 font-bold text-xl">{displayTableName}</Text>
+                    <View className="flex-row items-center mt-1">
+                        <Ionicons name="time-outline" size={15} color="gray" />
+                        <Text className="text-gray-600 text-sm ml-1">{formatTimeElapsed(item.createdAt)}</Text>
+                    </View>
+                </View>
+                <View className="items-end">
+                    <Text className="text-gray-900 font-bold text-2xl">{item.totalPrice.toLocaleString('vi-VN')}đ</Text>
+                    <View className="flex-row items-center bg-green-100 px-2 py-1 rounded-full mt-1">
+                         <Ionicons name="restaurant" size={16} color="#2E8540" />
+                         <Text className="text-green-800 text-xs font-bold ml-1">{item.totalItemCount} món</Text>
+                    </View>
+                </View>
+            </View>
+        </TouchableOpacity>
+    );
+};
 
 const ProvisionalBillScreen = () => {
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
-  const [tablesWithOrders, setTablesWithOrders] = useState<Table[]>([]);
-  const [selectedTable, setSelectedTable] = useState<Table | null>(null);
+  const [provisionalOrders, setProvisionalOrders] = useState<ProvisionalOrder[]>([]);
+  const [selectedOrder, setSelectedOrder] = useState<ProvisionalOrder | null>(null);
   const [billItems, setBillItems] = useState<BillItem[]>([]);
-  const [totalBill, setTotalBill] = useState(0);
+  
+  const fetchProvisionalOrders = useCallback(async (isInitialLoad = true) => {
+    if (isInitialLoad) setLoading(true);
+    try {
+        const { data, error } = await supabase
+            .from('orders')
+            .select(`
+                id, created_at, 
+                order_items(quantity, unit_price), 
+                order_tables(tables(id, name))
+            `)
+            .eq('status', 'pending')
+            .eq('is_provisional', true);
+        
+        if (error) throw error;
+        
+        const formattedOrders: ProvisionalOrder[] = data.map(order => {
+            const totalPrice = order.order_items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
+            const totalItemCount = order.order_items.reduce((sum, item) => sum + item.quantity, 0);
+            const tables = order.order_tables.map((ot: any) => ot.tables).filter(Boolean);
+            return {
+                orderId: order.id,
+                tables: tables,
+                totalPrice,
+                totalItemCount,
+                createdAt: order.created_at,
+            };
+        }).filter(order => order.tables.length > 0);
 
-  const fetchServingTables = useCallback(async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from('tables')
-      .select('id, name')
-      .in('status', ['Đang phục vụ', 'Đặt trước']); // Lấy cả bàn đang phục vụ và đặt trước
-    
-    if (error) {
-      Alert.alert("Lỗi", "Không thể tải danh sách bàn.");
-    } else {
-      setTablesWithOrders(data || []);
+        formattedOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setProvisionalOrders(formattedOrders);
+
+    } catch (err: any) {
+        // [SỬA LỖI] Hiển thị chi tiết lỗi
+        Alert.alert("Lỗi", "Không thể tải danh sách phiếu tạm tính: " + err.message);
+    } finally {
+        if (isInitialLoad) setLoading(false);
     }
-    setLoading(false);
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-        if (!selectedTable) {
-            fetchServingTables();
-        }
-    }, [selectedTable, fetchServingTables])
-  );
+  useFocusEffect(useCallback(() => {
+    if (!selectedOrder) {
+        fetchProvisionalOrders();
+    }
+  }, [selectedOrder, fetchProvisionalOrders]));
 
-  type MenuItemName = {
-      name: string;
-  }
-
-  const handleSelectTable = async (table: Table) => {
+  const handleSelectOrder = async (order: ProvisionalOrder) => {
     setLoading(true);
-    setSelectedTable(table);
-
+    setSelectedOrder(order);
     try {
-        const { data: orders } = await supabase.from('orders').select('id').eq('table_id', table.id).in('status', ['pending', 'paid']);
-        const orderIds = orders?.map(o => o.id) || [];
+        const { data, error } = await supabase
+            .from('order_items')
+            .select('quantity, unit_price, customizations')
+            .eq('order_id', order.orderId);
 
-        const [pendingItemsRes, cartItemsRes] = await Promise.all([
-            orderIds.length > 0 ? supabase.from('order_items').select('quantity, unit_price, menu_items(name)').in('order_id', orderIds) : Promise.resolve({ data: [], error: null }),
-            supabase.from('cart_items').select('quantity, unit_price, customizations').eq('table_id', table.id)
-        ]);
+        if (error) throw error;
         
-        if (pendingItemsRes.error) throw pendingItemsRes.error;
-        if (cartItemsRes.error) throw cartItemsRes.error;
-
-        // [FIX] Xử lý kiểu dữ liệu an toàn
-        const pendingItems: BillItem[] = (pendingItemsRes.data || []).map(item => ({
-            // [FIX] Ép kiểu an toàn cho dữ liệu trả về từ Supabase
-            name: (item.menu_items as MenuItemName[])?.[0]?.name || 'Món đã xóa',
+        const items: BillItem[] = (data || []).map(item => ({
+            name: item.customizations?.name || 'Món đã xóa',
             quantity: item.quantity,
             unit_price: item.unit_price,
             totalPrice: item.quantity * item.unit_price,
         }));
-
-        const cartItems: BillItem[] = (cartItemsRes.data || []).map(item => ({
-            name: item.customizations.name,
-            quantity: item.quantity,
-            unit_price: item.unit_price,
-            totalPrice: item.quantity * item.unit_price,
-        }));
-
-        const allItems = [...pendingItems, ...cartItems];
-        setBillItems(allItems);
-        // [FIX] Thêm kiểu cho tham số reduce
-        setTotalBill(allItems.reduce((sum: number, item: BillItem) => sum + item.totalPrice, 0));
+        
+        setBillItems(items);
 
     } catch (error: any) {
-        Alert.alert("Lỗi", "Không thể tải chi tiết hóa đơn cho bàn này.");
-        console.error(error.message);
+        // [SỬA LỖI] Hiển thị chi tiết lỗi
+        Alert.alert("Lỗi", "Không thể tải chi tiết hóa đơn: " + error.message);
+        setSelectedOrder(null);
     } finally {
         setLoading(false);
     }
   };
-
+  
+  // ...Phần JSX render không thay đổi...
   const BillDetails = () => (
     <View className="flex-1">
       <View className="flex-row items-center justify-between p-4">
-        <TouchableOpacity onPress={() => setSelectedTable(null)} className="flex-row items-center p-2 -ml-2">
+        <TouchableOpacity onPress={() => setSelectedOrder(null)} className="flex-row items-center p-2 -ml-2">
             <Icon name="arrow-back" size={24} color="#333" />
-            <Text className="text-lg ml-2 text-gray-700">Chọn bàn khác</Text>
+            <Text className="text-lg ml-2 text-gray-700">Danh sách tạm tính</Text>
         </TouchableOpacity>
       </View>
 
       <View className="bg-white rounded-2xl mx-4 p-5 flex-1 shadow-lg">
           <Text className="text-2xl font-bold text-center text-gray-800 mb-2">PHIẾU TẠM TÍNH</Text>
-          <Text className="text-lg font-semibold text-center text-gray-600 mb-6">{selectedTable?.name}</Text>
+          <Text className="text-lg font-semibold text-center text-gray-600 mb-6">{selectedOrder?.tables.map(t => t.name).join(', ')}</Text>
           
           <FlatList
               data={billItems}
@@ -128,7 +163,7 @@ const ProvisionalBillScreen = () => {
 
           <View className="flex-row justify-between items-center pt-5 mt-auto">
               <Text className="text-xl font-bold text-gray-800">TỔNG CỘNG</Text>
-              <Text className="text-2xl font-bold text-blue-600">{totalBill.toLocaleString('vi-VN')}đ</Text>
+              <Text className="text-2xl font-bold text-blue-600">{selectedOrder?.totalPrice.toLocaleString('vi-VN')}đ</Text>
           </View>
       </View>
       
@@ -139,31 +174,24 @@ const ProvisionalBillScreen = () => {
     </View>
   );
 
-  const TableSelection = () => (
-    <View className="flex-1">
-        <FlatList
-          data={tablesWithOrders}
-          keyExtractor={item => String(item.id)}
-          numColumns={2}
-          contentContainerStyle={{ padding: 8 }}
-          renderItem={({ item }) => (
-            <TouchableOpacity onPress={() => handleSelectTable(item)} className="w-1/2 p-2">
-              <View className="bg-white p-6 rounded-2xl items-center justify-center shadow">
-                  <Icon name="tablet-landscape-outline" size={40} color="#4B5563" />
-                  <Text className="text-lg font-bold text-gray-800 mt-3">{item.name}</Text>
-              </View>
-            </TouchableOpacity>
-          )}
-          ListEmptyComponent={
-            <View className="flex-1 items-center justify-center mt-20">
-                <Text className="text-gray-500">Không có bàn nào đang phục vụ.</Text>
-            </View>
-          }
-        />
-    </View>
+  const OrderSelection = () => (
+    <FlatList
+        data={provisionalOrders}
+        keyExtractor={item => item.orderId}
+        contentContainerStyle={{ paddingTop: 16, paddingBottom: 100 }}
+        renderItem={({ item }) => (
+            <OrderCard item={item} onPress={() => handleSelectOrder(item)} />
+        )}
+        ListEmptyComponent={
+        <View className="flex-1 items-center justify-center mt-20">
+            <Icon name="receipt-outline" size={60} color="#9CA3AF" />
+            <Text className="text-gray-500 mt-4 text-center px-10">Chưa có order nào được tạm tính.{"\n"}Vào tab Order và nhấn biểu tượng phiếu in để tạm tính.</Text>
+        </View>
+        }
+    />
   );
 
-  if (loading) {
+  if (loading && !selectedOrder) {
       return (
           <View className="flex-1 justify-center items-center bg-gray-50">
               <ActivityIndicator size="large" />
@@ -177,10 +205,14 @@ const ProvisionalBillScreen = () => {
       <View style={{ paddingTop: insets.top + 10 }} className="px-4 pb-3">
         <Text className="text-3xl font-bold text-gray-800">Tạm tính</Text>
       </View>
-      {selectedTable ? <BillDetails /> : <TableSelection />}
+      {selectedOrder ? <BillDetails /> : <OrderSelection />}
     </View>
   );
 };
 
+const styles = StyleSheet.create({ 
+    cardShadow: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 3 },
+});
+
+
 export default ProvisionalBillScreen;
-// --- END OF FILE ProvisionalBillScreen.tsx ---

@@ -36,7 +36,9 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({ isVisible, onClose, tableId
         .from('orders')
         .select(`id, created_at, order_items(quantity, unit_price), order_tables!inner(table_id)`)
         .eq('order_tables.table_id', tableId)
-        .eq('status', 'pending')
+        // [SỬA LỖI] Tìm cả order 'pending' (chờ) và 'paid' (đã trả) để hỗ trợ "giữ phiên".
+        // Một phiên chỉ kết thúc khi trạng thái là 'closed'.
+        .in('status', ['pending', 'paid'])
         .single();
         
       if (data) {
@@ -97,6 +99,7 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({ isVisible, onClose, tableId
             <View style={styles.actionsContainer}><TouchableOpacity style={styles.actionButton} onPress={() => handleQuickAction('go_to_payment')}><Icon name="cash-outline" size={24} color="#555" /></TouchableOpacity><TouchableOpacity style={styles.actionButton} onPress={() => handleQuickAction('add_items')}><Icon name="restaurant-outline" size={24} color="#555" /></TouchableOpacity><TouchableOpacity style={styles.actionButton} onPress={() => handleQuickAction('print_check')}><Icon name="receipt-outline" size={24} color="#555" /></TouchableOpacity><TouchableOpacity style={styles.actionButton} onPress={() => setMenuVisible(true)}><Icon name="ellipsis-horizontal" size={24} color="#555" /></TouchableOpacity></View>
         </>
     );
+  
   }
 
   return (

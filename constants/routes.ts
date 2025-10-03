@@ -19,7 +19,7 @@ export const ROUTES = {
   MENU: "Menu",
   ORDER_CONFIRMATION: "OrderConfirmation",
   TABLE_SELECTION: "TableSelection", // <-- [ĐÃ THÊM]
-
+  RETURN_SELECTION: 'ReturnSelection',
   // --- Bottom Tab routes ---
   HOME_TAB: "Sơ đồ",
   ORDER_TAB: "Order",
@@ -31,6 +31,7 @@ export const ROUTES = {
   APP_TABS: "AppTabs",
 
   SPLIT_ORDER: 'SplitOrder',
+  
 
 } as const;
 
@@ -67,5 +68,14 @@ export type AppStackParamList = {
     sourceOrderId: string; 
     sourceTableNames: string; 
     targetTable: { id: string; name: string };
+  };
+
+  ReturnSelection: {
+    orderId: string;
+    items: {
+      id: number; // order_item id
+      name: string;
+      quantity: number;
+    }[];
   };
 };
