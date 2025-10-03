@@ -1,4 +1,4 @@
-// screens/Orders/OrderScreen.tsx
+// --- START OF FILE OrderScreen.tsx ---
 
 import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, StatusBar, FlatList, TouchableOpacity, ActivityIndicator, Alert, Modal, Pressable } from 'react-native';
@@ -10,11 +10,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../services/supabase';
 import { AppTabParamList, AppStackParamList, ROUTES } from '../../constants/routes';
 
-// [THAY ĐỔI] Thêm orderId và đổi tableName thành tables
-type ActiveOrder = { orderId: string; representativeTableId: string; tables: {id: string, name: string}[]; totalPrice: number; createdAt: string; totalItemCount: number; };
+// --- [SỬA LỖI] Định nghĩa kiểu dữ liệu rõ ràng ---
+type TableInfo = { id: string; name: string };
+type ActiveOrder = { orderId: string; representativeTableId: string; tables: TableInfo[]; totalPrice: number; createdAt: string; totalItemCount: number; };
 interface MenuItemProps { icon: string; text: string; action: string; color?: string; }
 
-// Component con cho từng mục trong Menu Modal (Giữ nguyên)
 const MenuActionItem: React.FC<{ item: MenuItemProps; onPress: (action: string) => void }> = ({ item, onPress }) => (
   <TouchableOpacity onPress={() => onPress(item.action)} style={styles.menuItem}>
     <Ionicons name={item.icon as any} size={24} color={item.color || '#4B5563'} style={styles.menuIcon} />
@@ -37,12 +37,10 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
     return `${remainingMinutes}'`;
   };
 
-  // [THAY ĐỔI] Hiển thị tên các bàn được gộp
   const displayTableName = item.tables.map(t => t.name).join(', ');
-  // Lấy bàn đại diện để điều hướng
   const representativeTable = item.tables[0];
 
-  const handlePressCard = () => { navigation.navigate(ROUTES.ORDER_CONFIRMATION, { tableId: representativeTable.id, tableName: displayTableName }); };
+  const handlePressCard = () => { navigation.navigate(ROUTES.ORDER_CONFIRMATION, { tableId: representativeTable.id, tableName: displayTableName, orderId: item.orderId }); };
 
   return (
     <View style={styles.cardShadow} className="bg-white rounded-lg mb-4 mx-4">
@@ -59,8 +57,8 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
         </View>
       </TouchableOpacity>
       <View className="flex-row justify-around items-center bg-gray-50 border-t border-gray-200 rounded-b-lg">
-          <TouchableOpacity onPress={() => navigation.navigate(ROUTES.ORDER_CONFIRMATION, { tableId: representativeTable.id, tableName: displayTableName })} className="py-3 items-center justify-center flex-1"><Ionicons name="calculator-outline" size={24} color="gray" /></TouchableOpacity>
-          <TouchableOpacity onPress={() => navigation.navigate(ROUTES.MENU, { tableId: representativeTable.id, tableName: displayTableName })} className="py-3 items-center justify-center flex-1"><Ionicons name="restaurant-outline" size={24} color="gray" /></TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.navigate(ROUTES.ORDER_CONFIRMATION, { tableId: representativeTable.id, tableName: displayTableName, orderId: item.orderId })} className="py-3 items-center justify-center flex-1"><Ionicons name="calculator-outline" size={24} color="gray" /></TouchableOpacity>
+          <TouchableOpacity onPress={() => navigation.navigate(ROUTES.MENU, { tableId: representativeTable.id, tableName: displayTableName, orderId: item.orderId })} className="py-3 items-center justify-center flex-1"><Ionicons name="restaurant-outline" size={24} color="gray" /></TouchableOpacity>
           <TouchableOpacity onPress={() => Alert.alert("Thông báo", "Chức năng in phiếu kiểm đồ đang được phát triển.")} className="py-3 items-center justify-center flex-1"><Ionicons name="receipt-outline" size={24} color="gray" /></TouchableOpacity>
           <TouchableOpacity onPress={() => onShowMenu(item)} className="py-3 items-center justify-center flex-1"><Ionicons name="ellipsis-horizontal" size={24} color="gray" /></TouchableOpacity>
       </View>
@@ -77,76 +75,61 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
   const [isMenuVisible, setMenuVisible] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<ActiveOrder | null>(null);
 
-  // [THAY ĐỔI LỚN] Cập nhật logic lấy order
-  const fetchActiveOrders = useCallback(async (isInitialLoad = false) => {
-    if (isInitialLoad) {
-        setLoading(true);
-    }
-    console.log("Đang tải danh sách order...");
+   const fetchActiveOrders = useCallback(async (isInitialLoad = false) => {
+    if (isInitialLoad) setLoading(true);
     try {
-        const { data, error } = await supabase
-            .from('orders')
-            .select(`
-                id, created_at, status,
-                order_items(quantity, unit_price),
-                order_tables(tables(id, name))
-            `)
-            .eq('status', 'pending');
+      const { data, error } = await supabase
+        .from('orders')
+        .select(`
+          id, 
+          created_at, 
+          order_items(quantity, unit_price), 
+          order_tables(tables(id, name))
+        `)
+        .eq('status', 'pending');
+        
+      if (error) throw error;
+      
+      const formattedOrders: ActiveOrder[] = data.map(order => {
+        const totalPrice = order.order_items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
+        const totalItemCount = order.order_items.reduce((sum, item) => sum + item.quantity, 0);
+        // Lấy thông tin bàn từ bảng join
+        const tables = order.order_tables.map((ot: any) => ot.tables).filter(Boolean);
+        
+        return {
+          orderId: order.id,
+          representativeTableId: tables[0]?.id,
+          tables: tables,
+          totalPrice,
+          createdAt: order.created_at,
+          totalItemCount,
+        };
+      }).filter(order => order.tables.length > 0); // Chỉ hiển thị order có liên kết với bàn
 
-        if (error) {
-            throw error;
-        }
-
-        const formattedOrders: ActiveOrder[] = data.map(order => {
-            const totalPrice = order.order_items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
-            const totalItemCount = order.order_items.reduce((sum, item) => sum + item.quantity, 0);
-            // Lọc ra các bàn null có thể tồn tại do lỗi join dữ liệu
-            const tables = order.order_tables.map((ot: any) => ot.tables).filter(Boolean);
-            return {
-                orderId: order.id,
-                representativeTableId: tables[0]?.id,
-                tables: tables,
-                totalPrice,
-                createdAt: order.created_at,
-                totalItemCount,
-            };
-        }).filter(order => order.tables.length > 0);
-
-        formattedOrders.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-        setActiveOrders(formattedOrders);
+      formattedOrders.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      setActiveOrders(formattedOrders);
     } catch (error: any) {
-        Alert.alert('Lỗi', `Không thể tải danh sách order: ${error.message}`);
+      Alert.alert('Lỗi', `Không thể tải danh sách order: ${error.message}`);
     } finally {
-        if (isInitialLoad) {
-            setLoading(false);
-        }
+      if (isInitialLoad) setLoading(false);
     }
-  }, []); 
-
+  }, []);
   useFocusEffect(
     useCallback(() => {
-      // Khi màn hình được focus, gọi hàm fetch với isInitialLoad = true
-      // để hiển thị indicator loading và tải lại dữ liệu mới nhất.
       fetchActiveOrders(true);
-    }, [fetchActiveOrders]) // Phụ thuộc vào hàm fetchActiveOrders ổn định
+    }, [fetchActiveOrders])
   );
 
   useEffect(() => {
-    const channel = supabase.channel('public:orders_and_items')
+    const channel = supabase.channel('public:orders_and_tables_realtime')
       .on('postgres_changes', { event: '*', schema: 'public' }, 
         (payload) => {
-          console.log('Realtime change detected, refetching orders:', payload);
-          // Gọi fetch mà không hiển thị loading indicator
-          fetchActiveOrders(false); 
-        })
-      .subscribe();
-      
-    return () => {
-      supabase.removeChannel(channel);
-    };
+          fetchActiveOrders(false);
+        }
+      ).subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, [fetchActiveOrders]);
   
-  // [MỚI] Thêm action "Gộp Bàn"
   const menuActions: MenuItemProps[] = [
     { icon: 'swap-horizontal-outline', text: 'Chuyển bàn', action: 'transfer_table', color: '#3B82F6' },
     { icon: 'layers-outline', text: 'Ghép Order (Thêm món)', action: 'merge_order' },
@@ -154,53 +137,51 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
     { icon: 'git-compare-outline', text: 'Tách order', action: 'split_order' },
     { icon: 'close-circle-outline', text: 'Hủy order', action: 'cancel_order', color: '#EF4444' },
   ];
-  const handleShowMenu = (order: ActiveOrder) => {
-      setSelectedOrder(order);
-      setMenuVisible(true);
-  }
-  const handleMenuAction = (action: string) => {
-      setMenuVisible(false);
-      if (!selectedOrder) return;
-      const isSingleTable = selectedOrder.tables.length === 1;
-      const representativeTable = selectedOrder.tables[0];
-      const displayTableName = selectedOrder.tables.map(t => t.name).join(', ');
 
-      setTimeout(() => {
-          switch(action) {
-              case 'transfer_table':
-                  if (isSingleTable) {
-                      navigation.navigate(ROUTES.TABLE_SELECTION, { 
-                          mode: 'single', 
-                          action: 'transfer', 
-                          sourceRoute: ROUTES.ORDER_TAB, 
-                          sourceTable: { id: representativeTable.id, name: representativeTable.name, orderId: selectedOrder.orderId } 
-                      });
-                  } else {
-                      Alert.alert("Thông báo", "Chức năng chuyển cả nhóm bàn đang được phát triển.");
-                  }
-                  break;
-              case 'merge_order':
-                  navigation.navigate(ROUTES.TABLE_SELECTION, { mode: 'multiple', action: 'merge', sourceRoute: ROUTES.ORDER_TAB, sourceTable: { id: representativeTable.id, name: displayTableName } });
-                  break;
-              // [MỚI] Xử lý Gộp Bàn
-              case 'group_tables':
-                  navigation.navigate(ROUTES.TABLE_SELECTION, { 
-                      mode: 'multiple', 
-                      action: 'group', // Action mới
-                      sourceRoute: ROUTES.ORDER_TAB, 
-                      sourceTable: { id: representativeTable.id, name: displayTableName } 
-                  });
-                  break;
-              case 'split_order':
-                  Alert.alert("Tách order", "Chức năng đang phát triển");
-                  break;
-              case 'cancel_order':
-                  Alert.alert("Hủy order", `Bạn có chắc muốn hủy order cho nhóm bàn ${displayTableName}?`, [{text: 'Không'}, {text: 'Hủy', style: 'destructive'}]);
-                  break;
-              default: break;
-          }
-      }, 200);
+  const handleShowMenu = (order: ActiveOrder) => {
+    setSelectedOrder(order);
+    setMenuVisible(true);
   }
+  
+ const handleMenuAction = (action: string) => {
+    setMenuVisible(false);
+    if (!selectedOrder) return;
+    const isSingleTable = selectedOrder.tables.length === 1;
+    const representativeTable = selectedOrder.tables[0];
+    const displayTableName = selectedOrder.tables.map(t => t.name).join(', ');
+
+    setTimeout(() => {
+      switch(action) {
+        case 'transfer_table':
+          if (isSingleTable) {
+            navigation.navigate(ROUTES.TABLE_SELECTION, { 
+              mode: 'single', action: 'transfer', sourceRoute: ROUTES.ORDER_TAB, 
+              sourceTable: { id: representativeTable.id, name: representativeTable.name, orderId: selectedOrder.orderId } 
+            });
+          } else {
+            Alert.alert("Thông báo", "Chức năng chuyển cả nhóm bàn đang được phát triển.");
+          }
+          break;
+        case 'merge_order':
+          navigation.navigate(ROUTES.TABLE_SELECTION, { mode: 'multiple', action: 'merge', sourceRoute: ROUTES.ORDER_TAB, sourceTable: { id: representativeTable.id, name: displayTableName, orderId: selectedOrder.orderId } });
+          break;
+        case 'group_tables':
+          navigation.navigate(ROUTES.TABLE_SELECTION, { 
+            mode: 'multiple', action: 'group', sourceRoute: ROUTES.ORDER_TAB, 
+            sourceTable: { id: representativeTable.id, name: displayTableName, orderId: selectedOrder.orderId } 
+          });
+          break;
+        case 'split_order':
+          Alert.alert("Tách order", "Chức năng đang phát triển");
+          break;
+        case 'cancel_order':
+          Alert.alert("Hủy order", `Bạn có chắc muốn hủy order cho nhóm bàn ${displayTableName}?`, [{text: 'Không'}, {text: 'Hủy', style: 'destructive'}]);
+          break;
+        default: break;
+      }
+    }, 200);
+  }
+
   const renderMenuModal = () => (
     <Modal transparent={true} visible={isMenuVisible} animationType="fade" onRequestClose={() => setMenuVisible(false)}>
       <Pressable style={styles.menuOverlay} onPress={() => setMenuVisible(false)}>
@@ -221,7 +202,6 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
     </View>
   );
 };
-
 const styles = StyleSheet.create({ 
     cardShadow: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 5 },
     menuOverlay:{ flex:1, backgroundColor:'rgba(0,0,0,0.4)', justifyContent:'center', alignItems:'center' }, 

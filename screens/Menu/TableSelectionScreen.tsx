@@ -1,4 +1,4 @@
-// src/screens/TableSelectionScreen.tsx
+// screens/TableSelection/TableSelectionScreen.tsx
 
 import React, { useState, useEffect, useLayoutEffect, useCallback } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, SafeAreaView } from 'react-native';
@@ -24,7 +24,21 @@ const TableItem: React.FC<{ item: Table; isSelected: boolean; onPress: () => voi
   );
 };
 
+// [SỬA LỖI TRIỆT ĐỂ] Gọi hàm RPC trên database để đảm bảo tính toàn vẹn
+const handleTransferTable = async (sourceTableId: string, targetTable: Table) => {
+    if (!sourceTableId || !targetTable) throw new Error("Thiếu thông tin bàn nguồn hoặc bàn đích.");
 
+    const { error } = await supabase.rpc('handle_table_transfer', {
+        source_table_id_input: sourceTableId,
+        target_table_id_input: targetTable.id
+    });
+
+    if (error) throw error;
+
+    return true;
+}
+
+// Giữ nguyên các hàm handleGroupTables, handleMergeOrder
 const handleGroupTables = async (orderId: string, targetTables: Table[]) => {
     if (!orderId || targetTables.length === 0) throw new Error("Thiếu thông tin order hoặc bàn đích.");
     const targetTableIds = targetTables.map(t => t.id);
@@ -36,61 +50,23 @@ const handleGroupTables = async (orderId: string, targetTables: Table[]) => {
     return true;
 }
 
-const handleTransferTable = async (sourceTableId: string, targetTable: Table) => {
-    if (!sourceTableId || !targetTable) throw new Error("Thiếu thông tin bàn nguồn hoặc bàn đích.");
-
-    // 1. Tìm liên kết order_tables của bàn nguồn để lấy order_id
-    const { data: sourceLink, error: linkError } = await supabase
-        .from('order_tables')
-        .select('order_id')
-        .eq('table_id', sourceTableId)
-        .limit(1).single();
-
-    if (linkError || !sourceLink) throw new Error("Không tìm thấy order của bàn gốc.");
-    const orderId = sourceLink.order_id;
-
-    // 2. Cập nhật liên kết trong order_tables: đổi table_id từ bàn nguồn sang bàn đích
-    const { error: updateLinkError } = await supabase
-        .from('order_tables')
-        .update({ table_id: targetTable.id })
-        .match({ order_id: orderId, table_id: sourceTableId });
-
-    if (updateLinkError) throw updateLinkError;
-
-    // 3. Cập nhật trạng thái của 2 bàn
-    await supabase.from('tables').update({ status: 'Trống' }).eq('id', sourceTableId);
-    await supabase.from('tables').update({ status: 'Đang phục vụ' }).eq('id', targetTable.id);
-
-    return true;
-}
 const handleMergeOrder = async (sourceOrderId: string, targetTables: Table[]) => {
     if (!sourceOrderId || targetTables.length === 0) throw new Error("Thiếu thông tin.");
-    
     const targetTableIds = targetTables.map(t => t.id);
-
-    // 1. Tìm order_id của các bàn đích
     const { data: targetLinks, error: linksError } = await supabase
         .from('order_tables')
         .select('orders!inner(id)')
         .in('table_id', targetTableIds)
         .eq('orders.status', 'pending');
-
     if (linksError || !targetLinks) throw new Error("Không tìm thấy order của các bàn được chọn.");
-    
-    const targetOrderIds = targetLinks.map(link => link.orders?.[0]?.id).filter(id => !!id);
+    const targetOrderIds = targetLinks.map(link => (Array.isArray(link.orders) ? link.orders[0] : link.orders)?.id).filter(id => !!id);
     if(targetOrderIds.length !== targetTableIds.length) throw new Error("Một vài bàn được chọn không có order hợp lệ.");
-
-    // 2. Chuyển tất cả order_items từ các order đích sang order nguồn
     await supabase.from('order_items').update({ order_id: sourceOrderId }).in('order_id', targetOrderIds);
-
-    // 3. Xóa các order đích (giờ đã trống)
     await supabase.from('orders').delete().in('id', targetOrderIds);
-
-    // 4. Cập nhật trạng thái bàn đích thành 'Trống'
     await supabase.from('tables').update({ status: 'Trống' }).in('id', targetTableIds);
-
     return true;
 }
+
 
 const TableSelectionScreen = ({ route, navigation }: Props) => {
   const { mode, action, sourceTable } = route.params;
@@ -123,7 +99,7 @@ const TableSelectionScreen = ({ route, navigation }: Props) => {
 
         case 'transfer':
             const targetTable = selectedTables[0];
-            Alert.alert( "Xác nhận Chuyển bàn", `Bạn có chắc muốn chuyển toàn bộ order từ ${sourceTable.name} sang ${targetTable.name}?`,
+            Alert.alert( "Xác nhận Chuyển bàn", `Bạn có chắc muốn chuyển toàn bộ order và giỏ hàng từ ${sourceTable.name} sang ${targetTable.name}?`,
                 [{ text: "Hủy" }, { text: "Xác nhận", onPress: async () => {
                     setLoading(true);
                     try {
@@ -214,8 +190,9 @@ const TableSelectionScreen = ({ route, navigation }: Props) => {
       />
     </SafeAreaView>
   );
-}; // <--- [SỬA LỖI] THÊM DẤU NGOẶC NHỌN NÀY VÀO
+};
 
+// Giữ nguyên styles
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F0F2F5' }, 
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' }, 

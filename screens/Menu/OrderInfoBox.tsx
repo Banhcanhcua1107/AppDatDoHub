@@ -26,7 +26,6 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({ isVisible, onClose, tableId
     if (!tableId) return;
     setLoading(true);
     try {
-      // [SỬA LỖI] Thay đổi cách truy vấn để sử dụng bảng order_tables
       const { data, error } = await supabase
         .from('orders')
         .select(`
@@ -38,7 +37,7 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({ isVisible, onClose, tableId
         .eq('status', 'pending')
         .single();
         
-      if (error && error.code !== 'PGRST116') throw error; // Bỏ qua lỗi 'không tìm thấy'
+      if (error && error.code !== 'PGRST116') throw error;
       
       if (data) {
         const totalItems = data.order_items.reduce((sum, item) => sum + item.quantity, 0);

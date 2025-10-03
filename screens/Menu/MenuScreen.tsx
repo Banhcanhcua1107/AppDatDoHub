@@ -173,17 +173,12 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
     }
   }, [tableId]);
 
-   // ... (giữ nguyên các state và hàm khác)
-
-  // [SỬA LỖI VÒNG LẶP VÔ HẠN]
-  // Đưa useCallback trở lại để ngăn effect chạy lại sau mỗi lần render do setLoading
   useFocusEffect(
     useCallback(() => {
       let isActive = true;
 
       const loadData = async () => {
-        console.log(`[Focus] Tải dữ liệu cho bàn: ${tableId}`);
-        if (!tableId) return;
+        if (!isActive) return;
         
         setLoading(true);
 
@@ -197,7 +192,6 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
 
           if (!isActive) return;
 
-          // Xử lý menu và món hot
           if (menuResponse.data) {
               const formattedData = menuResponse.data.map(cat => ({ ...cat, id: String(cat.id), menu_items: cat.menu_items.map(item => ({ ...item, id: String(item.id) })) }));
               const hotCategory = { id: HOT_CATEGORY_ID, name: '🔥 Món Hot', menu_items: [] };
@@ -205,11 +199,8 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
               setMenuData(formattedData);
           }
           setHotItems(hotItemsResponse.data || []);
-          
-          // Xử lý giỏ hàng
           setCartItems(cartResponse.data || []);
 
-          // Xử lý các món đã gọi
           let existingItemsData: ExistingItem[] = [];
           if (orderLinkResponse.data && orderLinkResponse.data.length > 0) {
               const pendingOrderIds = orderLinkResponse.data.map(link => link.orders?.[0]?.id).filter((id): id is string => !!id);
@@ -236,7 +227,6 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
       const channel = supabase.channel(`realtime-menu-${tableId}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'cart_items', filter: `table_id=eq.${tableId}` },
             (payload) => { 
-              console.log('Realtime: Giỏ hàng thay đổi, tải lại.', payload); 
               loadData();
             }
         ).subscribe();
@@ -246,7 +236,7 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
         task.cancel();
         supabase.removeChannel(channel);
       };
-    }, [tableId]) // <-- Mảng phụ thuộc chỉ chứa tableId là chính xác
+    }, [tableId])
   );
   
   const handleSelectItem = (item: MenuItemFromDB) => {
@@ -256,24 +246,19 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
 
   const handleAddToCart = async (itemWithOptions: CartItem) => {
     try {
-        // Tạo một ID duy nhất cho món hàng dựa trên các tùy chọn
         const uniqueId = `${tableId}-${itemWithOptions.menuItemId}-${itemWithOptions.size.name}-${itemWithOptions.sugar.name}-${itemWithOptions.toppings.map(t => t.name).sort().join('-')}-${itemWithOptions.note || ''}`;
         
-        // [CẢI TIẾN] Kiểm tra xem món có tùy chọn y hệt đã tồn tại trong giỏ chưa
         const { data: existingItem, error: findError } = await supabase
             .from('cart_items')
             .select('id, quantity, total_price')
             .eq('unique_id', uniqueId)
             .single();
 
-        // Supabase trả về lỗi 'PGRST116' khi .single() không tìm thấy dòng nào.
-        // Chúng ta sẽ bỏ qua lỗi này và chỉ báo lỗi khi có vấn đề khác.
         if (findError && findError.code !== 'PGRST116') {
             throw findError;
         }
 
         if (existingItem) {
-            // Nếu món đã có, cập nhật số lượng và tổng giá
             const newQuantity = existingItem.quantity + itemWithOptions.quantity;
             const newTotalPrice = existingItem.total_price + itemWithOptions.totalPrice;
             await supabase.from('cart_items')
@@ -281,7 +266,6 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
                 .eq('id', existingItem.id)
                 .throwOnError();
         } else {
-            // Nếu món chưa có, thêm một dòng mới vào giỏ hàng
             await supabase.from('cart_items').insert({
                 table_id: tableId,
                 menu_item_id: itemWithOptions.menuItemId,
@@ -300,13 +284,7 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
             }).throwOnError();
         }
 
-        // =================================================================
-        // [SỬA LỖI QUAN TRỌNG NHẤT]
-        // Gọi lại hàm fetchMenuAndData để tải lại dữ liệu giỏ hàng và 
-        // cập nhật giao diện ngay lập tức.
-        console.log("Thêm món thành công, đang tải lại giỏ hàng...");
         await fetchMenuAndData(false); 
-        // =================================================================
 
     } catch (error: any) {
         console.error("Lỗi khi thêm vào giỏ hàng:", error.message);
@@ -323,10 +301,8 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
 
  const handleUpdateQuantity = async (cartItemId: number, newQuantity: number) => {
     try {
-      // Nếu số lượng mới <= 0, ta sẽ xóa món đó thay vì cập nhật
       if (newQuantity <= 0) {
         await handleRemoveItem(cartItemId);
-        // handleRemoveItem đã tự gọi fetchMenuAndData nên ta không cần gọi lại ở đây
         return; 
       }
       
@@ -338,11 +314,7 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
           .throwOnError();
       }
       
-      // =================================================================
-      // [SỬA LỖI] Gọi lại hàm fetch để cập nhật UI sau khi thay đổi số lượng
-      console.log("Cập nhật số lượng thành công, đang tải lại giỏ hàng...");
       await fetchMenuAndData(false);
-      // =================================================================
 
     } catch (error: any) {
       console.error("Lỗi khi cập nhật số lượng:", error.message);
@@ -357,11 +329,7 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
         .eq('id', cartItemId)
         .throwOnError();
 
-      // =================================================================
-      // [SỬA LỖI] Gọi lại hàm fetch để cập nhật UI sau khi xóa
-      console.log("Xóa món thành công, đang tải lại giỏ hàng...");
       await fetchMenuAndData(false);
-      // =================================================================
 
     } catch (error: any) {
       console.error("Lỗi khi xóa món:", error.message);
@@ -376,11 +344,7 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
         .eq('table_id', tableId)
         .throwOnError();
       
-      // =================================================================
-      // [SỬA LỖI] Gọi lại hàm fetch để cập nhật UI sau khi xóa toàn bộ
-      console.log("Xóa toàn bộ giỏ hàng thành công, đang tải lại...");
       await fetchMenuAndData(false);
-      // =================================================================
 
     } catch (error: any) {
       console.error("Lỗi khi xóa giỏ hàng:", error.message);
@@ -481,4 +445,3 @@ const styles = StyleSheet.create({
 });
 
 export default MenuScreen;
-// --- END OF FILE MenuScreen.tsx ---
