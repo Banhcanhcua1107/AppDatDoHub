@@ -61,7 +61,6 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
   const handleConfirmReturn = async () => {
     const itemsToReturnList = Object.entries(itemsToReturn)
         .map(([itemId, quantity]) => ({
-        // [SỬA LỖI] Chuyển itemId từ string sang number. Đây là nguyên nhân gốc rễ của lỗi.
         order_item_id: Number(itemId),
         quantity: quantity,
         }))
@@ -76,13 +75,28 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
       return;
     }
 
+    // --- [DEBUG] BẮT ĐẦU LOG DỮ LIỆU ---
+    console.log("==================== DEBUG TRẢ MÓN ====================");
+    console.log("1. Dữ liệu gửi đi cho hàm RPC 'handle_item_return':");
+    const payload = {
+      p_order_id: orderId,
+      p_reason: reason.trim(),
+      p_items: itemsToReturnList,
+    };
+    console.log(JSON.stringify(payload, null, 2)); // In ra payload dưới dạng JSON đẹp mắt
+
+    console.log("\n2. Kiểm tra kiểu dữ liệu chi tiết:");
+    console.log(`- Kiểu dữ liệu của p_order_id: ${typeof orderId}`);
+    if (itemsToReturnList.length > 0) {
+        console.log(`- Kiểu dữ liệu của order_item_id (phần tử đầu tiên): ${typeof itemsToReturnList[0].order_item_id}`);
+        console.log(`- Kiểu dữ liệu của quantity (phần tử đầu tiên): ${typeof itemsToReturnList[0].quantity}`);
+    }
+    console.log("=======================================================");
+    // --- [DEBUG] KẾT THÚC LOG DỮ LIỆU ---
+
     setIsSubmitting(true);
     try {
-      const { error } = await supabase.rpc('handle_item_return', {
-        p_order_id: orderId,
-        p_reason: reason.trim(),
-        p_items: itemsToReturnList,
-      });
+      const { error } = await supabase.rpc('handle_item_return', payload);
 
       if (error) throw error;
       
