@@ -61,7 +61,8 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
   const handleConfirmReturn = async () => {
     const itemsToReturnList = Object.entries(itemsToReturn)
         .map(([itemId, quantity]) => ({
-        order_item_id: itemId,
+        // [SỬA LỖI] Chuyển itemId từ string sang number. Đây là nguyên nhân gốc rễ của lỗi.
+        order_item_id: Number(itemId),
         quantity: quantity,
         }))
         .filter(item => item.quantity > 0);

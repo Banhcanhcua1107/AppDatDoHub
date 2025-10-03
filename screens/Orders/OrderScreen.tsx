@@ -172,6 +172,7 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
   }, [fetchActiveOrders]);
   
   const menuActions: MenuItemProps[] = [
+    { icon: 'notifications-outline', text: 'Kiểm tra lên món', action: 'check_served_status' },
     { icon: 'swap-horizontal-outline', text: 'Chuyển bàn', action: 'transfer_table', color: '#3B82F6' },
     { icon: 'layers-outline', text: 'Ghép Order (Thêm món)', action: 'merge_order' },
     { icon: 'apps-outline', text: 'Gộp Bàn (Chung bill)', action: 'group_tables', color: '#10B981'},
@@ -193,6 +194,12 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
 
     setTimeout(() => {
       switch(action) {
+        case 'check_served_status':
+          navigation.navigate(ROUTES.SERVE_STATUS, { 
+              orderId: selectedOrder.orderId, 
+              tableName: displayTableName 
+          });
+          break;
         case 'transfer_table':
           if (isSingleTable) {
             navigation.navigate(ROUTES.TABLE_SELECTION, { 

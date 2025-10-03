@@ -32,7 +32,7 @@ export const ROUTES = {
 
   SPLIT_ORDER: 'SplitOrder',
   
-
+  SERVE_STATUS: 'ServeStatus',
 } as const;
 
 export type AuthStackParamList = {
@@ -78,4 +78,5 @@ export type AppStackParamList = {
       quantity: number;
     }[];
   };
+  [ROUTES.SERVE_STATUS]: { orderId: string; tableName: string };
 };

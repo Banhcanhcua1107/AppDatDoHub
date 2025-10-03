@@ -1,5 +1,4 @@
 // --- START OF FILE OrderConfirmationScreen.tsx ---
-
 import React, { useState, useCallback, useEffect } from 'react';
 import { 
     View, Text, StyleSheet, StatusBar, SectionList, TouchableOpacity, Alert, 
@@ -12,7 +11,12 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import { supabase } from '../../services/supabase';
 import { useFocusEffect } from '@react-navigation/native';
 
-
+interface DisplayItem {
+    id: number; uniqueKey: string; name: string; quantity: number;
+    unit_price: number; totalPrice: number; menuItemId?: number;
+    customizations: any; isNew: boolean; isPaid: boolean; created_at?: string;
+    is_served: boolean; 
+}
 // --- Interfaces and Components (Không thay đổi) ---
 interface OrderSection {
     title: string;
@@ -135,7 +139,8 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
             let freshTables: {id: string, name: string}[] = [];
 
             if (orderIdToFetch) {
-                const { data: orderDetails, error: orderError } = await supabase.from('orders').select(`id, status, order_items(id, quantity, unit_price, customizations, created_at), order_tables(tables(id, name))`).eq('id', orderIdToFetch).single();
+                 // [THÊM] Lấy thêm cột is_served
+                const { data: orderDetails, error: orderError } = await supabase.from('orders').select(`id, status, order_items(id, quantity, unit_price, customizations, created_at, is_served), order_tables(tables(id, name))`).eq('id', orderIdToFetch).single();
                 if (orderError) throw orderError;
                 if (orderDetails) {
                     freshTables = orderDetails.order_tables.map((ot: any) => ot.tables).filter(Boolean);
@@ -145,7 +150,8 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
                         const displayItem: DisplayItem = {
                             id: item.id, uniqueKey: `${orderDetails.status}-${item.id}`, name: item.customizations?.name || 'Món đã xóa', quantity: item.quantity,
                             unit_price: item.unit_price, totalPrice: item.quantity * item.unit_price, menuItemId: item.menu_item_id,
-                            customizations: item.customizations, created_at: item.created_at, isNew: false, isPaid: orderDetails.status === 'paid' || orderDetails.status === 'closed'
+                            customizations: item.customizations, created_at: item.created_at, isNew: false, isPaid: orderDetails.status === 'paid' || orderDetails.status === 'closed',
+                            is_served: item.is_served // Thêm dữ liệu is_served
                         };
                         if (displayItem.isPaid) paidItemsData.push(displayItem); else pendingItems.push(displayItem);
                     });
@@ -156,7 +162,7 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
             if (representativeTableId) {
                 const { data: cartData, error: cartError } = await supabase.from('cart_items').select('*').eq('table_id', representativeTableId);
                 if (cartError) throw cartError;
-                newItems = (cartData || []).map(item => ({ id: item.id, uniqueKey: `new-${item.id}`, name: item.customizations.name || 'Món mới', quantity: item.quantity, unit_price: item.unit_price, totalPrice: item.total_price, menuItemId: item.menu_item_id, customizations: item.customizations, isNew: true, isPaid: false }));
+                newItems = (cartData || []).map(item => ({ id: item.id, uniqueKey: `new-${item.id}`, name: item.customizations.name || 'Món mới', quantity: item.quantity, unit_price: item.unit_price, totalPrice: item.total_price, menuItemId: item.menu_item_id, customizations: item.customizations, isNew: true, isPaid: false, is_served: false }));
             }
             
             const sections: OrderSection[] = [];
