@@ -78,42 +78,73 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
   const [selectedOrder, setSelectedOrder] = useState<ActiveOrder | null>(null);
 
   // [THAY ĐỔI LỚN] Cập nhật logic lấy order
-  const fetchActiveOrders = async () => {
-    const { data, error } = await supabase
-        .from('orders')
-        .select(`
-            id, created_at, status,
-            order_items(quantity, unit_price),
-            order_tables(tables(id, name))
-        `)
-        .eq('status', 'pending');
+  const fetchActiveOrders = useCallback(async (isInitialLoad = false) => {
+    if (isInitialLoad) {
+        setLoading(true);
+    }
+    console.log("Đang tải danh sách order...");
+    try {
+        const { data, error } = await supabase
+            .from('orders')
+            .select(`
+                id, created_at, status,
+                order_items(quantity, unit_price),
+                order_tables(tables(id, name))
+            `)
+            .eq('status', 'pending');
 
-    if (error) { Alert.alert('Lỗi', `Không thể tải danh sách order: ${error.message}`); return; }
+        if (error) {
+            throw error;
+        }
 
-    const formattedOrders: ActiveOrder[] = data.map(order => {
-        const totalPrice = order.order_items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
-        const totalItemCount = order.order_items.reduce((sum, item) => sum + item.quantity, 0);
-        const tables = order.order_tables.map((ot: any) => ot.tables);
-        return {
-            orderId: order.id,
-            representativeTableId: tables[0]?.id, // Lấy bàn đầu tiên làm đại diện
-            tables: tables,
-            totalPrice,
-            createdAt: order.created_at,
-            totalItemCount,
-        };
-    }).filter(order => order.tables.length > 0); // Lọc những order không có bàn (lỗi dữ liệu)
+        const formattedOrders: ActiveOrder[] = data.map(order => {
+            const totalPrice = order.order_items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0);
+            const totalItemCount = order.order_items.reduce((sum, item) => sum + item.quantity, 0);
+            // Lọc ra các bàn null có thể tồn tại do lỗi join dữ liệu
+            const tables = order.order_tables.map((ot: any) => ot.tables).filter(Boolean);
+            return {
+                orderId: order.id,
+                representativeTableId: tables[0]?.id,
+                tables: tables,
+                totalPrice,
+                createdAt: order.created_at,
+                totalItemCount,
+            };
+        }).filter(order => order.tables.length > 0);
 
-    formattedOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    setActiveOrders(formattedOrders);
-  };
+        formattedOrders.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        setActiveOrders(formattedOrders);
+    } catch (error: any) {
+        Alert.alert('Lỗi', `Không thể tải danh sách order: ${error.message}`);
+    } finally {
+        if (isInitialLoad) {
+            setLoading(false);
+        }
+    }
+  }, []); 
 
-  useFocusEffect(useCallback(() => { setLoading(true); fetchActiveOrders().finally(() => setLoading(false)); }, []));
+  useFocusEffect(
+    useCallback(() => {
+      // Khi màn hình được focus, gọi hàm fetch với isInitialLoad = true
+      // để hiển thị indicator loading và tải lại dữ liệu mới nhất.
+      fetchActiveOrders(true);
+    }, [fetchActiveOrders]) // Phụ thuộc vào hàm fetchActiveOrders ổn định
+  );
 
   useEffect(() => {
-    const channel = supabase.channel('public:orders_and_items').on('postgres_changes', { event: '*', schema: 'public' }, fetchActiveOrders).subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, []);
+    const channel = supabase.channel('public:orders_and_items')
+      .on('postgres_changes', { event: '*', schema: 'public' }, 
+        (payload) => {
+          console.log('Realtime change detected, refetching orders:', payload);
+          // Gọi fetch mà không hiển thị loading indicator
+          fetchActiveOrders(false); 
+        })
+      .subscribe();
+      
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [fetchActiveOrders]);
   
   // [MỚI] Thêm action "Gộp Bàn"
   const menuActions: MenuItemProps[] = [
@@ -123,12 +154,10 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
     { icon: 'git-compare-outline', text: 'Tách order', action: 'split_order' },
     { icon: 'close-circle-outline', text: 'Hủy order', action: 'cancel_order', color: '#EF4444' },
   ];
-
   const handleShowMenu = (order: ActiveOrder) => {
       setSelectedOrder(order);
       setMenuVisible(true);
   }
-  
   const handleMenuAction = (action: string) => {
       setMenuVisible(false);
       if (!selectedOrder) return;
@@ -172,8 +201,6 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
           }
       }, 200);
   }
-
-  // Các phần còn lại của OrderScreen giữ nguyên...
   const renderMenuModal = () => (
     <Modal transparent={true} visible={isMenuVisible} animationType="fade" onRequestClose={() => setMenuVisible(false)}>
       <Pressable style={styles.menuOverlay} onPress={() => setMenuVisible(false)}>
