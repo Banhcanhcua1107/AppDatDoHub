@@ -60,11 +60,11 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
   
   const handleConfirmReturn = async () => {
     const itemsToReturnList = Object.entries(itemsToReturn)
-        .map(([itemId, quantity]) => ({
+      .map(([itemId, quantity]) => ({
         order_item_id: Number(itemId),
-        quantity: quantity,
-        }))
-        .filter(item => item.quantity > 0);
+        quantity,
+      }))
+      .filter(i => i.quantity > 0);
 
     if (itemsToReturnList.length === 0) {
       Alert.alert("Chưa chọn món", "Vui lòng chọn số lượng món cần trả.");
@@ -75,31 +75,63 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
       return;
     }
 
-    // --- [DEBUG] BẮT ĐẦU LOG DỮ LIỆU ---
-    console.log("==================== DEBUG TRẢ MÓN ====================");
-    console.log("1. Dữ liệu gửi đi cho hàm RPC 'handle_item_return':");
-    const payload = {
-      p_order_id: orderId,
-      p_reason: reason.trim(),
-      p_items: itemsToReturnList,
-    };
-    console.log(JSON.stringify(payload, null, 2)); // In ra payload dưới dạng JSON đẹp mắt
-
-    console.log("\n2. Kiểm tra kiểu dữ liệu chi tiết:");
-    console.log(`- Kiểu dữ liệu của p_order_id: ${typeof orderId}`);
-    if (itemsToReturnList.length > 0) {
-        console.log(`- Kiểu dữ liệu của order_item_id (phần tử đầu tiên): ${typeof itemsToReturnList[0].order_item_id}`);
-        console.log(`- Kiểu dữ liệu của quantity (phần tử đầu tiên): ${typeof itemsToReturnList[0].quantity}`);
-    }
-    console.log("=======================================================");
-    // --- [DEBUG] KẾT THÚC LOG DỮ LIỆU ---
-
     setIsSubmitting(true);
     try {
-      const { error } = await supabase.rpc('handle_item_return', payload);
+      // BƯỚC 1: TẠO PHIẾU TRẢ HÀNG (RETURN SLIP)
+      const { data: newSlip, error: slipError } = await supabase
+        .from('return_slips')
+        .insert({
+          order_id: orderId,
+          reason: reason.trim(),
+        })
+        .select('id')
+        .single();
 
-      if (error) throw error;
+      if (slipError) throw slipError;
+      if (!newSlip) throw new Error("Không thể tạo phiếu trả hàng.");
+
+      const newSlipId = newSlip.id;
+
+      // BƯỚC 2: THÊM CÁC MÓN ĐÃ TRẢ VÀO CHI TIẾT PHIẾU
+      const slipItemsToInsert = itemsToReturnList.map(item => ({
+        return_slip_id: newSlipId,
+        order_item_id: item.order_item_id,
+        quantity: item.quantity,
+      }));
       
+      const { error: slipItemsError } = await supabase
+        .from('return_slip_items')
+        .insert(slipItemsToInsert);
+
+      if (slipItemsError) throw slipItemsError;
+
+      // BƯỚC 3: CẬP NHẬT LẠI SỐ LƯỢNG ĐÃ TRẢ TRONG BẢNG ORDER_ITEMS
+      // Lấy số lượng đã trả hiện tại của các món
+      const itemIds = itemsToReturnList.map(i => i.order_item_id);
+      const { data: currentItems, error: fetchError } = await supabase
+        .from('order_items')
+        .select('id, returned_quantity')
+        .in('id', itemIds);
+        
+      if (fetchError) throw fetchError;
+      
+      // Tạo một mảng các promise để cập nhật song song
+      const updatePromises = itemsToReturnList.map(itemToReturn => {
+        const currentItem = currentItems?.find(i => i.id === itemToReturn.order_item_id);
+        const currentReturnedQty = currentItem?.returned_quantity || 0;
+        
+        return supabase
+          .from('order_items')
+          .update({ returned_quantity: currentReturnedQty + itemToReturn.quantity })
+          .eq('id', itemToReturn.order_item_id);
+      });
+      
+      // Thực thi tất cả các cập nhật
+      const results = await Promise.all(updatePromises);
+      const updateError = results.find(res => res.error);
+      if (updateError) throw updateError.error;
+
+      // HOÀN TẤT
       Alert.alert("Thành công", "Đã cập nhật trả món thành công.");
       navigation.goBack();
 
