@@ -405,6 +405,7 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
             quantity: item.quantity,
             // Đảm bảo `unit_price` được truyền đi
             unit_price: item.unit_price,
+            image_url: item.customizations?.image || null,
         }));
 
         if (returnableItems.length === 0) {
