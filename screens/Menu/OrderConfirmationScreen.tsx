@@ -11,12 +11,12 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import { supabase } from '../../services/supabase';
 import { useFocusEffect } from '@react-navigation/native';
 
-interface DisplayItem {
-    id: number; uniqueKey: string; name: string; quantity: number;
-    unit_price: number; totalPrice: number; menuItemId?: number;
-    customizations: any; isNew: boolean; isPaid: boolean; created_at?: string;
-    is_served: boolean; 
-}
+// interface DisplayItem {
+//     id: number; uniqueKey: string; name: string; quantity: number;
+//     unit_price: number; totalPrice: number; menuItemId?: number;
+//     customizations: any; isNew: boolean; isPaid: boolean; created_at?: string;
+//     is_served: boolean; 
+// }
 // --- Interfaces and Components (Không thay đổi) ---
 interface OrderSection {
     title: string;
@@ -26,6 +26,9 @@ interface DisplayItem {
     id: number; uniqueKey: string; name: string; quantity: number;
     unit_price: number; totalPrice: number; menuItemId?: number;
     customizations: any; isNew: boolean; isPaid: boolean; created_at?: string;
+    is_served: boolean; 
+    returned_quantity: number; // Số lượng đã trả
+    isReturnedItem?: boolean; // Cờ để đánh dấu đây là dòng hiển thị món đã trả
 }
 const NoteInputModal: React.FC<{
     visible: boolean; initialValue: string; onClose: () => void; onSave: (note: string) => void;
@@ -52,7 +55,8 @@ const OrderListItem: React.FC<{
     item: DisplayItem, isExpanded: boolean, onPress: () => void,
     onUpdateQuantity: (newQuantity: number) => void, onOpenMenu: () => void,
 }> = ({ item, isExpanded, onPress, onUpdateQuantity, onOpenMenu }) => {
-    const { customizations, isNew, isPaid } = item;
+    // [THÊM] Lấy các thuộc tính mới
+    const { customizations, isNew, isPaid, is_served, isReturnedItem } = item;
     const sizeText = customizations.size?.name || 'N/A';
     const sugarText = customizations.sugar?.name || 'N/A';
     const toppingsText = (customizations.toppings?.map((t: any) => t.name) || []).join(', ') || 'Không có';
@@ -71,24 +75,30 @@ const OrderListItem: React.FC<{
         </View>
     );
     return (
-      <View style={[styles.shadow, isPaid && styles.paidItem]} className="bg-white rounded-2xl p-4 mb-4">
-        <TouchableOpacity onPress={onPress} disabled={isPaid}>
+      <View style={[styles.shadow, (isPaid || isReturnedItem) && styles.paidItem]} className="bg-white rounded-2xl p-4 mb-4">
+        {/* Món đã trả không thể bấm */}
+        <TouchableOpacity onPress={onPress} disabled={isPaid || isReturnedItem}>
             <View className="flex-row justify-between items-start">
               <View className="flex-1 pr-4">
-                <Text className={`text-lg font-bold ${isPaid ? 'text-gray-500' : 'text-gray-800'}`}>{item.name}</Text>
+                <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                    {is_served && <Icon name="checkmark-circle" size={20} color="#10B981" style={{marginRight: 6}} />}
+                    <Text className={`text-lg font-bold ${(isPaid || isReturnedItem) ? 'text-gray-500' : 'text-gray-800'} ${(is_served || isReturnedItem) ? 'line-through' : ''}`}>{item.name}</Text>
+                </View>
                 <Text className="text-sm text-gray-500 mt-1">{`Size: ${sizeText}, Đường: ${sugarText}`}</Text>
                 <Text className="text-sm text-gray-500">{`Topping: ${toppingsText}`}</Text>
                 {noteText && (<View className="bg-yellow-50 p-2 rounded-md mt-2"><Text className="text-sm text-yellow-800 italic">Ghi chú: {noteText}</Text></View>)}
               </View>
               <View className="items-end">
                  {isNew && <View className="bg-green-100 px-2 py-1 rounded-full mb-1"><Text className="text-green-800 text-xs font-bold">Mới</Text></View>}
-                 {isPaid && <View className="bg-gray-200 px-2 py-1 rounded-full mb-1"><Text className="text-gray-600 text-xs font-bold">Đã trả</Text></View>}
-                <Text className={`text-lg font-semibold ${isPaid ? 'text-gray-500 line-through' : 'text-gray-900'}`}>{item.totalPrice.toLocaleString('vi-VN')}đ</Text>
+                 {isPaid && <View className="bg-gray-200 px-2 py-1 rounded-full mb-1"><Text className="text-gray-600 text-xs font-bold">Đã trả bill</Text></View>}
+                 {/* [THÊM] Hiển thị tag "Đã trả món" */}
+                 {isReturnedItem && <View className="bg-red-100 px-2 py-1 rounded-full mb-1"><Text className="text-red-800 text-xs font-bold">Đã trả món</Text></View>}
+                <Text className={`text-lg font-semibold ${(isPaid || isReturnedItem) ? 'text-gray-500 line-through' : 'text-gray-900'}`}>{item.totalPrice.toLocaleString('vi-VN')}đ</Text>
               </View>
             </View>
             <View className="border-t border-dashed border-gray-200 mt-3 pt-2 flex-row justify-between items-center">
-              <Text className={`text-base ${isPaid ? 'text-gray-500' : 'text-gray-600'}`}>{item.quantity} x {item.unit_price.toLocaleString('vi-VN')}đ</Text>
-              {(!isNew && !isPaid) && <Icon name="flame-outline" size={20} color="#F97316" />}
+              <Text className={`text-base ${(isPaid || isReturnedItem) ? 'text-gray-500' : 'text-gray-600'}`}>{item.quantity} x {item.unit_price.toLocaleString('vi-VN')}đ</Text>
+              {(!isNew && !isPaid && !isReturnedItem) && <Icon name="flame-outline" size={20} color="#F97316" />}
             </View>
         </TouchableOpacity>
         {isExpanded && <ExpandedView />}
@@ -137,23 +147,41 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
             let pendingItems: DisplayItem[] = [];
             let paidItemsData: DisplayItem[] = [];
             let freshTables: {id: string, name: string}[] = [];
-
+            let returnedItemsSectionData: DisplayItem[] = [];   
             if (orderIdToFetch) {
-                 // [THÊM] Lấy thêm cột is_served
-                const { data: orderDetails, error: orderError } = await supabase.from('orders').select(`id, status, order_items(id, quantity, unit_price, customizations, created_at, is_served), order_tables(tables(id, name))`).eq('id', orderIdToFetch).single();
+                // [THÊM] Lấy thêm cột returned_quantity
+                const { data: orderDetails, error: orderError } = await supabase.from('orders').select(`id, status, order_items(id, quantity, unit_price, customizations, created_at, is_served, returned_quantity), order_tables(tables(id, name))`).eq('id', orderIdToFetch).single();
                 if (orderError) throw orderError;
                 if (orderDetails) {
                     freshTables = orderDetails.order_tables.map((ot: any) => ot.tables).filter(Boolean);
                     if (freshTables.length > 0) setCurrentTables(freshTables);
 
                     (orderDetails.order_items || []).forEach((item: any) => {
-                        const displayItem: DisplayItem = {
-                            id: item.id, uniqueKey: `${orderDetails.status}-${item.id}`, name: item.customizations?.name || 'Món đã xóa', quantity: item.quantity,
-                            unit_price: item.unit_price, totalPrice: item.quantity * item.unit_price, menuItemId: item.menu_item_id,
-                            customizations: item.customizations, created_at: item.created_at, isNew: false, isPaid: orderDetails.status === 'paid' || orderDetails.status === 'closed',
-                            is_served: item.is_served // Thêm dữ liệu is_served
-                        };
-                        if (displayItem.isPaid) paidItemsData.push(displayItem); else pendingItems.push(displayItem);
+                        // [LOGIC MỚI] Tách các món đã trả ra riêng
+                        if (item.returned_quantity > 0) {
+                            returnedItemsSectionData.push({
+                                id: item.id, uniqueKey: `returned-${item.id}`, name: item.customizations?.name || 'Món đã xóa', 
+                                quantity: item.returned_quantity, // Số lượng là số lượng đã trả
+                                unit_price: item.unit_price, totalPrice: item.returned_quantity * item.unit_price, 
+                                customizations: item.customizations, isNew: false, isPaid: false,
+                                is_served: item.is_served, returned_quantity: item.returned_quantity,
+                                isReturnedItem: true // Đánh dấu đây là món trả
+                            });
+                        }
+                        
+                        // Chỉ hiển thị các món còn lại (chưa bị trả hết)
+                        const remaining_quantity = item.quantity - item.returned_quantity;
+                        if (remaining_quantity > 0) {
+                            const displayItem: DisplayItem = {
+                                id: item.id, uniqueKey: `${orderDetails.status}-${item.id}`, name: item.customizations?.name || 'Món đã xóa', 
+                                quantity: remaining_quantity, // Số lượng là số lượng còn lại
+                                unit_price: item.unit_price, totalPrice: remaining_quantity * item.unit_price,
+                                customizations: item.customizations, created_at: item.created_at, isNew: false, 
+                                isPaid: orderDetails.status === 'paid' || orderDetails.status === 'closed',
+                                is_served: item.is_served, returned_quantity: item.returned_quantity
+                            };
+                            if (displayItem.isPaid) paidItemsData.push(displayItem); else pendingItems.push(displayItem);
+                        }
                     });
                 }
             }
@@ -162,7 +190,7 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
             if (representativeTableId) {
                 const { data: cartData, error: cartError } = await supabase.from('cart_items').select('*').eq('table_id', representativeTableId);
                 if (cartError) throw cartError;
-                newItems = (cartData || []).map(item => ({ id: item.id, uniqueKey: `new-${item.id}`, name: item.customizations.name || 'Món mới', quantity: item.quantity, unit_price: item.unit_price, totalPrice: item.total_price, menuItemId: item.menu_item_id, customizations: item.customizations, isNew: true, isPaid: false, is_served: false }));
+                newItems = (cartData || []).map(item => ({ id: item.id, uniqueKey: `new-${item.id}`, name: item.customizations.name || 'Món mới', quantity: item.quantity, unit_price: item.unit_price, totalPrice: item.total_price, menuItemId: item.menu_item_id, customizations: item.customizations, isNew: true, isPaid: false, is_served: false, returned_quantity: 0 }));
             }
             
             const sections: OrderSection[] = [];
