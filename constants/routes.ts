@@ -72,11 +72,7 @@ export type AppStackParamList = {
 
   ReturnSelection: {
     orderId: string;
-    items: {
-      id: number; // order_item id
-      name: string;
-      quantity: number;
-    }[];
+    items: { id: number; name: string; quantity: number; unit_price: number }[];
   };
   [ROUTES.SERVE_STATUS]: { orderId: string; tableName: string };
 };

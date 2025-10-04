@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, StatusBar, FlatList, TouchableOpacity, Alert, ActivityIndicator, TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,6 +11,8 @@ interface ItemToReturn {
   id: number;
   name: string;
   quantity: number;
+  // Bổ sung unit_price để xử lý logic
+  unit_price: number;
 }
 
 type Props = NativeStackScreenProps<AppStackParamList, 'ReturnSelection'>;
@@ -57,13 +60,17 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
 
     setItemsToReturn(prev => ({ ...prev, [itemId]: newQty }));
   };
-  
+
   const handleConfirmReturn = async () => {
     const itemsToReturnList = Object.entries(itemsToReturn)
-      .map(([itemId, quantity]) => ({
-        order_item_id: Number(itemId),
-        quantity,
-      }))
+      .map(([itemId, quantity]) => {
+        const originalItem = items.find(i => i.id === Number(itemId));
+        return {
+          order_item_id: Number(itemId),
+          quantity,
+          unit_price: originalItem?.unit_price || 0,
+        };
+      })
       .filter(i => i.quantity > 0);
 
     if (itemsToReturnList.length === 0) {
@@ -97,8 +104,9 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
         return_slip_id: newSlipId,
         order_item_id: item.order_item_id,
         quantity: item.quantity,
+        unit_price: item.unit_price,
       }));
-      
+
       const { error: slipItemsError } = await supabase
         .from('return_slip_items')
         .insert(slipItemsToInsert);
@@ -106,32 +114,28 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
       if (slipItemsError) throw slipItemsError;
 
       // BƯỚC 3: CẬP NHẬT LẠI SỐ LƯỢNG ĐÃ TRẢ TRONG BẢNG ORDER_ITEMS
-      // Lấy số lượng đã trả hiện tại của các món
       const itemIds = itemsToReturnList.map(i => i.order_item_id);
       const { data: currentItems, error: fetchError } = await supabase
         .from('order_items')
         .select('id, returned_quantity')
         .in('id', itemIds);
-        
+
       if (fetchError) throw fetchError;
-      
-      // Tạo một mảng các promise để cập nhật song song
+
       const updatePromises = itemsToReturnList.map(itemToReturn => {
         const currentItem = currentItems?.find(i => i.id === itemToReturn.order_item_id);
         const currentReturnedQty = currentItem?.returned_quantity || 0;
-        
+
         return supabase
           .from('order_items')
           .update({ returned_quantity: currentReturnedQty + itemToReturn.quantity })
           .eq('id', itemToReturn.order_item_id);
       });
-      
-      // Thực thi tất cả các cập nhật
+
       const results = await Promise.all(updatePromises);
       const updateError = results.find(res => res.error);
       if (updateError) throw updateError.error;
 
-      // HOÀN TẤT
       Alert.alert("Thành công", "Đã cập nhật trả món thành công.");
       navigation.goBack();
 
@@ -176,13 +180,13 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
         }
       />
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom > 0 ? insets.bottom : 20 }]}>
-        <TouchableOpacity 
+        <TouchableOpacity
             style={[styles.confirmButton, (totalReturnQuantity === 0 || isSubmitting) && styles.disabledButton]}
             onPress={handleConfirmReturn}
             disabled={totalReturnQuantity === 0 || isSubmitting}
         >
-          {isSubmitting 
-            ? <ActivityIndicator color="#fff" /> 
+          {isSubmitting
+            ? <ActivityIndicator color="#fff" />
             : <Text style={styles.confirmButtonText}>Xác nhận trả {totalReturnQuantity > 0 ? totalReturnQuantity : ''} món</Text>
           }
         </TouchableOpacity>
