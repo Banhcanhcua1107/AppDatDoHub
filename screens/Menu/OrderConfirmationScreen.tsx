@@ -111,6 +111,9 @@ const ActionButton: React.FC<{ icon: string; text: string; color: string; disabl
 
 type Props = NativeStackScreenProps<AppStackParamList, 'OrderConfirmation'>;
 
+
+
+
 const OrderConfirmationScreen = ({ route, navigation }: Props) => {
     const { tableId: initialTableId, tableName: initialTableName, orderId: routeOrderId } = route.params;
     const insets = useSafeAreaInsets();

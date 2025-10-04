@@ -27,6 +27,7 @@ import TableSelectionScreen from '../screens/Menu/TableSelectionScreen';
 import SplitOrderScreen from '../screens/Menu/SplitOrderScreen';
 import ReturnSelectionScreen from '../screens/Orders/ReturnSelectionScreen';
 import ServeStatusScreen from '../screens/Orders/ServeStatusScreen';
+
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const AppStack = createNativeStackNavigator<AppStackParamList>();
 
@@ -64,7 +65,7 @@ const MainAppStack = () => (
         name={ROUTES.RETURN_SELECTION} 
         component={ReturnSelectionScreen} 
     />
-    
+
     <AppStack.Screen name={ROUTES.SPLIT_ORDER} component={SplitOrderScreen} />
     <AppStack.Screen name={ROUTES.SERVE_STATUS} component={ServeStatusScreen} />
   </AppStack.Navigator>
