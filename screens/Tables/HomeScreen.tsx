@@ -177,7 +177,7 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
         renderItem={({ item }) => (<TableGridItem item={item} onPress={() => handlePressTable(item)} onLongPress={() => handleLongPressTable(item)} />)}
         keyExtractor={(item) => item.id}
         numColumns={2}
-        contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: 100 }}
+        contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: 100, paddingTop: 16 }}
       />
       <TouchableOpacity
         style={[styleSheet.fab, { bottom: insets.bottom > 0 ? insets.bottom + 10 : 20 }]}
@@ -185,7 +185,6 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
         <Icon name="add" size={30} color="#FFF" />
       </TouchableOpacity>
       
-      {/* [PHỤC HỒI] Render lại OrderInfoBox */}
       {selectedTable && (
         <OrderInfoBox
           isVisible={isBoxVisible}

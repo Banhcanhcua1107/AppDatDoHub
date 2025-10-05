@@ -111,7 +111,7 @@ const ReturnItemsScreen = () => {
     return (
         <View style={styles.flex1}>
             <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-            <View style={{ paddingTop: insets.top + 10 }} className="px-4 pb-3 flex-row justify-between items-center">
+            <View style={{ paddingTop: insets.top + 20 }} className="px-4 pb-3 flex-row justify-between items-center">
                 <Text className="text-3xl font-bold text-gray-800">Lịch sử trả món</Text>
                 <TouchableOpacity onPress={fetchReturnHistory}>
                     <Icon name="refresh-outline" size={26} color="#333" />
@@ -121,9 +121,9 @@ const ReturnItemsScreen = () => {
                 data={returnedOrders}
                 keyExtractor={item => item.order_id}
                 renderItem={({ item }) => <ReturnedOrderCard item={item} />}
-                contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
+                contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32, paddingTop: 16}}
                 ListEmptyComponent={
-                    <View style={styles.center}>
+                    <View style={styles.center }>
                         <Icon name="document-text-outline" size={60} color="#9CA3AF" />
                         <Text style={styles.emptyText}>Chưa có phiếu trả món nào.</Text>
                     </View>

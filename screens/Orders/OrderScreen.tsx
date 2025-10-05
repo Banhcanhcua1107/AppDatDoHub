@@ -253,23 +253,26 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
   );
   if (loading) { return (<View className="flex-1 justify-center items-center bg-gray-50"><ActivityIndicator size="large" color="#3B82F6" /><Text className="mt-2 text-gray-600">Đang tải danh sách order...</Text></View>); }
   return (
-    // 1. Thay đổi màu nền chính thành trắng
     <View style={{ flex: 1, backgroundColor: '#FFFFFF' }}> 
-      {/* 2. Đổi màu thanh StatusBar và style của icon */}
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-
-      {/* 3. Thay đổi màu nền header, màu chữ và thêm border dưới */}
-      <View style={{ paddingTop: insets.top +20, backgroundColor: '#FFFFFF' }} className="pb-3 px-4 border-b border-gray-200">
-        <View className="flex-row items-center justify-center h-12">
-            <TouchableOpacity className="flex-row items-center">
-                {/* 4. Đổi màu chữ và icon trong header */}
-                <Text className="text-gray-800 font-bold text-xl">Order</Text>
-                <Text className="text-gray-600 text-lg ml-2">Đang phục vụ</Text>
-                <Ionicons name="caret-down" size={16} color="gray" className="ml-1" />
+      <View style={{ paddingTop: insets.top + 20, backgroundColor: '#FFFFFF' }} className="px-5 pt-4 pb-3 border-b border-gray-200">
+        <View className="flex-row items-center justify-between">
+            <View>
+                <Text className="text-3xl font-bold text-gray-800">Order</Text>
+                <TouchableOpacity className="flex-row items-center mt-1">
+                    <Text className="text-base text-gray-500">Đang phục vụ</Text>
+                    <Ionicons name="caret-down" size={16} color="#6B7280" className="ml-1" />
+                </TouchableOpacity>
+            </View>
+            <TouchableOpacity 
+              onPress={() => fetchActiveOrders(true)} 
+              className="w-12 h-12 bg-white rounded-full items-center justify-center"
+              style={styles.menuButtonShadow}
+            >
+                <Ionicons name="refresh" size={24} color="#111827" />
             </TouchableOpacity>
         </View>
       </View>
-      {/* --- [KẾT THÚC] CÁC THAY ĐỔI CHÍNH --- */}
 
       <FlatList 
         data={activeOrders} 
@@ -289,6 +292,7 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
 };
 const styles = StyleSheet.create({ 
     cardShadow: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 5 },
+    menuButtonShadow: { shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 5, },
     menuOverlay:{ flex:1, backgroundColor:'rgba(0,0,0,0.4)', justifyContent:'center', alignItems:'center' }, 
     menuContainer:{ backgroundColor:'white', borderRadius:12, paddingVertical: 10, width:'85%', maxWidth:350, elevation:5 },
     menuTitle: { fontSize: 18, fontWeight: 'bold', color: '#1F2937', paddingHorizontal: 20, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#E5E7EB', marginBottom: 5 },
