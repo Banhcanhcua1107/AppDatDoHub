@@ -1,4 +1,4 @@
-// --- START OF FILE ReturnSelectionScreen.tsx ---
+// --- START OF FILE screens/Orders/ReturnSelectionScreen.tsx ---
 
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, StatusBar, FlatList, TouchableOpacity, Alert, ActivityIndicator, TextInput, Image } from 'react-native';
@@ -8,7 +8,6 @@ import { AppStackParamList } from '../../constants/routes';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { supabase } from '../../services/supabase';
 
-// [CẢI TIẾN] Thêm image_url vào interface
 interface ItemToReturn {
   id: number;
   name: string;
@@ -19,7 +18,6 @@ interface ItemToReturn {
 
 type Props = NativeStackScreenProps<AppStackParamList, 'ReturnSelection'>;
 
-// [CẢI TIẾN] Component mới hiển thị dưới dạng Card, có hình ảnh
 const ReturnItemCard: React.FC<{
   item: ItemToReturn;
   returnQuantity: number;
@@ -93,7 +91,6 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
 
     setIsSubmitting(true);
     try {
-      // BƯỚC 1: TẠO PHIẾU TRẢ HÀNG (RETURN SLIP)
       const { data: newSlip, error: slipError } = await supabase
         .from('return_slips')
         .insert({ order_id: orderId, reason: reason.trim() })
@@ -104,7 +101,6 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
       if (!newSlip) throw new Error("Không thể tạo phiếu trả hàng.");
       const newSlipId = newSlip.id;
 
-      // BƯỚC 2: THÊM CÁC MÓN ĐÃ TRẢ VÀO CHI TIẾT PHIẾU
       const slipItemsToInsert = itemsToReturnList.map(item => ({
         return_slip_id: newSlipId,
         order_item_id: item.order_item_id,
@@ -114,18 +110,11 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
       const { error: slipItemsError } = await supabase.from('return_slip_items').insert(slipItemsToInsert);
       if (slipItemsError) throw slipItemsError;
 
-      // BƯỚC 3: CẬP NHẬT LẠI SỐ LƯỢNG ĐÃ TRẢ TRONG BẢNG ORDER_ITEMS
-      const { data: currentItems, error: fetchError } = await supabase
-        .from('order_items').select('id, returned_quantity').in('id', itemsToReturnList.map(i => i.order_item_id));
-      if (fetchError) throw fetchError;
-
       const updatePromises = itemsToReturnList.map(itemToReturn => {
-        const currentItem = currentItems?.find(i => i.id === itemToReturn.order_item_id);
-        const currentReturnedQty = currentItem?.returned_quantity || 0;
-        return supabase
-          .from('order_items')
-          .update({ returned_quantity: currentReturnedQty + itemToReturn.quantity })
-          .eq('id', itemToReturn.order_item_id);
+          return supabase.rpc('update_returned_quantity', {
+              p_order_item_id: itemToReturn.order_item_id,
+              p_quantity_to_return: itemToReturn.quantity
+          });
       });
 
       const results = await Promise.all(updatePromises);
@@ -142,6 +131,18 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
     }
   };
 
+  // **QUAN TRỌNG**: Chạy SQL này để tạo function update an toàn hơn
+  /*
+    CREATE OR REPLACE FUNCTION update_returned_quantity(p_order_item_id INT, p_quantity_to_return INT)
+    RETURNS VOID AS $$
+    BEGIN
+        UPDATE order_items
+        SET returned_quantity = returned_quantity + p_quantity_to_return
+        WHERE id = p_order_item_id;
+    END;
+    $$ LANGUAGE plpgsql;
+  */
+
   const totalReturnQuantity = Object.values(itemsToReturn).reduce((sum, qty) => sum + qty, 0);
 
   return (
@@ -156,7 +157,6 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
       </View>
       <FlatList
         data={items}
-        // [CẢI TIẾN] Sử dụng component Card mới
         renderItem={({ item }) => (
           <ReturnItemCard
             item={item}
@@ -192,7 +192,6 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
   );
 };
 
-// [CẢI TIẾN] Toàn bộ styles được thiết kế lại cho giao diện mới
 const styles = StyleSheet.create({
     flex1: { flex: 1, backgroundColor: '#F8F9FA' },
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 10, backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#EEE' },
@@ -234,19 +233,19 @@ const styles = StyleSheet.create({
     quantityContainer: {
         flexDirection: 'row',
         alignItems: 'center',
+        backgroundColor: '#F3F4F6',
+        borderRadius: 20,
     },
     quantityButton: {
         width: 40,
         height: 40,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: '#F3F4F6',
-        borderRadius: 20,
     },
     quantityText: {
         fontSize: 18,
         fontWeight: 'bold',
-        minWidth: 40,
+        minWidth: 35,
         textAlign: 'center',
         color: '#111827',
     },

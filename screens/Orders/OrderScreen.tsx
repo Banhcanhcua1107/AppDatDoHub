@@ -253,10 +253,36 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
   );
   if (loading) { return (<View className="flex-1 justify-center items-center bg-gray-50"><ActivityIndicator size="large" color="#3B82F6" /><Text className="mt-2 text-gray-600">Đang tải danh sách order...</Text></View>); }
   return (
-    <View style={{ flex: 1, backgroundColor: '#F0F2F5' }}>
-      <StatusBar barStyle="light-content" backgroundColor="#3B82F6" />
-      <View style={{ paddingTop: insets.top + 20  , backgroundColor: '#3B82F6' }} className="pb-4 px-4 shadow-lg"><View className="flex-row items-center justify-center h-12"><TouchableOpacity className="flex-row items-center"><Text className="text-white font-bold text-xl">Order</Text><Text className="text-white text-lg ml-2">Đang phục vụ</Text><Ionicons name="caret-down" size={16} color="white" className="ml-1" /></TouchableOpacity></View></View>
-      <FlatList data={activeOrders} renderItem={({ item }) => <OrderItemCard item={item} navigation={navigation} onShowMenu={handleShowMenu} />} keyExtractor={(item) => item.orderId.toString()} contentContainerStyle={{ paddingTop: 16, paddingBottom: 100 }} ListEmptyComponent={<View className="mt-20 items-center"><Ionicons name="file-tray-outline" size={60} color="#9CA3AF"/><Text className="text-gray-500 text-lg mt-4">Không có order nào đang phục vụ</Text></View>} />
+    // 1. Thay đổi màu nền chính thành trắng
+    <View style={{ flex: 1, backgroundColor: '#FFFFFF' }}> 
+      {/* 2. Đổi màu thanh StatusBar và style của icon */}
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+
+      {/* 3. Thay đổi màu nền header, màu chữ và thêm border dưới */}
+      <View style={{ paddingTop: insets.top +20, backgroundColor: '#FFFFFF' }} className="pb-3 px-4 border-b border-gray-200">
+        <View className="flex-row items-center justify-center h-12">
+            <TouchableOpacity className="flex-row items-center">
+                {/* 4. Đổi màu chữ và icon trong header */}
+                <Text className="text-gray-800 font-bold text-xl">Order</Text>
+                <Text className="text-gray-600 text-lg ml-2">Đang phục vụ</Text>
+                <Ionicons name="caret-down" size={16} color="gray" className="ml-1" />
+            </TouchableOpacity>
+        </View>
+      </View>
+      {/* --- [KẾT THÚC] CÁC THAY ĐỔI CHÍNH --- */}
+
+      <FlatList 
+        data={activeOrders} 
+        renderItem={({ item }) => <OrderItemCard item={item} navigation={navigation} onShowMenu={handleShowMenu} />} 
+        keyExtractor={(item) => item.orderId.toString()} 
+        contentContainerStyle={{ paddingTop: 16, paddingBottom: 100 }} 
+        ListEmptyComponent={
+          <View className="mt-20 items-center">
+            <Ionicons name="file-tray-outline" size={60} color="#9CA3AF"/>
+            <Text className="text-gray-500 text-lg mt-4">Không có order nào đang phục vụ</Text>
+          </View>
+        } 
+      />
       {renderMenuModal()}
     </View>
   );

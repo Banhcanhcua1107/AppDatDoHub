@@ -11,7 +11,7 @@ import { AppStackParamList, ROUTES } from '../../constants/routes';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { supabase } from '../../services/supabase';
 import { useFocusEffect } from '@react-navigation/native';
-
+import ReturnedItemsIndicatorCard from '../../components/ReturnedItemsIndicatorCard';
 interface OrderSection {
     title: string;
     data: DisplayItem[];
@@ -408,7 +408,7 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
             quantity: item.quantity,
             // Đảm bảo `unit_price` được truyền đi
             unit_price: item.unit_price,
-            image_url: item.customizations?.image || null,
+            image_url: item.customizations?.image_url || null, 
         }));
 
         if (returnableItems.length === 0) {
@@ -472,6 +472,10 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
                     />
                 )}
                 renderSectionHeader={({ section: { title } }) => (<Text style={styles.sectionHeader}>{title}</Text>)}
+                ListHeaderComponent={
+                    // Đảm bảo bạn truyền đúng activeOrderId
+                    activeOrderId ? <ReturnedItemsIndicatorCard orderId={activeOrderId} /> : null
+                }
                 contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 220 }}
                 ListEmptyComponent={<View className="mt-20 items-center"><Text className="text-gray-500 mb-6">Chưa có món nào được gọi.</Text><AddMoreItemsButton /></View>}
                 ListFooterComponent={allItems.length > 0 ? <AddMoreItemsButton /> : null}

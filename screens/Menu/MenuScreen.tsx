@@ -438,7 +438,7 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
   return (
     <View style={styles.flex1}>
       <StatusBar barStyle="dark-content" backgroundColor="white" />
-      <View style={{ paddingTop: insets.top + 10, backgroundColor: 'white' }} className="px-4 pb-3">
+      <View style={{ paddingTop: insets.top + 20, backgroundColor: 'white' }} className="px-4 pb-3">
         <View className="flex-row items-center justify-between mb-4">
           <TouchableOpacity onPress={handleGoBackWithConfirmation} className="p-2 -ml-2"><Icon name="arrow-back-outline" size={24} color="#111827" /></TouchableOpacity>
           <Text className="text-xl font-bold text-gray-800">Order cho {tableName}</Text><View className="w-8" />

@@ -1,118 +1,96 @@
-// --- START OF FILE screens/Orders/ReturnItemsScreen.tsx ---
+// --- START OF FILE screens/Orders/ReturnItemsScreen.tsx (ĐÃ SỬA LỖI) ---
 
 import React, { useState, useCallback } from 'react';
 import { View, Text, FlatList, StatusBar, ActivityIndicator, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { supabase } from '../../services/supabase';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { AppStackParamList, ROUTES } from '../../constants/routes';
 
-interface ReturnedItem {
-  name: string;
-  quantity: number;
-}
-
-interface ReturnSlip {
-  id: number;
-  created_at: string;
-  reason: string;
+// Kiểu dữ liệu cho một Order có món đã trả
+interface ReturnedOrderSummary {
   order_id: string;
-  returned_items: ReturnedItem[];
   table_names: string;
+  last_return_time: string;
+  total_returned_items: number;
 }
 
-// [SỬA LỖI] Cập nhật lại cấu trúc kiểu dữ liệu cho đúng với query mới
-type SlipFromDB = {
-    id: number;
-    created_at: string;
-    reason: string;
-    order_id: string;
-    return_slip_items: {
-        quantity: number;
-        // Mối quan hệ đúng là tới 'order_items', không phải 'item_details'
-        order_items: { 
-            customizations: { 
-                name: string 
-            } 
-        } | null;
-    }[];
-    orders: {
-        order_tables: {
-            tables: { name: string };
-        }[];
-    }[] | null; 
-}
+type NavigationProps = NativeStackNavigationProp<AppStackParamList>;
 
-
-const ReturnSlipCard: React.FC<{ item: ReturnSlip }> = ({ item }) => {
-    const time = new Date(item.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-    const date = new Date(item.created_at).toLocaleDateString('vi-VN');
+// Component Card mới, giao diện giống màn hình Order
+const ReturnedOrderCard: React.FC<{ item: ReturnedOrderSummary }> = ({ item }) => {
+    const navigation = useNavigation<NavigationProps>();
+    const time = new Date(item.last_return_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    const date = new Date(item.last_return_time).toLocaleDateString('vi-VN');
 
     return (
-        <View style={styles.card}>
+        <TouchableOpacity 
+            style={styles.card}
+            // [SỬA LỖI 1] Sử dụng hằng số ROUTES đã thêm
+            onPress={() => navigation.navigate(ROUTES.RETURNED_ITEMS_DETAIL, { orderId: item.order_id })}
+        >
             <View style={styles.cardHeader}>
-                <Text style={styles.cardTitle}>Phiếu trả cho bàn {item.table_names}</Text>
-                <Text style={styles.cardTimestamp}>{time} - {date}</Text>
-            </View>
-            <View style={styles.cardBody}>
-                {item.returned_items.map((returnedItem, index) => (
-                    <View key={index} style={styles.itemRow}>
-                        <Text style={styles.itemName}>{returnedItem.quantity}x {returnedItem.name}</Text>
-                    </View>
-                ))}
-            </View>
-            {item.reason && (
-                <View style={styles.reasonContainer}>
-                    <Icon name="chatbox-ellipses-outline" size={16} color="#4B5563" />
-                    <Text style={styles.reasonText}>Lý do: {item.reason}</Text>
+                <Text style={styles.cardTitle}>Bàn {item.table_names}</Text>
+                <View style={styles.badge}>
+                    <Icon name="arrow-undo-outline" size={14} color="#D97706" />
+                    <Text style={styles.badgeText}>{item.total_returned_items} món</Text>
                 </View>
-            )}
-        </View>
+            </View>
+            <View style={styles.cardFooter}>
+                <Icon name="time-outline" size={14} color="#6B7280" />
+                <Text style={styles.cardTimestamp}>Lần trả cuối: {time} - {date}</Text>
+                <Icon name="chevron-forward-outline" size={20} color="#9CA3AF" style={{ marginLeft: 'auto' }} />
+            </View>
+        </TouchableOpacity>
     );
 }
 
 const ReturnItemsScreen = () => {
     const insets = useSafeAreaInsets();
     const [loading, setLoading] = useState(true);
-    const [slips, setSlips] = useState<ReturnSlip[]>([]);
+    const [returnedOrders, setReturnedOrders] = useState<ReturnedOrderSummary[]>([]);
 
-    const fetchReturnSlips = useCallback(async () => {
+    const fetchReturnHistory = useCallback(async () => {
         setLoading(true);
         try {
             const { data, error } = await supabase
                 .from('return_slips')
                 .select(`
-                    id, created_at, reason, order_id,
-                    return_slip_items (
-                        *,
-                        order_items ( customizations ) 
-                    ),
-                    orders ( order_tables ( tables ( name ) ) )
+                    order_id,
+                    created_at,
+                    orders ( order_tables ( tables ( name ) ) ),
+                    return_slip_items ( quantity )
                 `)
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
             
-            const formattedSlips: ReturnSlip[] = ((data as unknown) as SlipFromDB[]).map(slip => {
-                const items = slip.return_slip_items.map(item => ({
-                    // [SỬA LỖI] Lấy tên món từ đúng đường dẫn dữ liệu mới
-                    name: item.order_items?.customizations?.name || 'Món không xác định',
-                    quantity: item.quantity,
-                }));
+            // [SỬA LỖI 2] Cung cấp kiểu dữ liệu rõ ràng cho TypeScript
+            const groupedByOrder = (data as any[]).reduce((acc, slip) => {
+                const orderId = slip.order_id;
+                if (!acc[orderId]) {
+                    const tableNames = slip.orders?.order_tables
+                        .map((ot: { tables: { name: string } }) => ot.tables.name) // Thêm type cho 'ot'
+                        .join(', ') || 'Không rõ';
 
-                const tables = slip.orders?.[0]?.order_tables.map(ot => ot.tables.name).join(', ') || 'Không rõ';
+                    acc[orderId] = {
+                        order_id: orderId,
+                        table_names: tableNames,
+                        last_return_time: slip.created_at,
+                        total_returned_items: 0,
+                    };
+                }
+                const slipTotal = slip.return_slip_items.reduce((sum: number, item: { quantity: number }) => sum + item.quantity, 0);
+                acc[orderId].total_returned_items += slipTotal;
+                
+                return acc;
+            }, {} as Record<string, ReturnedOrderSummary>);
 
-                return {
-                    id: slip.id,
-                    created_at: slip.created_at,
-                    reason: slip.reason,
-                    order_id: slip.order_id,
-                    returned_items: items,
-                    table_names: tables
-                };
-            });
+            const formattedList: ReturnedOrderSummary[] = Object.values(groupedByOrder);
+            setReturnedOrders(formattedList);
 
-            setSlips(formattedSlips);
         } catch (err: any) {
             Alert.alert("Lỗi", "Không thể tải lịch sử trả món: " + err.message);
         } finally {
@@ -122,16 +100,12 @@ const ReturnItemsScreen = () => {
 
     useFocusEffect(
         useCallback(() => {
-            fetchReturnSlips();
-        }, [fetchReturnSlips])
+            fetchReturnHistory();
+        }, [fetchReturnHistory])
     );
 
     if (loading) {
-        return (
-            <View style={styles.center}>
-                <ActivityIndicator size="large" />
-            </View>
-        );
+        return <View style={styles.center}><ActivityIndicator size="large" /></View>;
     }
 
     return (
@@ -139,14 +113,14 @@ const ReturnItemsScreen = () => {
             <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
             <View style={{ paddingTop: insets.top + 10 }} className="px-4 pb-3 flex-row justify-between items-center">
                 <Text className="text-3xl font-bold text-gray-800">Lịch sử trả món</Text>
-                <TouchableOpacity onPress={fetchReturnSlips}>
+                <TouchableOpacity onPress={fetchReturnHistory}>
                     <Icon name="refresh-outline" size={26} color="#333" />
                 </TouchableOpacity>
             </View>
             <FlatList
-                data={slips}
-                keyExtractor={item => item.id.toString()}
-                renderItem={({ item }) => <ReturnSlipCard item={item} />}
+                data={returnedOrders}
+                keyExtractor={item => item.order_id}
+                renderItem={({ item }) => <ReturnedOrderCard item={item} />}
                 contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
                 ListEmptyComponent={
                     <View style={styles.center}>
@@ -163,15 +137,48 @@ const styles = StyleSheet.create({
     flex1: { flex: 1, backgroundColor: '#F8F9FA' },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 50 },
     emptyText: { color: 'gray', marginTop: 16, fontSize: 16 },
-    card: { backgroundColor: 'white', borderRadius: 12, marginBottom: 16, elevation: 3, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 10 },
-    cardHeader: { backgroundColor: '#F3F4F6', padding: 12, borderTopLeftRadius: 12, borderTopRightRadius: 12, borderBottomWidth: 1, borderColor: '#E5E7EB' },
-    cardTitle: { fontSize: 16, fontWeight: 'bold', color: '#1F2937' },
-    cardTimestamp: { fontSize: 12, color: 'gray', marginTop: 2 },
-    cardBody: { padding: 16 },
-    itemRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-    itemName: { fontSize: 15, color: '#374151' },
-    reasonContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F9FAFB', padding: 12, borderTopWidth: 1, borderColor: '#E5E7EB', borderBottomLeftRadius: 12, borderBottomRightRadius: 12 },
-    reasonText: { fontSize: 14, color: '#4B5563', marginLeft: 8, fontStyle: 'italic' },
+    card: { 
+        backgroundColor: 'white', 
+        borderRadius: 16, 
+        marginBottom: 16, 
+        elevation: 4, 
+        shadowColor: '#475569',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+    },
+    cardHeader: { 
+        padding: 16, 
+        flexDirection: 'row', 
+        justifyContent: 'space-between', 
+        alignItems: 'center',
+        borderBottomWidth: 1,
+        borderColor: '#F3F4F6'
+    },
+    cardTitle: { fontSize: 18, fontWeight: 'bold', color: '#1F2937' },
+    badge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#FEF3C7',
+        borderRadius: 12,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+    },
+    badgeText: {
+        marginLeft: 4,
+        color: '#92400E',
+        fontWeight: '600',
+        fontSize: 13
+    },
+    cardFooter: {
+        padding: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F9FAFB',
+        borderBottomLeftRadius: 16,
+        borderBottomRightRadius: 16,
+    },
+    cardTimestamp: { fontSize: 13, color: '#4B5563', marginLeft: 6 },
 });
 
 export default ReturnItemsScreen;

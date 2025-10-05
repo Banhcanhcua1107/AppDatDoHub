@@ -33,6 +33,7 @@ export const ROUTES = {
   SPLIT_ORDER: 'SplitOrder',
   
   SERVE_STATUS: 'ServeStatus',
+  RETURNED_ITEMS_DETAIL: 'ReturnedItemsDetail',
 } as const;
 
 export type AuthStackParamList = {
@@ -75,4 +76,5 @@ export type AppStackParamList = {
     items: { id: number; name: string; quantity: number; unit_price: number; image_url: string | null }[];
   };
   [ROUTES.SERVE_STATUS]: { orderId: string; tableName: string };
+  ReturnedItemsDetail: { orderId: string };
 };
