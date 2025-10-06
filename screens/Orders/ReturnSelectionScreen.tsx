@@ -8,28 +8,34 @@ import { AppStackParamList } from '../../constants/routes';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { supabase } from '../../services/supabase';
 
+// Interface cho món hàng cần trả, bao gồm cả image_url
 interface ItemToReturn {
   id: number;
   name: string;
-  quantity: number;
+  quantity: number; // Số lượng đã gọi ban đầu
   unit_price: number;
   image_url: string | null;
 }
 
 type Props = NativeStackScreenProps<AppStackParamList, 'ReturnSelection'>;
 
+/**
+ * Giao diện thẻ cho từng món ăn cần trả, được thiết kế lại
+ * để trông hiện đại và trực quan hơn, bao gồm cả hình ảnh.
+ */
 const ReturnItemCard: React.FC<{
   item: ItemToReturn;
   returnQuantity: number;
   onUpdateQuantity: (amount: number) => void;
 }> = ({ item, returnQuantity, onUpdateQuantity }) => {
+  // Sử dụng ảnh placeholder nếu món ăn không có ảnh
   const placeholderImage = 'https://via.placeholder.com/150';
 
   return (
     <View style={styles.card}>
-      <Image 
-        source={{ uri: item.image_url || placeholderImage }} 
-        style={styles.itemImage} 
+      <Image
+        source={{ uri: item.image_url || placeholderImage }}
+        style={styles.itemImage}
       />
       <View style={styles.itemInfo}>
         <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
@@ -53,8 +59,10 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
   const insets = useSafeAreaInsets();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [reason, setReason] = useState('');
+  // State để lưu số lượng trả của từng món, với key là item.id
   const [itemsToReturn, setItemsToReturn] = useState<{ [itemId: number]: number }>({});
 
+  // Cập nhật số lượng món cần trả
   const handleUpdateQuantity = (itemId: number, amount: number) => {
     const originalItem = items.find(i => i.id === itemId);
     if (!originalItem) return;
@@ -62,12 +70,14 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
     const currentQty = itemsToReturn[itemId] || 0;
     let newQty = currentQty + amount;
 
+    // Giới hạn số lượng trả không được âm và không vượt quá số lượng đã gọi
     if (newQty < 0) newQty = 0;
     if (newQty > originalItem.quantity) newQty = originalItem.quantity;
 
     setItemsToReturn(prev => ({ ...prev, [itemId]: newQty }));
   };
 
+  // Xử lý khi nhấn nút xác nhận trả món
   const handleConfirmReturn = async () => {
     const itemsToReturnList = Object.entries(itemsToReturn)
       .map(([itemId, quantity]) => {
@@ -91,6 +101,7 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
 
     setIsSubmitting(true);
     try {
+      // 1. Tạo một phiếu trả hàng (return_slip) mới
       const { data: newSlip, error: slipError } = await supabase
         .from('return_slips')
         .insert({ order_id: orderId, reason: reason.trim() })
@@ -101,6 +112,7 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
       if (!newSlip) throw new Error("Không thể tạo phiếu trả hàng.");
       const newSlipId = newSlip.id;
 
+      // 2. Thêm các món trong phiếu trả hàng vào bảng return_slip_items
       const slipItemsToInsert = itemsToReturnList.map(item => ({
         return_slip_id: newSlipId,
         order_item_id: item.order_item_id,
@@ -110,6 +122,7 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
       const { error: slipItemsError } = await supabase.from('return_slip_items').insert(slipItemsToInsert);
       if (slipItemsError) throw slipItemsError;
 
+      // 3. Cập nhật lại số lượng đã trả (returned_quantity) trong bảng order_items
       const updatePromises = itemsToReturnList.map(itemToReturn => {
           return supabase.rpc('update_returned_quantity', {
               p_order_item_id: itemToReturn.order_item_id,
@@ -143,11 +156,13 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
     $$ LANGUAGE plpgsql;
   */
 
+  // Tính tổng số lượng món đang được chọn để trả
   const totalReturnQuantity = Object.values(itemsToReturn).reduce((sum, qty) => sum + qty, 0);
 
   return (
     <View style={styles.flex1}>
       <StatusBar barStyle="dark-content" />
+      {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Icon name="arrow-back-outline" size={26} />
@@ -155,6 +170,8 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
         <Text style={styles.headerTitle}>Chọn món cần trả</Text>
         <View style={{ width: 40 }} />
       </View>
+
+      {/* Danh sách các món ăn */}
       <FlatList
         data={items}
         renderItem={({ item }) => (
@@ -165,7 +182,7 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
           />
         )}
         keyExtractor={(item) => item.id.toString()}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 200 }}
         ListFooterComponent={
           <TextInput
             value={reason}
@@ -176,7 +193,13 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
           />
         }
       />
+
+      {/* Thanh công cụ dưới cùng */}
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom > 0 ? insets.bottom : 20 }]}>
+         <View style={styles.summaryContainer}>
+            <Text style={styles.summaryText}>Tổng số món trả</Text>
+            <Text style={styles.summaryQuantity}>{totalReturnQuantity}</Text>
+        </View>
         <TouchableOpacity
             style={[styles.confirmButton, (totalReturnQuantity === 0 || isSubmitting) && styles.disabledButton]}
             onPress={handleConfirmReturn}
@@ -184,7 +207,7 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
         >
           {isSubmitting
             ? <ActivityIndicator color="#fff" />
-            : <Text style={styles.confirmButtonText}>Xác nhận trả {totalReturnQuantity > 0 ? totalReturnQuantity : ''} món</Text>
+            : <Text style={styles.confirmButtonText}>Xác nhận trả món</Text>
           }
         </TouchableOpacity>
       </View>
@@ -192,6 +215,7 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
   );
 };
 
+// Stylesheet được cải tiến để giao diện đẹp hơn
 const styles = StyleSheet.create({
     flex1: { flex: 1, backgroundColor: '#F8F9FA' },
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 10, backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#EEE' },
@@ -263,11 +287,34 @@ const styles = StyleSheet.create({
         color: '#1F2937',
     },
     bottomBar: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
         paddingHorizontal: 20,
         paddingTop: 16,
         backgroundColor: 'white',
         borderTopWidth: 1,
-        borderTopColor: '#E5E7EB'
+        borderTopColor: '#E5E7EB',
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+        elevation: 10,
+    },
+    summaryContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    summaryText: {
+        fontSize: 16,
+        color: '#4B5563',
+        fontWeight: '500',
+    },
+    summaryQuantity: {
+        fontSize: 20,
+        color: '#1F2937',
+        fontWeight: 'bold',
     },
     confirmButton: {
         backgroundColor: '#EF4444',

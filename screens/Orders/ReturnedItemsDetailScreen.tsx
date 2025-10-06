@@ -121,7 +121,7 @@ const ReturnedItemsDetailScreen = ({ navigation }: { navigation: ReturnedItemsDe
     return (
         <View style={styles.flex1}>
             <StatusBar barStyle="dark-content" />
-            <View style={[styles.header, { paddingTop: insets.top }]}>
+            <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
                     <Icon name="arrow-back-outline" size={26} />
                 </TouchableOpacity>
