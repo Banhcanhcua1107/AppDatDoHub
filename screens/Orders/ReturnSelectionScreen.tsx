@@ -1,4 +1,4 @@
-// --- START OF FILE screens/Orders/ReturnSelectionScreen.tsx ---
+// --- START OF FILE screens/Orders/ReturnSelectionScreen.tsx (ĐÃ CẢI TIẾN GIAO DIỆN) ---
 
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, StatusBar, FlatList, TouchableOpacity, Alert, ActivityIndicator, TextInput, Image } from 'react-native';
@@ -19,10 +19,7 @@ interface ItemToReturn {
 
 type Props = NativeStackScreenProps<AppStackParamList, 'ReturnSelection'>;
 
-/**
- * Giao diện thẻ cho từng món ăn cần trả, được thiết kế lại
- * để trông hiện đại và trực quan hơn, bao gồm cả hình ảnh.
- */
+
 const ReturnItemCard: React.FC<{
   item: ItemToReturn;
   returnQuantity: number;
@@ -143,18 +140,6 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
       setIsSubmitting(false);
     }
   };
-
-  // **QUAN TRỌNG**: Chạy SQL này để tạo function update an toàn hơn
-  /*
-    CREATE OR REPLACE FUNCTION update_returned_quantity(p_order_item_id INT, p_quantity_to_return INT)
-    RETURNS VOID AS $$
-    BEGIN
-        UPDATE order_items
-        SET returned_quantity = returned_quantity + p_quantity_to_return
-        WHERE id = p_order_item_id;
-    END;
-    $$ LANGUAGE plpgsql;
-  */
 
   // Tính tổng số lượng món đang được chọn để trả
   const totalReturnQuantity = Object.values(itemsToReturn).reduce((sum, qty) => sum + qty, 0);
@@ -331,5 +316,4 @@ const styles = StyleSheet.create({
         backgroundColor: '#9CA3AF'
     }
 });
-
 export default ReturnSelectionScreen;

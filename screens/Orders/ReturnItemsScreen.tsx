@@ -1,4 +1,4 @@
-// --- START OF FILE screens/Orders/ReturnItemsScreen.tsx (ĐÃ SỬA LỖI) ---
+// --- START OF FILE screens/Orders/ReturnItemsScreen.tsx (ĐÃ CẢI TIẾN GIAO DIỆN) ---
 
 import React, { useState, useCallback } from 'react';
 import { View, Text, FlatList, StatusBar, ActivityIndicator, StyleSheet, TouchableOpacity, Alert } from 'react-native';
@@ -26,9 +26,8 @@ const ReturnedOrderCard: React.FC<{ item: ReturnedOrderSummary }> = ({ item }) =
     const date = new Date(item.last_return_time).toLocaleDateString('vi-VN');
 
     return (
-        <TouchableOpacity 
+        <TouchableOpacity
             style={styles.card}
-            // [SỬA LỖI 1] Sử dụng hằng số ROUTES đã thêm
             onPress={() => navigation.navigate(ROUTES.RETURNED_ITEMS_DETAIL, { orderId: item.order_id })}
         >
             <View style={styles.cardHeader}>
@@ -66,13 +65,12 @@ const ReturnItemsScreen = () => {
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
-            
-            // [SỬA LỖI 2] Cung cấp kiểu dữ liệu rõ ràng cho TypeScript
+
             const groupedByOrder = (data as any[]).reduce((acc, slip) => {
                 const orderId = slip.order_id;
                 if (!acc[orderId]) {
                     const tableNames = slip.orders?.order_tables
-                        .map((ot: { tables: { name: string } }) => ot.tables.name) // Thêm type cho 'ot'
+                        .map((ot: { tables: { name: string } }) => ot.tables.name)
                         .join(', ') || 'Không rõ';
 
                     acc[orderId] = {
@@ -84,7 +82,7 @@ const ReturnItemsScreen = () => {
                 }
                 const slipTotal = slip.return_slip_items.reduce((sum: number, item: { quantity: number }) => sum + item.quantity, 0);
                 acc[orderId].total_returned_items += slipTotal;
-                
+
                 return acc;
             }, {} as Record<string, ReturnedOrderSummary>);
 
@@ -111,8 +109,8 @@ const ReturnItemsScreen = () => {
     return (
         <View style={styles.flex1}>
             <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-            <View style={{ paddingTop: insets.top + 20 }} className="px-4 pb-3 flex-row justify-between items-center">
-                <Text className="text-3xl font-bold text-gray-800">Lịch sử trả món</Text>
+            <View style={{ paddingTop: insets.top + 20, paddingHorizontal: 16, paddingBottom: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={styles.screenTitle}>Lịch sử trả món</Text>
                 <TouchableOpacity onPress={fetchReturnHistory}>
                     <Icon name="refresh-outline" size={26} color="#333" />
                 </TouchableOpacity>
@@ -136,21 +134,22 @@ const ReturnItemsScreen = () => {
 const styles = StyleSheet.create({
     flex1: { flex: 1, backgroundColor: '#F8F9FA' },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 50 },
+    screenTitle: { fontSize: 28, fontWeight: 'bold', color: '#1F2937' },
     emptyText: { color: 'gray', marginTop: 16, fontSize: 16 },
-    card: { 
-        backgroundColor: 'white', 
-        borderRadius: 16, 
-        marginBottom: 16, 
-        elevation: 4, 
+    card: {
+        backgroundColor: 'white',
+        borderRadius: 16,
+        marginBottom: 16,
+        elevation: 4,
         shadowColor: '#475569',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
         shadowRadius: 8,
     },
-    cardHeader: { 
-        padding: 16, 
-        flexDirection: 'row', 
-        justifyContent: 'space-between', 
+    cardHeader: {
+        padding: 16,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
         alignItems: 'center',
         borderBottomWidth: 1,
         borderColor: '#F3F4F6'
