@@ -8,7 +8,8 @@
     "prebuild": "expo prebuild",
     "lint": "eslint \"**/*.{js,jsx,ts,tsx}\" && prettier -c \"**/*.{js,jsx,ts,tsx,json}\"",
     "format": "eslint \"**/*.{js,jsx,ts,tsx}\" --fix && prettier \"**/*.{js,jsx,ts,tsx,json}\" --write",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "remove-comments": "node remove-comments.js"
   },
   "dependencies": {
     "@expo/vector-icons": "^14.1.0",
@@ -56,9 +57,11 @@
     "eslint-plugin-prettier": "^5.5.4",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-native": "^5.0.0",
+    "glob": "^11.0.3",
     "postcss": "^8.5.6",
     "prettier": "^3.6.2",
     "prettier-plugin-tailwindcss": "^0.5.14",
+    "strip-comments": "^2.0.1",
     "tailwindcss": "^3.4.17",
     "typescript": "~5.8.3"
   },
