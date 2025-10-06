@@ -12,7 +12,7 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import { supabase } from '../../services/supabase';
 import { useFocusEffect } from '@react-navigation/native';
 import ReturnedItemsIndicatorCard from '../../components/ReturnedItemsIndicatorCard';
-import ActionSheetModal from '../../components/ActionSheetModal';
+import ActionSheetModal, { ActionSheetItem } from '../../components/ActionSheetModal';
 interface OrderSection {
     title: string;
     data: DisplayItem[];
@@ -49,49 +49,55 @@ const NoteInputModal: React.FC<{
 };
 
 const OrderListItem: React.FC<{
-    item: DisplayItem,
-    // Bỏ isExpanded, onPress, onUpdateQuantity vì không còn dùng
-    onOpenMenu: () => void,
-}> = ({ item, onOpenMenu }) => {
+    item: DisplayItem, isExpanded: boolean, onPress: () => void,
+    onUpdateQuantity: (newQuantity: number) => void, onOpenMenu: () => void,
+}> = ({ item, isExpanded, onPress, onUpdateQuantity, onOpenMenu }) => {
     const { customizations, isNew, isPaid, is_served, isReturnedItem } = item;
     const sizeText = customizations.size?.name || 'N/A';
     const sugarText = customizations.sugar?.name || 'N/A';
     const toppingsText = (customizations.toppings?.map((t: any) => t.name) || []).join(', ') || 'Không có';
     const noteText = customizations.note;
 
-    // ExpandedView đã được loại bỏ hoàn toàn
+    const ExpandedView = () => (
+        <View className="mt-4 pt-4 border-t border-gray-100">
+            <View className="flex-row items-center justify-between">
+                <View className="flex-row items-center">
+                    <Text className="text-gray-600 mr-4">Số lượng:</Text>
+                    <TouchableOpacity onPress={() => onUpdateQuantity(item.quantity - 1)} disabled={!isNew} className={`w-8 h-8 items-center justify-center rounded-full ${!isNew ? 'bg-gray-100' : 'bg-gray-200'}`}><Icon name="remove" size={18} color={!isNew ? "#ccc" : "#333"} /></TouchableOpacity>
+                    <Text className="text-lg font-bold mx-4">{item.quantity}</Text>
+                    <TouchableOpacity onPress={() => onUpdateQuantity(item.quantity + 1)} disabled={!isNew} className={`w-8 h-8 items-center justify-center rounded-full ${!isNew ? 'bg-gray-100' : 'bg-blue-500'}`}><Icon name="add" size={18} color={!isNew ? "#ccc" : "white"} /></TouchableOpacity>
+                </View>
+                <TouchableOpacity onPress={onOpenMenu} className="p-2"><Icon name="ellipsis-horizontal" size={24} color="gray" /></TouchableOpacity>
+            </View>
+        </View>
+    );
 
     return (
       <View style={[styles.shadow, (isPaid || isReturnedItem) && styles.paidItem]} className="bg-white rounded-2xl p-4 mb-4">
-        {/* Bỏ TouchableOpacity bao ngoài đi vì không cần hành động bấm để mở rộng nữa */}
-        <View className="flex-row justify-between items-start">
-          <View className="flex-1 pr-4">
-            <View style={{flexDirection: 'row', alignItems: 'center'}}>
-                {is_served && !isReturnedItem && <Icon name="checkmark-circle" size={20} color="#10B981" style={{marginRight: 6}} />}
-                <Text className={`text-lg font-bold ${(isPaid || isReturnedItem) ? 'text-gray-500' : 'text-gray-800'} ${(isReturnedItem) ? 'line-through' : ''}`}>{item.name}</Text>
+        <TouchableOpacity onPress={onPress} disabled={isPaid || isReturnedItem}>
+            <View className="flex-row justify-between items-start">
+              <View className="flex-1 pr-4">
+                <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                    {is_served && !isReturnedItem && <Icon name="checkmark-circle" size={20} color="#10B981" style={{marginRight: 6}} />}
+                    <Text className={`text-lg font-bold ${(isPaid || isReturnedItem) ? 'text-gray-500' : 'text-gray-800'} ${(isReturnedItem) ? 'line-through' : ''}`}>{item.name}</Text>
+                </View>
+                <Text className="text-sm text-gray-500 mt-1">{`Size: ${sizeText}, Đường: ${sugarText}`}</Text>
+                <Text className="text-sm text-gray-500">{`Topping: ${toppingsText}`}</Text>
+                {noteText && (<View className="bg-yellow-50 p-2 rounded-md mt-2"><Text className="text-sm text-yellow-800 italic">Ghi chú: {noteText}</Text></View>)}
+              </View>
+              <View className="items-end">
+                 {isNew && <View className="bg-green-100 px-2 py-1 rounded-full mb-1"><Text className="text-green-800 text-xs font-bold">Mới</Text></View>}
+                 {isPaid && <View className="bg-gray-200 px-2 py-1 rounded-full mb-1"><Text className="text-gray-600 text-xs font-bold">Đã trả bill</Text></View>}
+                 {isReturnedItem && <View className="bg-red-100 px-2 py-1 rounded-full mb-1"><Text className="text-red-800 text-xs font-bold">Đã trả lại</Text></View>}
+                <Text className={`text-lg font-semibold ${(isPaid || isReturnedItem) ? 'text-gray-500 line-through' : 'text-gray-900'}`}>{item.totalPrice.toLocaleString('vi-VN')}đ</Text>
+              </View>
             </View>
-            <Text className="text-sm text-gray-500 mt-1">{`Size: ${sizeText}, Đường: ${sugarText}`}</Text>
-            <Text className="text-sm text-gray-500">{`Topping: ${toppingsText}`}</Text>
-            {noteText && (<View className="bg-yellow-50 p-2 rounded-md mt-2"><Text className="text-sm text-yellow-800 italic">Ghi chú: {noteText}</Text></View>)}
-          </View>
-          <View className="items-end">
-             {isNew && <View className="bg-green-100 px-2 py-1 rounded-full mb-1"><Text className="text-green-800 text-xs font-bold">Mới</Text></View>}
-             {isPaid && <View className="bg-gray-200 px-2 py-1 rounded-full mb-1"><Text className="text-gray-600 text-xs font-bold">Đã trả bill</Text></View>}
-             {isReturnedItem && <View className="bg-red-100 px-2 py-1 rounded-full mb-1"><Text className="text-red-800 text-xs font-bold">Đã trả lại</Text></View>}
-            <Text className={`text-lg font-semibold ${(isPaid || isReturnedItem) ? 'text-gray-500 line-through' : 'text-gray-900'}`}>{item.totalPrice.toLocaleString('vi-VN')}đ</Text>
-          </View>
-        </View>
-        <View className="border-t border-dashed border-gray-200 mt-3 pt-2 flex-row justify-between items-center">
-          <Text className={`text-base ${(isPaid || isReturnedItem) ? 'text-gray-500' : 'text-gray-600'}`}>{item.quantity} x {item.unit_price.toLocaleString('vi-VN')}đ</Text>
-          
-          {/* [THAY ĐỔI QUAN TRỌNG] Thêm nút 3 chấm và điều kiện hiển thị */}
-          {(!isNew && !isPaid && !isReturnedItem) && (
-            <TouchableOpacity onPress={onOpenMenu} className="p-2">
-                <Icon name="ellipsis-horizontal" size={24} color="gray" />
-            </TouchableOpacity>
-          )}
-        </View>
-        {/* Dòng {isExpanded && <ExpandedView />} đã bị xóa */}
+            <View className="border-t border-dashed border-gray-200 mt-3 pt-2 flex-row justify-between items-center">
+              <Text className={`text-base ${(isPaid || isReturnedItem) ? 'text-gray-500' : 'text-gray-600'}`}>{item.quantity} x {item.unit_price.toLocaleString('vi-VN')}đ</Text>
+              {(!isNew && !isPaid && !isReturnedItem) && <Icon name="flame-outline" size={20} color="#F97316" />}
+            </View>
+        </TouchableOpacity>
+        {isExpanded && <ExpandedView />}
       </View>
     );
 };
@@ -114,13 +120,13 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
     const insets = useSafeAreaInsets();
     const [loading, setLoading] = useState(true);
     const [activeOrderId, setActiveOrderId] = useState<string | null>(routeOrderId || null);
-    const [isActionSheetVisible, setActionSheetVisible] = useState(false);  
+
     const [displayedSections, setDisplayedSections] = useState<OrderSection[]>([]);
-    // const [expandedItemKey, setExpandedItemKey] = useState<string | null>(null);
+    const [expandedItemKey, setExpandedItemKey] = useState<string | null>(null);
     const [isNoteModalVisible, setNoteModalVisible] = useState(false);
     const [editingItem, setEditingItem] = useState<DisplayItem | null>(null);
     const [currentTables, setCurrentTables] = useState<{id: string, name: string}[]>(initialTableId ? [{id: initialTableId, name: initialTableName}] : []);
-
+    const [isActionSheetVisible, setActionSheetVisible] = useState(false);
     const fetchAllData = useCallback(async (isInitialLoad = true) => {
         if (isInitialLoad) setLoading(true);
         try {
@@ -232,28 +238,41 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
       }, [fetchAllData, activeOrderId, initialTableId])
     );
 
-    // const handleUpdateQuantity = async (item: DisplayItem, newQuantity: number) => {
-    //     if (!item.isNew) return;
-    //     try {
-    //         if (newQuantity < 1) { await handleRemoveItem(item); } else {
-    //             await supabase.from('cart_items').update({ quantity: newQuantity, total_price: item.unit_price * newQuantity }).eq('id', item.id).throwOnError();
-    //         }
-    //     } catch(error: any) { Alert.alert("Lỗi", `Không thể cập nhật số lượng: ${error.message}`); }
-    // };
+    const handleUpdateQuantity = async (item: DisplayItem, newQuantity: number) => {
+        if (!item.isNew) return;
+        try {
+            if (newQuantity < 1) {
+                await supabase.from('cart_items').delete().eq('id', item.id).throwOnError();
+            } else {
+                await supabase.from('cart_items').update({ quantity: newQuantity, total_price: item.unit_price * newQuantity }).eq('id', item.id).throwOnError();
+            }
+            // [FIX] Tải lại dữ liệu ngay để cập nhật UI
+            await fetchAllData(false);
+        } catch(error: any) { Alert.alert("Lỗi", `Không thể cập nhật số lượng: ${error.message}`); }
+    };
 
     const handleRemoveItem = (itemToRemove: DisplayItem) => {
-        Alert.alert( "Xác nhận Hủy Món", `Bạn có chắc muốn hủy món "${itemToRemove.name}"?`,
-            [{ text: "Không" }, { text: "Đồng ý", style: "destructive", onPress: async () => {
-                try {
-                    await supabase.from(itemToRemove.isNew ? 'cart_items' : 'order_items').delete().eq("id", itemToRemove.id).throwOnError();
-                } catch (error: any) { Alert.alert("Lỗi", `Không thể hủy món: ${error.message}`); }
-            }}]
-        );
+        const action = async () => {
+            try {
+                await supabase.from(itemToRemove.isNew ? 'cart_items' : 'order_items').delete().eq("id", itemToRemove.id).throwOnError();
+                // [FIX] Tải lại dữ liệu ngay để cập nhật UI
+                await fetchAllData(false);
+            } catch (error: any) { Alert.alert("Lỗi", `Không thể hủy món: ${error.message}`); }
+        };
+
+        // Nếu món mới, không cần hỏi lại
+        if (itemToRemove.isNew) {
+            action();
+        } else {
+            Alert.alert( "Xác nhận Hủy Món", `Bạn có chắc muốn hủy món "${itemToRemove.name}"?`,
+                [{ text: "Không" }, { text: "Đồng ý", style: "destructive", onPress: action }]
+            );
+        }
     };
 
     const handleOpenItemMenu = (item: DisplayItem) => {
-        setEditingItem(item); // Lưu lại món đang được chọn
-        setActionSheetVisible(true); // Mở ActionSheetModal
+        setEditingItem(item);
+        setActionSheetVisible(true);
     };
 
     const handleSaveNote = async (newNote: string) => {
@@ -261,9 +280,34 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
         try {
             const updatedCustomizations = { ...editingItem.customizations, note: newNote };
             await supabase.from(editingItem.isNew ? 'cart_items' : 'order_items').update({ customizations: updatedCustomizations }).eq('id', editingItem.id).throwOnError();
+            // [FIX] Tải lại dữ liệu ngay để cập nhật UI
+            await fetchAllData(false);
         } catch (error: any) { Alert.alert("Lỗi", `Không thể lưu ghi chú: ${error.message}`);
         } finally { setNoteModalVisible(false); setEditingItem(null); }
     };
+    const itemActions: ActionSheetItem[] = [];
+    if (editingItem && !editingItem.isPaid && !editingItem.isReturnedItem) {
+        itemActions.push({
+            id: 'note',
+            text: 'Thêm/Sửa Ghi chú',
+            icon: 'create-outline',
+            onPress: () => {
+                setActionSheetVisible(false); // Đóng action sheet trước
+                setNoteModalVisible(true);  // Sau đó mở modal ghi chú
+            },
+        });
+        itemActions.push({
+            id: 'remove',
+            text: 'Hủy món',
+            icon: 'trash-outline',
+            color: '#EF4444',
+            onPress: () => {
+                setActionSheetVisible(false);
+                // Dùng timeout nhỏ để modal kịp đóng trước khi Alert hiện ra
+                setTimeout(() => handleRemoveItem(editingItem), 150);
+            },
+        });
+    }
 
     const allItems = displayedSections.flatMap(s => s.data);
     const representativeTable = currentTables[0] || {id: initialTableId, name: initialTableName};
@@ -442,31 +486,6 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
     const hasBillableItems = billableItems.length > 0;
     const isSessionClosable = paidItems.length > 0 && billableItems.length === 0 && !hasNewItems;
 
-
-
-    const itemActions = [
-        {
-          id: 'note',
-          icon: 'chatbox-ellipses-outline',
-          text: 'Ghi chú nhanh',
-          onPress: () => {
-            if (editingItem) {
-              setNoteModalVisible(true);
-            }
-          },
-        },
-        {
-          id: 'cancel',
-          icon: 'close-circle-outline',
-          text: 'Hủy món',
-          color: '#EF4444', // Màu đỏ cho hành động nguy hiểm
-          onPress: () => {
-            if (editingItem) {
-              handleRemoveItem(editingItem);
-            }
-          },
-        },
-    ];
     return (
         <View style={styles.flex1}>
             <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
@@ -485,7 +504,9 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
                 renderItem={({ item }) => (
                     <OrderListItem
                         item={item}
-                        // Bỏ isExpanded, onPress, onUpdateQuantity
+                        isExpanded={expandedItemKey === item.uniqueKey}
+                        onPress={() => setExpandedItemKey(prevKey => (prevKey === item.uniqueKey ? null : item.uniqueKey))}
+                        onUpdateQuantity={(newQuantity) => handleUpdateQuantity(item, newQuantity)}
                         onOpenMenu={() => handleOpenItemMenu(item)}
                     />
                 )}
@@ -514,15 +535,18 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
                     }
                 </View>
             </View>
-            {editingItem && (
-                <ActionSheetModal
-                    visible={isActionSheetVisible}
-                    onClose={() => setActionSheetVisible(false)}
-                    title={`Tùy chỉnh "${editingItem.name}"`}
-                    actions={itemActions}
-                />
-            )}
-              {editingItem && (<NoteInputModal visible={isNoteModalVisible} onClose={() => setNoteModalVisible(false)} initialValue={editingItem.customizations?.note || ''} onSave={handleSaveNote}/>)}
+                {editingItem && (<NoteInputModal visible={isNoteModalVisible} onClose={() => setNoteModalVisible(false)} initialValue={editingItem.customizations?.note || ''} onSave={handleSaveNote}/>)}
+                {editingItem && (
+                    <ActionSheetModal
+                        visible={isActionSheetVisible}
+                        onClose={() => {
+                            setActionSheetVisible(false);
+                            setEditingItem(null); // Reset item đang sửa khi đóng
+                        }}
+                        title={`Tùy chỉnh "${editingItem.name}"`}
+                        actions={itemActions}
+                    />
+                )}
         </View>
     );
 };
