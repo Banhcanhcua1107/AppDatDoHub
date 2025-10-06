@@ -1,4 +1,4 @@
-// --- START OF FILE screens/Orders/ReturnedItemsDetailScreen.tsx ---
+// --- START OF FILE screens/Orders/ReturnedItemsDetailScreen.tsx (ĐÃ SỬA LỖI TRIỆT ĐỂ) ---
 
 import React, { useState, useCallback } from 'react';
 import { View, Text, FlatList, StatusBar, ActivityIndicator, StyleSheet, TouchableOpacity, Alert, Image } from 'react-native';
@@ -22,19 +22,6 @@ interface ReturnSlip {
   created_at: string;
   reason: string;
   returned_items: ReturnedItem[];
-}
-
-// Kiểu dữ liệu nhận về từ Supabase
-type SlipFromDB = {
-    id: number;
-    created_at: string;
-    reason: string;
-    return_slip_items: {
-        quantity: number;
-        order_items: {
-            customizations: { name: string, image_url: string | null }
-        } | null;
-    }[];
 }
 
 // Định nghĩa kiểu cho navigation và route
@@ -70,7 +57,6 @@ const ReturnedItemsDetailScreen = ({ navigation }: { navigation: ReturnedItemsDe
     const fetchReturnedItems = useCallback(async () => {
         setLoading(true);
         try {
-            // [SỬA LỖI] Thay đổi câu query để lấy đúng cột JSONB `customizations`
             const { data, error } = await supabase
                 .from('return_slips')
                 .select(`
@@ -78,7 +64,10 @@ const ReturnedItemsDetailScreen = ({ navigation }: { navigation: ReturnedItemsDe
                     return_slip_items (
                         quantity,
                         order_items (
-                           customizations 
+                           menu_items (
+                              name,
+                              image_url
+                           )
                         )
                     )
                 `)
@@ -87,17 +76,27 @@ const ReturnedItemsDetailScreen = ({ navigation }: { navigation: ReturnedItemsDe
 
             if (error) throw error;
 
-            // [SỬA LỖI] Ép kiểu dữ liệu `data` về `any` rồi mới map để tránh lỗi TS
-            const formattedSlips: ReturnSlip[] = (data as any[]).map((slip: SlipFromDB) => ({
+            // [ĐÃ SỬA] Sử dụng `any` để tránh lỗi type phức tạp và xử lý trực tiếp.
+            // Đây là cách tiếp cận thực tế và an toàn nhất trong trường hợp này.
+            const formattedSlips: ReturnSlip[] = (data as any[]).map((slip: any) => ({
                 id: slip.id,
                 created_at: slip.created_at,
                 reason: slip.reason,
-                returned_items: slip.return_slip_items.map(item => ({
-                    // [SỬA LỖI] Truy cập đúng vào object customizations
-                    name: item.order_items?.customizations?.name || 'Món không xác định',
-                    quantity: item.quantity,
-                    image_url: item.order_items?.customizations?.image_url || null,
-                })),
+                returned_items: slip.return_slip_items.map((item: any) => {
+                    const menuItem = item.order_items?.menu_items;
+                    if (menuItem) {
+                        return {
+                            name: menuItem.name || 'Món không xác định',
+                            quantity: item.quantity,
+                            image_url: menuItem.image_url || null,
+                        };
+                    }
+                    return {
+                        name: 'Món không xác định',
+                        quantity: item.quantity,
+                        image_url: null
+                    };
+                }),
             }));
 
             setSlips(formattedSlips);

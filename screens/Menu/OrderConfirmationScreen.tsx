@@ -23,6 +23,7 @@ interface DisplayItem {
     customizations: any; isNew: boolean; isPaid: boolean; created_at?: string;
     is_served: boolean;
     returned_quantity: number;
+    image_url: string | null;
     isReturnedItem?: boolean; // Cờ để đánh dấu đây là dòng hiển thị món đã trả
 }
 
@@ -149,48 +150,80 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
             let returnedItemsSectionData: DisplayItem[] = [];
 
             if (orderIdToFetch) {
-                const { data: orderDetails, error: orderError } = await supabase.from('orders').select(`id, status, order_items(id, quantity, unit_price, customizations, created_at, is_served, returned_quantity), order_tables(tables(id, name))`).eq('id', orderIdToFetch).single();
+                // [SỬA LỖI 1] Sửa câu truy vấn để lấy cả thông tin từ bảng `menu_items`
+                const { data: orderDetails, error: orderError } = await supabase
+                    .from('orders')
+                    .select(`
+                        id, 
+                        status, 
+                        order_items(
+                            id, quantity, unit_price, customizations, created_at, is_served, returned_quantity,
+                            menu_items(name, image_url)
+                        ), 
+                        order_tables(tables(id, name))
+                    `)
+                    .eq('id', orderIdToFetch)
+                    .single();
+
                 if (orderError) throw orderError;
                 if (orderDetails) {
                     freshTables = orderDetails.order_tables.map((ot: any) => ot.tables).filter(Boolean);
                     if (freshTables.length > 0) setCurrentTables(freshTables);
 
                     (orderDetails.order_items || []).forEach((item: any) => {
-                        // [CẬP NHẬT] TÁCH MÓN TRẢ RA "HỘP" RIÊNG
+                         // [SỬA LỖI 2] Lấy tên và ảnh từ menu_items thay vì customizations
+                        const name = item.menu_items?.name || item.customizations?.name || 'Món đã xóa';
+                        const image_url = item.menu_items?.image_url || null;
+                        
                         if (item.returned_quantity > 0) {
                             returnedItemsSectionData.push({
-                                id: item.id, uniqueKey: `returned-${item.id}`, name: item.customizations?.name || 'Món đã xóa',
+                                id: item.id, uniqueKey: `returned-${item.id}`, name,
                                 quantity: item.returned_quantity,
                                 unit_price: item.unit_price, totalPrice: item.returned_quantity * item.unit_price,
                                 customizations: item.customizations, isNew: false, isPaid: false,
                                 is_served: true,
                                 returned_quantity: item.returned_quantity,
-                                isReturnedItem: true // Đánh dấu để hiển thị và khóa tương tác
+                                image_url, // Thêm image_url
+                                isReturnedItem: true
                             });
                         }
 
-                        // [CẬP NHẬT] GIẢM SỐ LƯỢNG Ở ORDER GỐC
                         const remaining_quantity = item.quantity - item.returned_quantity;
                         if (remaining_quantity > 0) {
                             const displayItem: DisplayItem = {
-                                id: item.id, uniqueKey: `${orderDetails.status}-${item.id}`, name: item.customizations?.name || 'Món đã xóa',
+                                id: item.id, uniqueKey: `${orderDetails.status}-${item.id}`, name,
                                 quantity: remaining_quantity,
                                 unit_price: item.unit_price, totalPrice: remaining_quantity * item.unit_price,
                                 customizations: item.customizations, created_at: item.created_at, isNew: false,
                                 isPaid: orderDetails.status === 'paid' || orderDetails.status === 'closed',
-                                is_served: item.is_served, returned_quantity: item.returned_quantity
+                                is_served: item.is_served, returned_quantity: item.returned_quantity,
+                                image_url, // Thêm image_url
                             };
                             if (displayItem.isPaid) paidItemsData.push(displayItem); else pendingItems.push(displayItem);
                         }
                     });
                 }
             }
-
+            
+            // Lấy dữ liệu từ giỏ hàng (cart_items), cần join với menu_items để có image_url
             const representativeTableId = freshTables[0]?.id || initialTableId;
             if (representativeTableId) {
-                const { data: cartData, error: cartError } = await supabase.from('cart_items').select('*').eq('table_id', representativeTableId);
+                const { data: cartData, error: cartError } = await supabase
+                    .from('cart_items')
+                    .select('*, menu_items(image_url)')
+                    .eq('table_id', representativeTableId);
+
                 if (cartError) throw cartError;
-                newItems = (cartData || []).map(item => ({ id: item.id, uniqueKey: `new-${item.id}`, name: item.customizations.name || 'Món mới', quantity: item.quantity, unit_price: item.unit_price, totalPrice: item.total_price, menuItemId: item.menu_item_id, customizations: item.customizations, isNew: true, isPaid: false, is_served: false, returned_quantity: 0 }));
+                
+                newItems = (cartData || []).map(item => ({ 
+                    id: item.id, uniqueKey: `new-${item.id}`, 
+                    name: item.customizations.name || 'Món mới', 
+                    quantity: item.quantity, unit_price: item.unit_price, 
+                    totalPrice: item.total_price, menuItemId: item.menu_item_id, 
+                    customizations: item.customizations, isNew: true, isPaid: false, 
+                    is_served: false, returned_quantity: 0,
+                    image_url: item.menu_items?.image_url || null // Lấy ảnh cho món mới
+                }));
             }
 
             const sections: OrderSection[] = [];
@@ -212,7 +245,6 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
 
             sections.push(...pendingSections);
 
-            // [CẬP NHẬT] Thêm section món đã trả vào danh sách
             if (returnedItemsSectionData.length > 0) {
                 sections.push({ title: 'Món đã trả lại', data: returnedItemsSectionData });
             }
@@ -456,9 +488,8 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
             id: item.id,
             name: item.name,
             quantity: item.quantity,
-            // Đảm bảo `unit_price` được truyền đi
             unit_price: item.unit_price,
-            image_url: item.customizations?.image_url || null, 
+            image_url: item.image_url, // <-- LẤY TỪ `item.image_url` ĐÃ LƯU
         }));
 
         if (returnableItems.length === 0) {
