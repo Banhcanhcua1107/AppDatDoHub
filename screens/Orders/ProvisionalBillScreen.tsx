@@ -3,15 +3,22 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StatusBar, ActivityIndicator, Alert, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { supabase } from '../../services/supabase';
 import { Ionicons } from '@expo/vector-icons';
+import { AppStackParamList } from '../../constants/routes';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 // --- Định nghĩa kiểu dữ liệu ---
 type TableInfo = { id: string; name: string };
-interface BillItem { name: string; quantity: number; unit_price: number; totalPrice: number; }
-interface ProvisionalOrder { 
+export interface BillItem { 
+    name: string; 
+    quantity: number; 
+    unit_price: number; 
+    totalPrice: number; 
+}
+export interface ProvisionalOrder { 
     orderId: string;
     tables: TableInfo[];
     totalPrice: number;
@@ -19,6 +26,11 @@ interface ProvisionalOrder {
     createdAt: string;
 }
 
+
+type ProvisionalBillScreenNavigationProp = NativeStackNavigationProp<
+  AppStackParamList,
+  'ProvisionalBill' // Tên của màn hình hiện tại
+>;
 // --- Component Card hiển thị Order (tái sử dụng từ OrderScreen) ---
 const OrderCard: React.FC<{ item: ProvisionalOrder; onPress: () => void; }> = ({ item, onPress }) => {
     const displayTableName = item.tables.map(t => t.name).join(', ');
@@ -53,6 +65,7 @@ const OrderCard: React.FC<{ item: ProvisionalOrder; onPress: () => void; }> = ({
 };
 
 const ProvisionalBillScreen = () => {
+  const navigation = useNavigation<ProvisionalBillScreenNavigationProp>(); 
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [provisionalOrders, setProvisionalOrders] = useState<ProvisionalOrder[]>([]);
@@ -167,7 +180,17 @@ const ProvisionalBillScreen = () => {
           </View>
       </View>
       
-      <TouchableOpacity className="bg-blue-500 mx-4 mt-6 mb-4 rounded-xl p-4 items-center justify-center flex-row">
+      <TouchableOpacity 
+            onPress={() => {
+                if (selectedOrder && billItems) {
+                    navigation.navigate('PrintPreview', { 
+                        order: selectedOrder, 
+                        items: billItems 
+                    });
+                }
+            }}
+            className="bg-blue-500 mx-4 mt-6 mb-4 rounded-xl p-4 items-center justify-center flex-row"
+      >
             <Icon name="print-outline" size={22} color="white" />
             <Text className="text-white text-lg font-bold ml-2">In phiếu</Text>
       </TouchableOpacity>

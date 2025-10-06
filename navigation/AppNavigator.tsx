@@ -28,6 +28,9 @@ import SplitOrderScreen from '../screens/Menu/SplitOrderScreen';
 import ReturnSelectionScreen from '../screens/Orders/ReturnSelectionScreen';
 import ServeStatusScreen from '../screens/Orders/ServeStatusScreen';
 import ReturnedItemsDetailScreen from '../screens/Orders/ReturnedItemsDetailScreen';
+
+import ProvisionalBillScreen from '../screens/Orders/ProvisionalBillScreen';
+import PrintPreviewScreen from '../screens/Orders/PrintPreviewScreen';
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const AppStack = createNativeStackNavigator<AppStackParamList>();
 
@@ -70,8 +73,19 @@ const MainAppStack = () => (
       component={ReturnedItemsDetailScreen} 
     />
 
+    
+
     <AppStack.Screen name={ROUTES.SPLIT_ORDER} component={SplitOrderScreen} />
     <AppStack.Screen name={ROUTES.SERVE_STATUS} component={ServeStatusScreen} />
+
+    <AppStack.Screen 
+      name={ROUTES.PROVISIONAL_BILL} 
+      component={ProvisionalBillScreen} 
+    />
+    <AppStack.Screen 
+      name={ROUTES.PRINT_PREVIEW} 
+      component={PrintPreviewScreen} 
+    />
   </AppStack.Navigator>
 );
 

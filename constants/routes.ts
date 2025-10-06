@@ -3,7 +3,7 @@
 import { NavigatorScreenParams } from '@react-navigation/native';
 // Đảm bảo đường dẫn này chính xác tới file TableSelectionScreen.tsx của bạn
 import { TableSelectionParams } from '../screens/Menu/TableSelectionScreen'; 
-
+import { ProvisionalOrder, BillItem } from '../screens/Orders/ProvisionalBillScreen';
 export const ROUTES = {
   // --- Auth routes ---
   LOGIN: "Login",
@@ -34,6 +34,8 @@ export const ROUTES = {
   
   SERVE_STATUS: 'ServeStatus',
   RETURNED_ITEMS_DETAIL: 'ReturnedItemsDetail',
+  PROVISIONAL_BILL: 'ProvisionalBill',
+  PRINT_PREVIEW: 'PrintPreview',
 } as const;
 
 export type AuthStackParamList = {
@@ -78,4 +80,10 @@ export type AppStackParamList = {
   };
   [ROUTES.SERVE_STATUS]: { orderId: string; tableName: string };
   ReturnedItemsDetail: { orderId: string };
+
+  [ROUTES.PROVISIONAL_BILL]: undefined; // Màn hình này không cần tham số khi điều hướng đến
+  [ROUTES.PRINT_PREVIEW]: {           // Màn hình này YÊU CẦU tham số
+    order: ProvisionalOrder;
+    items: BillItem[];
+  };
 };
