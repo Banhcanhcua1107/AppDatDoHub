@@ -31,14 +31,12 @@ const ActionSheetModal: React.FC<Props> = ({ visible, onClose, actions, title })
   );
 
   return (
-    <Modal
-      animationType="slide"
-      transparent={true}
-      visible={visible}
-      onRequestClose={onClose}
-    >
+    <Modal animationType="slide" transparent={true} visible={visible} onRequestClose={onClose}>
       <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
-        <TouchableOpacity activeOpacity={1} style={[styles.container, { paddingBottom: insets.bottom || 16 }]}>
+        <TouchableOpacity
+          activeOpacity={1}
+          style={[styles.container, { paddingBottom: insets.bottom || 16 }]}
+        >
           {title && <Text style={styles.title}>{title}</Text>}
           <FlatList
             data={actions}
@@ -47,7 +45,7 @@ const ActionSheetModal: React.FC<Props> = ({ visible, onClose, actions, title })
             ItemSeparatorComponent={() => <View style={styles.separator} />}
           />
           <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-             <Text style={styles.closeButtonText}>Đóng</Text>
+            <Text style={styles.closeButtonText}>Đóng</Text>
           </TouchableOpacity>
         </TouchableOpacity>
       </TouchableOpacity>
@@ -60,14 +58,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.4)',
     justifyContent: 'center', // <-- Thay đổi
-    alignItems: 'center',     // <-- Thêm
+    alignItems: 'center', // <-- Thêm
   },
   container: {
     backgroundColor: 'white',
     borderRadius: 16, // <-- Thay đổi
     paddingTop: 12,
     paddingHorizontal: 0, // Điều chỉnh padding cho phù hợp
-    width: '85%',       // <-- Thêm chiều rộng
+    width: '85%', // <-- Thêm chiều rộng
     elevation: 10,
   },
   title: {
@@ -108,10 +106,10 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   closeButtonText: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: '#4B5563'
-  }
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#4B5563',
+  },
 });
 
 export default ActionSheetModal;

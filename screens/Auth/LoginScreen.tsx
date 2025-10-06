@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -7,15 +7,15 @@ import {
   Image,
   SafeAreaView,
   ScrollView,
-} from "react-native";
+} from 'react-native';
 
 // --- CÁC DÒNG IMPORT QUAN TRỌNG ---
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons } from '@expo/vector-icons';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
-import { AuthStackParamList, ROUTES } from "../../constants/routes";
-import { loginUser } from "../../services/authService";
-import { NativeStackScreenProps } from "@react-navigation/native-stack";
+import { AuthStackParamList, ROUTES } from '../../constants/routes';
+import { loginUser } from '../../services/authService';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth } from '../../context/AuthContext';
 
 // --- Định nghĩa kiểu (Types) ---
@@ -26,8 +26,8 @@ type FormErrors = {
 };
 
 export default function LoginScreen({ navigation }: LoginScreenProps) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
 
@@ -35,8 +35,12 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
 
   const validateForm = (): boolean => {
     const currentErrors: FormErrors = {};
-    if (!email) { currentErrors.email = "Nhập Email is required"; }
-    if (!password) { currentErrors.password = "Nhập Password is required"; }
+    if (!email) {
+      currentErrors.email = 'Nhập Email is required';
+    }
+    if (!password) {
+      currentErrors.password = 'Nhập Password is required';
+    }
     setErrors(currentErrors);
     return Object.keys(currentErrors).length === 0;
   };
@@ -44,14 +48,13 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
   const handleLogin = async () => {
     if (validateForm()) {
       try {
-        await loginUser(email, password); 
-        login(); 
+        await loginUser(email, password);
+        login();
       } catch (error: any) {
-        alert("Lỗi đăng nhập: " + error.message);
+        alert('Lỗi đăng nhập: ' + error.message);
       }
     }
-};
-  
+  };
 
   return (
     <SafeAreaView className="flex-1 bg-white">
@@ -64,7 +67,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
           {/* Banner */}
           <View className="items-center">
             <Image
-              source={require("../../assets/images/auth-banner.png")}
+              source={require('../../assets/images/auth-banner.png')}
               className="w-80 h-60"
               resizeMode="contain"
             />
@@ -73,11 +76,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
           {/* Tiêu đề */}
           <MaskedView
             style={{ marginTop: 16 }}
-            maskElement={
-              <Text className="text-4xl font-bold text-center">
-                ĐĂNG NHẬP
-              </Text>
-            }
+            maskElement={<Text className="text-4xl font-bold text-center">ĐĂNG NHẬP</Text>}
           >
             <LinearGradient
               colors={['#3461FD', '#2A4ECA']}
@@ -89,7 +88,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
               </Text>
             </LinearGradient>
           </MaskedView>
-          
+
           {/* Form Inputs - Tăng khoảng cách trên sau khi xóa social login */}
           <View className="mt-12">
             {/* Email Input */}
@@ -101,7 +100,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
                 onChangeText={(text) => {
                   setEmail(text);
                   if (errors.email) {
-                    setErrors(prev => ({ ...prev, email: undefined }));
+                    setErrors((prev) => ({ ...prev, email: undefined }));
                   }
                 }}
                 className={`rounded-xl px-5 py-4 text-base bg-[#F5F9FE] text-gray-800 border ${errors.email ? 'border-red-500' : 'border-transparent'}`}
@@ -113,7 +112,9 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
 
             {/* Password Input */}
             <View className="mb-2">
-              <View className={`flex-row items-center rounded-xl bg-[#F5F9FE] border ${errors.password ? 'border-red-500' : 'border-transparent'}`}>
+              <View
+                className={`flex-row items-center rounded-xl bg-[#F5F9FE] border ${errors.password ? 'border-red-500' : 'border-transparent'}`}
+              >
                 <TextInput
                   placeholder="Nhập Password"
                   placeholderTextColor="#61677D"
@@ -121,7 +122,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
                   onChangeText={(text) => {
                     setPassword(text);
                     if (errors.password) {
-                      setErrors(prev => ({ ...prev, password: undefined }));
+                      setErrors((prev) => ({ ...prev, password: undefined }));
                     }
                   }}
                   secureTextEntry={!isPasswordVisible}
@@ -132,7 +133,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
                   className="p-3"
                 >
                   <Ionicons
-                    name={isPasswordVisible ? "eye-outline" : "eye-off-outline"}
+                    name={isPasswordVisible ? 'eye-outline' : 'eye-off-outline'}
                     size={22}
                     color="gray"
                   />
@@ -141,7 +142,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
               {errors.password && <Text className="text-red-500 mt-1 ml-1">{errors.password}</Text>}
             </View>
           </View>
-
 
           {/* Quên mật khẩu */}
           <TouchableOpacity
@@ -152,22 +152,15 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
           </TouchableOpacity>
 
           {/* Submit Button */}
-          <TouchableOpacity
-            onPress={handleLogin}
-            className="bg-[#3461FD] rounded-xl py-4"
-          >
-            <Text className="text-center text-white font-bold text-lg">
-              Đăng Nhập
-            </Text>
+          <TouchableOpacity onPress={handleLogin} className="bg-[#3461FD] rounded-xl py-4">
+            <Text className="text-center text-white font-bold text-lg">Đăng Nhập</Text>
           </TouchableOpacity>
 
           {/* Footer */}
           <View className="flex-row justify-center mt-6">
             <Text className="text-gray-600">Bạn không có tài khoản? </Text>
-            <TouchableOpacity onPress={() => navigation.navigate("Register")}>
-              <Text className="font-bold text-[#3461FD]">
-                Đăng ký
-              </Text>
+            <TouchableOpacity onPress={() => navigation.navigate('Register')}>
+              <Text className="font-bold text-[#3461FD]">Đăng ký</Text>
             </TouchableOpacity>
           </View>
         </View>

@@ -10,8 +10,8 @@ export const registerUser = async (email: string, password: string) => {
   });
 
   if (error) throw new Error(error.message);
-  if (!data.user) throw new Error("Không thể tạo người dùng. Vui lòng thử lại.");
-  
+  if (!data.user) throw new Error('Không thể tạo người dùng. Vui lòng thử lại.');
+
   return data.user;
 };
 
@@ -43,7 +43,7 @@ export const loginUser = async (email: string, password: string) => {
   });
 
   if (error) throw new Error(error.message);
-  if (!data.user) throw new Error("Đăng nhập thất bại, vui lòng kiểm tra lại thông tin.");
+  if (!data.user) throw new Error('Đăng nhập thất bại, vui lòng kiểm tra lại thông tin.');
 
   return data.user;
 };
@@ -53,7 +53,6 @@ export const logoutUser = async () => {
   if (error) throw new Error(error.message);
 };
 
-
 // --- Hàm cho luồng Quên Mật khẩu ---
 
 export const sendPasswordResetOtp = async (email: string) => {
@@ -62,23 +61,23 @@ export const sendPasswordResetOtp = async (email: string) => {
 };
 
 export const verifyPasswordResetOtp = async (email: string, token: string) => {
-    // Sau khi xác minh, Supabase sẽ tạo một phiên mới cho người dùng
-    const { data, error } = await supabase.auth.verifyOtp({
-        email,
-        token,
-        type: 'recovery'
-    });
-    if (error) throw new Error(error.message || 'Mã OTP không hợp lệ hoặc đã hết hạn.');
-    if (!data.session) throw new Error('Không thể tạo phiên làm việc mới.');
+  // Sau khi xác minh, Supabase sẽ tạo một phiên mới cho người dùng
+  const { data, error } = await supabase.auth.verifyOtp({
+    email,
+    token,
+    type: 'recovery',
+  });
+  if (error) throw new Error(error.message || 'Mã OTP không hợp lệ hoặc đã hết hạn.');
+  if (!data.session) throw new Error('Không thể tạo phiên làm việc mới.');
 
-    return data.session;
+  return data.session;
 };
 
 export const updateUserPassword = async (password: string) => {
-    // Hàm này yêu cầu người dùng phải đang trong một phiên làm việc (session)
-    // Phiên này được tạo sau khi verifyPasswordResetOtp thành công
-    const { data, error } = await supabase.auth.updateUser({ password: password });
-    
-    if (error) throw new Error(error.message || 'Không thể cập nhật mật khẩu.');
-    return data.user;
+  // Hàm này yêu cầu người dùng phải đang trong một phiên làm việc (session)
+  // Phiên này được tạo sau khi verifyPasswordResetOtp thành công
+  const { data, error } = await supabase.auth.updateUser({ password: password });
+
+  if (error) throw new Error(error.message || 'Không thể cập nhật mật khẩu.');
+  return data.user;
 };

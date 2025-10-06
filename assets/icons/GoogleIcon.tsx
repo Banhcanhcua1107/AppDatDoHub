@@ -1,14 +1,10 @@
 // GoogleIconSVG.js
-import React from "react";
-import Svg, { Path } from "react-native-svg";
+import React from 'react';
+import Svg, { Path } from 'react-native-svg';
 
 const GoogleIconSVG = ({ size = 24 }) => {
   return (
-    <Svg
-      height={size}
-      width={size}
-      viewBox="0 0 488 512"
-    >
+    <Svg height={size} width={size} viewBox="0 0 488 512">
       {/* Xanh dương */}
       <Path
         fill="#4285F4"

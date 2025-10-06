@@ -43,18 +43,14 @@ const BottomTabs = () => {
       })}
     >
       {/* Tab 1: Sơ đồ */}
-      <Tab.Screen
-        name={ROUTES.HOME_TAB}
-        component={HomeScreen}
-        options={{ title: 'Sơ đồ' }}
-      />
+      <Tab.Screen name={ROUTES.HOME_TAB} component={HomeScreen} options={{ title: 'Sơ đồ' }} />
 
       {/* Tab 2: Order -> Gán đúng component là OrderScreen */}
       <Tab.Screen
         name={ROUTES.ORDER_TAB}
         component={OrderScreen}
         options={{
-          title: 'Order'
+          title: 'Order',
         }}
       />
 
@@ -63,7 +59,7 @@ const BottomTabs = () => {
         name={ROUTES.RETURN_ITEMS_TAB}
         component={ReturnItemsScreen}
         options={{
-          title: 'Trả món'
+          title: 'Trả món',
         }}
       />
 
@@ -72,7 +68,7 @@ const BottomTabs = () => {
         name={ROUTES.PROVISIONAL_BILL_TAB}
         component={ProvisionalBillScreen}
         options={{
-          title: 'Tạm tính'
+          title: 'Tạm tính',
         }}
       />
 
@@ -82,7 +78,7 @@ const BottomTabs = () => {
         component={PlaceholderScreen}
         initialParams={{ screenName: 'Tiện ích' }}
         options={{
-          title: 'Tiện ích'
+          title: 'Tiện ích',
         }}
       />
     </Tab.Navigator>

@@ -1,9 +1,16 @@
-
 // --- START OF FILE OrderConfirmationScreen.tsx ---
 import React, { useState, useCallback, useEffect } from 'react';
 import {
-    View, Text, StyleSheet, StatusBar, SectionList, TouchableOpacity, Alert,
-    ActivityIndicator, Modal, TextInput
+  View,
+  Text,
+  StyleSheet,
+  StatusBar,
+  SectionList,
+  TouchableOpacity,
+  Alert,
+  ActivityIndicator,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -14,146 +21,260 @@ import { useFocusEffect } from '@react-navigation/native';
 import ReturnedItemsIndicatorCard from '../../components/ReturnedItemsIndicatorCard';
 import ActionSheetModal, { ActionSheetItem } from '../../components/ActionSheetModal';
 interface OrderSection {
-    title: string;
-    data: DisplayItem[];
+  title: string;
+  data: DisplayItem[];
 }
 interface DisplayItem {
-    id: number; uniqueKey: string; name: string; quantity: number;
-    unit_price: number; totalPrice: number; menuItemId?: number;
-    customizations: any; isNew: boolean; isPaid: boolean; created_at?: string;
-    is_served: boolean;
-    returned_quantity: number;
-    image_url: string | null;
-    isReturnedItem?: boolean; // Cờ để đánh dấu đây là dòng hiển thị món đã trả
+  id: number;
+  uniqueKey: string;
+  name: string;
+  quantity: number;
+  unit_price: number;
+  totalPrice: number;
+  menuItemId?: number;
+  customizations: any;
+  isNew: boolean;
+  isPaid: boolean;
+  created_at?: string;
+  is_served: boolean;
+  returned_quantity: number;
+  image_url: string | null;
+  isReturnedItem?: boolean; // Cờ để đánh dấu đây là dòng hiển thị món đã trả
 }
 
 const NoteInputModal: React.FC<{
-    visible: boolean; initialValue: string; onClose: () => void; onSave: (note: string) => void;
+  visible: boolean;
+  initialValue: string;
+  onClose: () => void;
+  onSave: (note: string) => void;
 }> = ({ visible, initialValue, onClose, onSave }) => {
-    const [note, setNote] = useState(initialValue);
-    useEffect(() => { setNote(initialValue); }, [initialValue]);
-    const handleSave = () => { onSave(note.trim()); onClose(); };
-    return (
-        <Modal animationType="fade" transparent={true} visible={visible} onRequestClose={onClose}>
-            <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={onClose}>
-                <TouchableOpacity activeOpacity={1} style={styles.modalContainer}>
-                    <Text style={styles.modalTitle}>Thêm ghi chú</Text>
-                    <TextInput style={styles.noteInput} placeholder="Ví dụ: ít cay, không hành..." value={note} onChangeText={setNote} multiline autoFocus />
-                    <View style={styles.modalButtons}>
-                        <TouchableOpacity style={styles.modalButton} onPress={onClose}><Text style={styles.modalButtonText}>Hủy</Text></TouchableOpacity>
-                        <TouchableOpacity style={[styles.modalButton, styles.saveButton]} onPress={handleSave}><Text style={[styles.modalButtonText, styles.saveButtonText]}>Lưu</Text></TouchableOpacity>
-                    </View>
-                </TouchableOpacity>
+  const [note, setNote] = useState(initialValue);
+  useEffect(() => {
+    setNote(initialValue);
+  }, [initialValue]);
+  const handleSave = () => {
+    onSave(note.trim());
+    onClose();
+  };
+  return (
+    <Modal animationType="fade" transparent={true} visible={visible} onRequestClose={onClose}>
+      <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={onClose}>
+        <TouchableOpacity activeOpacity={1} style={styles.modalContainer}>
+          <Text style={styles.modalTitle}>Thêm ghi chú</Text>
+          <TextInput
+            style={styles.noteInput}
+            placeholder="Ví dụ: ít cay, không hành..."
+            value={note}
+            onChangeText={setNote}
+            multiline
+            autoFocus
+          />
+          <View style={styles.modalButtons}>
+            <TouchableOpacity style={styles.modalButton} onPress={onClose}>
+              <Text style={styles.modalButtonText}>Hủy</Text>
             </TouchableOpacity>
-        </Modal>
-    );
+            <TouchableOpacity style={[styles.modalButton, styles.saveButton]} onPress={handleSave}>
+              <Text style={[styles.modalButtonText, styles.saveButtonText]}>Lưu</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </TouchableOpacity>
+    </Modal>
+  );
 };
 
 const OrderListItem: React.FC<{
-    item: DisplayItem, isExpanded: boolean, onPress: () => void,
-    onUpdateQuantity: (newQuantity: number) => void, onOpenMenu: () => void,
+  item: DisplayItem;
+  isExpanded: boolean;
+  onPress: () => void;
+  onUpdateQuantity: (newQuantity: number) => void;
+  onOpenMenu: () => void;
 }> = ({ item, isExpanded, onPress, onUpdateQuantity, onOpenMenu }) => {
-    const { customizations, isNew, isPaid, is_served, isReturnedItem } = item;
-    const sizeText = customizations.size?.name || 'N/A';
-    const sugarText = customizations.sugar?.name || 'N/A';
-    const toppingsText = (customizations.toppings?.map((t: any) => t.name) || []).join(', ') || 'Không có';
-    const noteText = customizations.note;
+  const { customizations, isNew, isPaid, is_served, isReturnedItem } = item;
+  const sizeText = customizations.size?.name || 'N/A';
+  const sugarText = customizations.sugar?.name || 'N/A';
+  const toppingsText =
+    (customizations.toppings?.map((t: any) => t.name) || []).join(', ') || 'Không có';
+  const noteText = customizations.note;
 
-    const ExpandedView = () => (
-        <View className="mt-4 pt-4 border-t border-gray-100">
-            <View className="flex-row items-center justify-between">
-                <View className="flex-row items-center">
-                    <Text className="text-gray-600 mr-4">Số lượng:</Text>
-                    <TouchableOpacity onPress={() => onUpdateQuantity(item.quantity - 1)} disabled={!isNew} className={`w-8 h-8 items-center justify-center rounded-full ${!isNew ? 'bg-gray-100' : 'bg-gray-200'}`}><Icon name="remove" size={18} color={!isNew ? "#ccc" : "#333"} /></TouchableOpacity>
-                    <Text className="text-lg font-bold mx-4">{item.quantity}</Text>
-                    <TouchableOpacity onPress={() => onUpdateQuantity(item.quantity + 1)} disabled={!isNew} className={`w-8 h-8 items-center justify-center rounded-full ${!isNew ? 'bg-gray-100' : 'bg-blue-500'}`}><Icon name="add" size={18} color={!isNew ? "#ccc" : "white"} /></TouchableOpacity>
-                </View>
-                <TouchableOpacity onPress={onOpenMenu} className="p-2"><Icon name="ellipsis-horizontal" size={24} color="gray" /></TouchableOpacity>
-            </View>
+  const ExpandedView = () => (
+    <View className="mt-4 pt-4 border-t border-gray-100">
+      <View className="flex-row items-center justify-between">
+        <View className="flex-row items-center">
+          <Text className="text-gray-600 mr-4">Số lượng:</Text>
+          <TouchableOpacity
+            onPress={() => onUpdateQuantity(item.quantity - 1)}
+            disabled={!isNew}
+            className={`w-8 h-8 items-center justify-center rounded-full ${!isNew ? 'bg-gray-100' : 'bg-gray-200'}`}
+          >
+            <Icon name="remove" size={18} color={!isNew ? '#ccc' : '#333'} />
+          </TouchableOpacity>
+          <Text className="text-lg font-bold mx-4">{item.quantity}</Text>
+          <TouchableOpacity
+            onPress={() => onUpdateQuantity(item.quantity + 1)}
+            disabled={!isNew}
+            className={`w-8 h-8 items-center justify-center rounded-full ${!isNew ? 'bg-gray-100' : 'bg-blue-500'}`}
+          >
+            <Icon name="add" size={18} color={!isNew ? '#ccc' : 'white'} />
+          </TouchableOpacity>
         </View>
-    );
-
-    return (
-      <View style={[styles.shadow, (isPaid || isReturnedItem) && styles.paidItem]} className="bg-white rounded-2xl p-4 mb-4">
-        <TouchableOpacity onPress={onPress} disabled={isPaid || isReturnedItem}>
-            <View className="flex-row justify-between items-start">
-              <View className="flex-1 pr-4">
-                <View style={{flexDirection: 'row', alignItems: 'center'}}>
-                    {is_served && !isReturnedItem && <Icon name="checkmark-circle" size={20} color="#10B981" style={{marginRight: 6}} />}
-                    <Text className={`text-lg font-bold ${(isPaid || isReturnedItem) ? 'text-gray-500' : 'text-gray-800'} ${(isReturnedItem) ? 'line-through' : ''}`}>{item.name}</Text>
-                </View>
-                <Text className="text-sm text-gray-500 mt-1">{`Size: ${sizeText}, Đường: ${sugarText}`}</Text>
-                <Text className="text-sm text-gray-500">{`Topping: ${toppingsText}`}</Text>
-                {noteText && (<View className="bg-yellow-50 p-2 rounded-md mt-2"><Text className="text-sm text-yellow-800 italic">Ghi chú: {noteText}</Text></View>)}
-              </View>
-              <View className="items-end">
-                 {isNew && <View className="bg-green-100 px-2 py-1 rounded-full mb-1"><Text className="text-green-800 text-xs font-bold">Mới</Text></View>}
-                 {isPaid && <View className="bg-gray-200 px-2 py-1 rounded-full mb-1"><Text className="text-gray-600 text-xs font-bold">Đã trả bill</Text></View>}
-                 {isReturnedItem && <View className="bg-red-100 px-2 py-1 rounded-full mb-1"><Text className="text-red-800 text-xs font-bold">Đã trả lại</Text></View>}
-                <Text className={`text-lg font-semibold ${(isPaid || isReturnedItem) ? 'text-gray-500 line-through' : 'text-gray-900'}`}>{item.totalPrice.toLocaleString('vi-VN')}đ</Text>
-              </View>
-            </View>
-            <View className="border-t border-dashed border-gray-200 mt-3 pt-2 flex-row justify-between items-center">
-              <Text className={`text-base ${(isPaid || isReturnedItem) ? 'text-gray-500' : 'text-gray-600'}`}>{item.quantity} x {item.unit_price.toLocaleString('vi-VN')}đ</Text>
-              {(!isNew && !isPaid && !isReturnedItem) && <Icon name="flame-outline" size={20} color="#F97316" />}
-            </View>
+        <TouchableOpacity onPress={onOpenMenu} className="p-2">
+          <Icon name="ellipsis-horizontal" size={24} color="gray" />
         </TouchableOpacity>
-        {isExpanded && <ExpandedView />}
       </View>
-    );
+    </View>
+  );
+
+  return (
+    <View
+      style={[styles.shadow, (isPaid || isReturnedItem) && styles.paidItem]}
+      className="bg-white rounded-2xl p-4 mb-4"
+    >
+      <TouchableOpacity onPress={onPress} disabled={isPaid || isReturnedItem}>
+        <View className="flex-row justify-between items-start">
+          <View className="flex-1 pr-4">
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              {is_served && !isReturnedItem && (
+                <Icon
+                  name="checkmark-circle"
+                  size={20}
+                  color="#10B981"
+                  style={{ marginRight: 6 }}
+                />
+              )}
+              <Text
+                className={`text-lg font-bold ${isPaid || isReturnedItem ? 'text-gray-500' : 'text-gray-800'} ${isReturnedItem ? 'line-through' : ''}`}
+              >
+                {item.name}
+              </Text>
+            </View>
+            <Text className="text-sm text-gray-500 mt-1">{`Size: ${sizeText}, Đường: ${sugarText}`}</Text>
+            <Text className="text-sm text-gray-500">{`Topping: ${toppingsText}`}</Text>
+            {noteText && (
+              <View className="bg-yellow-50 p-2 rounded-md mt-2">
+                <Text className="text-sm text-yellow-800 italic">Ghi chú: {noteText}</Text>
+              </View>
+            )}
+          </View>
+          <View className="items-end">
+            {isNew && (
+              <View className="bg-green-100 px-2 py-1 rounded-full mb-1">
+                <Text className="text-green-800 text-xs font-bold">Mới</Text>
+              </View>
+            )}
+            {isPaid && (
+              <View className="bg-gray-200 px-2 py-1 rounded-full mb-1">
+                <Text className="text-gray-600 text-xs font-bold">Đã trả bill</Text>
+              </View>
+            )}
+            {isReturnedItem && (
+              <View className="bg-red-100 px-2 py-1 rounded-full mb-1">
+                <Text className="text-red-800 text-xs font-bold">Đã trả lại</Text>
+              </View>
+            )}
+            <Text
+              className={`text-lg font-semibold ${isPaid || isReturnedItem ? 'text-gray-500 line-through' : 'text-gray-900'}`}
+            >
+              {item.totalPrice.toLocaleString('vi-VN')}đ
+            </Text>
+          </View>
+        </View>
+        <View className="border-t border-dashed border-gray-200 mt-3 pt-2 flex-row justify-between items-center">
+          <Text
+            className={`text-base ${isPaid || isReturnedItem ? 'text-gray-500' : 'text-gray-600'}`}
+          >
+            {item.quantity} x {item.unit_price.toLocaleString('vi-VN')}đ
+          </Text>
+          {!isNew && !isPaid && !isReturnedItem && (
+            <Icon name="flame-outline" size={20} color="#F97316" />
+          )}
+        </View>
+      </TouchableOpacity>
+      {isExpanded && <ExpandedView />}
+    </View>
+  );
 };
 
-const ActionButton: React.FC<{ icon: string; text: string; color: string; disabled?: boolean; onPress: () => void; }> =
-({ icon, text, color, disabled = false, onPress }) => (
-    <TouchableOpacity onPress={onPress} disabled={disabled} className={`items-center justify-center flex-1 ${disabled ? 'opacity-40' : 'opacity-100'}`}>
-        <View style={{ backgroundColor: `${color}20`}} className="w-14 h-14 rounded-full items-center justify-center"><Icon name={icon} size={28} color={color} /></View>
-        <Text style={{ color }} className="mt-2 font-semibold text-xs text-center">{text}</Text>
-    </TouchableOpacity>
+const ActionButton: React.FC<{
+  icon: string;
+  text: string;
+  color: string;
+  disabled?: boolean;
+  onPress: () => void;
+}> = ({ icon, text, color, disabled = false, onPress }) => (
+  <TouchableOpacity
+    onPress={onPress}
+    disabled={disabled}
+    className={`items-center justify-center flex-1 ${disabled ? 'opacity-40' : 'opacity-100'}`}
+  >
+    <View
+      style={{ backgroundColor: `${color}20` }}
+      className="w-14 h-14 rounded-full items-center justify-center"
+    >
+      <Icon name={icon} size={28} color={color} />
+    </View>
+    <Text style={{ color }} className="mt-2 font-semibold text-xs text-center">
+      {text}
+    </Text>
+  </TouchableOpacity>
 );
 
 type Props = NativeStackScreenProps<AppStackParamList, 'OrderConfirmation'>;
 
-
-
-
 const OrderConfirmationScreen = ({ route, navigation }: Props) => {
-    const { tableId: initialTableId, tableName: initialTableName, orderId: routeOrderId } = route.params;
-    const insets = useSafeAreaInsets();
-    const [loading, setLoading] = useState(true);
-    const [activeOrderId, setActiveOrderId] = useState<string | null>(routeOrderId || null);
+  const {
+    tableId: initialTableId,
+    tableName: initialTableName,
+    orderId: routeOrderId,
+  } = route.params;
+  const insets = useSafeAreaInsets();
+  const [loading, setLoading] = useState(true);
+  const [activeOrderId, setActiveOrderId] = useState<string | null>(routeOrderId || null);
 
-    const [displayedSections, setDisplayedSections] = useState<OrderSection[]>([]);
-    const [expandedItemKey, setExpandedItemKey] = useState<string | null>(null);
-    const [isNoteModalVisible, setNoteModalVisible] = useState(false);
-    const [editingItem, setEditingItem] = useState<DisplayItem | null>(null);
-    const [currentTables, setCurrentTables] = useState<{id: string, name: string}[]>(initialTableId ? [{id: initialTableId, name: initialTableName}] : []);
-    const [isActionSheetVisible, setActionSheetVisible] = useState(false);
-    const fetchAllData = useCallback(async (isInitialLoad = true) => {
-        if (isInitialLoad) setLoading(true);
-        try {
-            let orderIdToFetch = activeOrderId;
-            if (!orderIdToFetch && initialTableId) {
-                const { data: orderLink } = await supabase.from('order_tables').select('orders!inner(id)').eq('table_id', initialTableId).eq('orders.status', 'pending').limit(1).single();
-                if (orderLink?.orders) {
-                    const foundOrder = Array.isArray(orderLink.orders) ? orderLink.orders[0] : orderLink.orders;
-                    if (foundOrder?.id) {
-                        orderIdToFetch = foundOrder.id;
-                        if (!activeOrderId) setActiveOrderId(orderIdToFetch);
-                    }
-                }
+  const [displayedSections, setDisplayedSections] = useState<OrderSection[]>([]);
+  const [expandedItemKey, setExpandedItemKey] = useState<string | null>(null);
+  const [isNoteModalVisible, setNoteModalVisible] = useState(false);
+  const [editingItem, setEditingItem] = useState<DisplayItem | null>(null);
+  const [currentTables, setCurrentTables] = useState<{ id: string; name: string }[]>(
+    initialTableId ? [{ id: initialTableId, name: initialTableName }] : []
+  );
+  const [isActionSheetVisible, setActionSheetVisible] = useState(false);
+  const fetchAllData = useCallback(
+    async (isInitialLoad = true) => {
+      if (isInitialLoad) setLoading(true);
+      try {
+        let orderIdToFetch = activeOrderId;
+        if (!orderIdToFetch && initialTableId) {
+          const { data: orderLink } = await supabase
+            .from('order_tables')
+            .select('orders!inner(id)')
+            .eq('table_id', initialTableId)
+            .eq('orders.status', 'pending')
+            .limit(1)
+            .single();
+          if (orderLink?.orders) {
+            const foundOrder = Array.isArray(orderLink.orders)
+              ? orderLink.orders[0]
+              : orderLink.orders;
+            if (foundOrder?.id) {
+              orderIdToFetch = foundOrder.id;
+              if (!activeOrderId) setActiveOrderId(orderIdToFetch);
             }
+          }
+        }
 
-            let newItems: DisplayItem[] = [];
-            let pendingItems: DisplayItem[] = [];
-            let paidItemsData: DisplayItem[] = [];
-            let freshTables: {id: string, name: string}[] = [];
-            let returnedItemsSectionData: DisplayItem[] = [];
+        let newItems: DisplayItem[] = [];
+        let pendingItems: DisplayItem[] = [];
+        let paidItemsData: DisplayItem[] = [];
+        let freshTables: { id: string; name: string }[] = [];
+        let returnedItemsSectionData: DisplayItem[] = [];
 
-            if (orderIdToFetch) {
-                // [SỬA LỖI 1] Sửa câu truy vấn để lấy cả thông tin từ bảng `menu_items`
-                const { data: orderDetails, error: orderError } = await supabase
-                    .from('orders')
-                    .select(`
+        if (orderIdToFetch) {
+          // [SỬA LỖI 1] Sửa câu truy vấn để lấy cả thông tin từ bảng `menu_items`
+          const { data: orderDetails, error: orderError } = await supabase
+            .from('orders')
+            .select(
+              `
                         id, 
                         status, 
                         order_items(
@@ -161,456 +282,741 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
                             menu_items(name, image_url)
                         ), 
                         order_tables(tables(id, name))
-                    `)
-                    .eq('id', orderIdToFetch)
-                    .single();
+                    `
+            )
+            .eq('id', orderIdToFetch)
+            .single();
 
-                if (orderError) throw orderError;
-                if (orderDetails) {
-                    freshTables = orderDetails.order_tables.map((ot: any) => ot.tables).filter(Boolean);
-                    if (freshTables.length > 0) setCurrentTables(freshTables);
+          if (orderError) throw orderError;
+          if (orderDetails) {
+            freshTables = orderDetails.order_tables.map((ot: any) => ot.tables).filter(Boolean);
+            if (freshTables.length > 0) setCurrentTables(freshTables);
 
-                    (orderDetails.order_items || []).forEach((item: any) => {
-                         // [SỬA LỖI 2] Lấy tên và ảnh từ menu_items thay vì customizations
-                        const name = item.menu_items?.name || item.customizations?.name || 'Món đã xóa';
-                        const image_url = item.menu_items?.image_url || null;
-                        
-                        if (item.returned_quantity > 0) {
-                            returnedItemsSectionData.push({
-                                id: item.id, uniqueKey: `returned-${item.id}`, name,
-                                quantity: item.returned_quantity,
-                                unit_price: item.unit_price, totalPrice: item.returned_quantity * item.unit_price,
-                                customizations: item.customizations, isNew: false, isPaid: false,
-                                is_served: true,
-                                returned_quantity: item.returned_quantity,
-                                image_url, // Thêm image_url
-                                isReturnedItem: true
-                            });
-                        }
+            (orderDetails.order_items || []).forEach((item: any) => {
+              // [SỬA LỖI 2] Lấy tên và ảnh từ menu_items thay vì customizations
+              const name = item.menu_items?.name || item.customizations?.name || 'Món đã xóa';
+              const image_url = item.menu_items?.image_url || null;
 
-                        const remaining_quantity = item.quantity - item.returned_quantity;
-                        if (remaining_quantity > 0) {
-                            const displayItem: DisplayItem = {
-                                id: item.id, uniqueKey: `${orderDetails.status}-${item.id}`, name,
-                                quantity: remaining_quantity,
-                                unit_price: item.unit_price, totalPrice: remaining_quantity * item.unit_price,
-                                customizations: item.customizations, created_at: item.created_at, isNew: false,
-                                isPaid: orderDetails.status === 'paid' || orderDetails.status === 'closed',
-                                is_served: item.is_served, returned_quantity: item.returned_quantity,
-                                image_url, // Thêm image_url
-                            };
-                            if (displayItem.isPaid) paidItemsData.push(displayItem); else pendingItems.push(displayItem);
-                        }
-                    });
-                }
-            }
-            
-            // Lấy dữ liệu từ giỏ hàng (cart_items), cần join với menu_items để có image_url
-            const representativeTableId = freshTables[0]?.id || initialTableId;
-            if (representativeTableId) {
-                const { data: cartData, error: cartError } = await supabase
-                    .from('cart_items')
-                    .select('*, menu_items(image_url)')
-                    .eq('table_id', representativeTableId);
+              if (item.returned_quantity > 0) {
+                returnedItemsSectionData.push({
+                  id: item.id,
+                  uniqueKey: `returned-${item.id}`,
+                  name,
+                  quantity: item.returned_quantity,
+                  unit_price: item.unit_price,
+                  totalPrice: item.returned_quantity * item.unit_price,
+                  customizations: item.customizations,
+                  isNew: false,
+                  isPaid: false,
+                  is_served: true,
+                  returned_quantity: item.returned_quantity,
+                  image_url, // Thêm image_url
+                  isReturnedItem: true,
+                });
+              }
 
-                if (cartError) throw cartError;
-                
-                newItems = (cartData || []).map(item => ({ 
-                    id: item.id, uniqueKey: `new-${item.id}`, 
-                    name: item.customizations.name || 'Món mới', 
-                    quantity: item.quantity, unit_price: item.unit_price, 
-                    totalPrice: item.total_price, menuItemId: item.menu_item_id, 
-                    customizations: item.customizations, isNew: true, isPaid: false, 
-                    is_served: false, returned_quantity: 0,
-                    image_url: item.menu_items?.image_url || null // Lấy ảnh cho món mới
-                }));
-            }
-
-            const sections: OrderSection[] = [];
-            if (newItems.length > 0) sections.push({ title: 'Món mới chờ gửi bếp', data: newItems });
-
-            const groupedPendingItems = pendingItems.reduce((acc, item) => {
-                const timestamp = item.created_at || new Date().toISOString();
-                if (!acc[timestamp]) acc[timestamp] = [];
-                acc[timestamp].push(item);
-                return acc;
-            }, {} as Record<string, DisplayItem[]>);
-
-            const pendingSections = Object.keys(groupedPendingItems)
-                .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
-                .map((timestamp, index) => ({
-                    title: `Đợt ${index + 1} - ${new Date(timestamp).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`,
-                    data: groupedPendingItems[timestamp],
-                }));
-
-            sections.push(...pendingSections);
-
-            if (returnedItemsSectionData.length > 0) {
-                sections.push({ title: 'Món đã trả lại', data: returnedItemsSectionData });
-            }
-            if (paidItemsData.length > 0) sections.push({ title: 'Món đã thanh toán', data: paidItemsData });
-
-            setDisplayedSections(sections);
-
-        } catch (error: any) {
-            if (error.code !== 'PGRST116') Alert.alert("Lỗi", `Không thể tải dữ liệu: ${error.message}`);
-        } finally {
-            if (isInitialLoad) setLoading(false);
-        }
-    }, [activeOrderId, initialTableId]);
-
-    useFocusEffect(
-      useCallback(() => {
-        fetchAllData(true);
-        const channel = supabase.channel(`public:order_confirmation_v2:${activeOrderId || initialTableId}`)
-          .on('postgres_changes', { event: '*', schema: 'public' },
-            () => { fetchAllData(false); })
-          .subscribe();
-        return () => { supabase.removeChannel(channel); };
-      }, [fetchAllData, activeOrderId, initialTableId])
-    );
-
-    const handleUpdateQuantity = async (item: DisplayItem, newQuantity: number) => {
-        if (!item.isNew) return;
-        try {
-            if (newQuantity < 1) {
-                await supabase.from('cart_items').delete().eq('id', item.id).throwOnError();
-            } else {
-                await supabase.from('cart_items').update({ quantity: newQuantity, total_price: item.unit_price * newQuantity }).eq('id', item.id).throwOnError();
-            }
-            // [FIX] Tải lại dữ liệu ngay để cập nhật UI
-            await fetchAllData(false);
-        } catch(error: any) { Alert.alert("Lỗi", `Không thể cập nhật số lượng: ${error.message}`); }
-    };
-
-    const handleRemoveItem = (itemToRemove: DisplayItem) => {
-        const action = async () => {
-            try {
-                await supabase.from(itemToRemove.isNew ? 'cart_items' : 'order_items').delete().eq("id", itemToRemove.id).throwOnError();
-                // [FIX] Tải lại dữ liệu ngay để cập nhật UI
-                await fetchAllData(false);
-            } catch (error: any) { Alert.alert("Lỗi", `Không thể hủy món: ${error.message}`); }
-        };
-
-        // Nếu món mới, không cần hỏi lại
-        if (itemToRemove.isNew) {
-            action();
-        } else {
-            Alert.alert( "Xác nhận Hủy Món", `Bạn có chắc muốn hủy món "${itemToRemove.name}"?`,
-                [{ text: "Không" }, { text: "Đồng ý", style: "destructive", onPress: action }]
-            );
-        }
-    };
-
-    const handleOpenItemMenu = (item: DisplayItem) => {
-        setEditingItem(item);
-        setActionSheetVisible(true);
-    };
-
-    const handleSaveNote = async (newNote: string) => {
-        if (!editingItem) return;
-        try {
-            const updatedCustomizations = { ...editingItem.customizations, note: newNote };
-            await supabase.from(editingItem.isNew ? 'cart_items' : 'order_items').update({ customizations: updatedCustomizations }).eq('id', editingItem.id).throwOnError();
-            // [FIX] Tải lại dữ liệu ngay để cập nhật UI
-            await fetchAllData(false);
-        } catch (error: any) { Alert.alert("Lỗi", `Không thể lưu ghi chú: ${error.message}`);
-        } finally { setNoteModalVisible(false); setEditingItem(null); }
-    };
-    const itemActions: ActionSheetItem[] = [];
-    if (editingItem && !editingItem.isPaid && !editingItem.isReturnedItem) {
-        itemActions.push({
-            id: 'note',
-            text: 'Thêm/Sửa Ghi chú',
-            icon: 'create-outline',
-            onPress: () => {
-                // 1. Đóng ActionSheet
-                setActionSheetVisible(false);
-                // 2. Đợi một chút cho hiệu ứng đóng hoàn tất rồi mới mở modal ghi chú
-                setTimeout(() => {
-                    setNoteModalVisible(true);
-                }, 250); // 250ms là khoảng thời gian hợp lý
-            },
-        });
-        itemActions.push({
-            id: 'remove',
-            text: 'Hủy món',
-            icon: 'trash-outline',
-            color: '#EF4444',
-            onPress: () => {
-                const itemToRemove = editingItem;
-                // 1. Đóng ActionSheet và xóa item đang sửa khỏi state
-                setActionSheetVisible(false);
-                setEditingItem(null);
-                // 2. Đợi một chút rồi mới thực hiện hành động hủy món để UI mượt mà
-                setTimeout(() => {
-                    if (itemToRemove) {
-                        handleRemoveItem(itemToRemove);
-                    }
-                }, 250);
-            },
-        });
-    }
-
-    const allItems = displayedSections.flatMap(s => s.data);
-    const representativeTable = currentTables[0] || {id: initialTableId, name: initialTableName};
-    const currentTableNameForDisplay = currentTables.map(t => t.name).join(', ');
-    const newItemsFromCart = allItems.filter(item => item.isNew);
-    const billableItems = allItems.filter(item => !item.isPaid && !item.isReturnedItem);
-    const paidItems = allItems.filter(item => item.isPaid);
-    const hasNewItems = newItemsFromCart.length > 0;
-    const totalBill = billableItems.reduce((sum, item) => sum + item.totalPrice, 0);
-
-    const sendNewItemsToKitchen = async (): Promise<string | null> => {
-        if (!hasNewItems) return activeOrderId;
-        let orderIdToUse = activeOrderId;
-        try {
-            if (!orderIdToUse) {
-                const { data: newOrder } = await supabase.from('orders').insert({ status: 'pending', total_price: 0 }).select('id').single();
-                if (!newOrder) throw new Error("Không thể tạo order mới.");
-                orderIdToUse = newOrder.id;
-                await supabase.from('order_tables').insert({ order_id: orderIdToUse, table_id: representativeTable.id }).throwOnError();
-                await supabase.from('tables').update({ status: 'Đang phục vụ' }).eq('id', representativeTable.id).throwOnError();
-                setActiveOrderId(orderIdToUse);
-            }
-            const itemsToInsert = newItemsFromCart.map(item => ({ order_id: orderIdToUse, menu_item_id: item.menuItemId, quantity: item.quantity, unit_price: item.unit_price, customizations: item.customizations }));
-            await supabase.from('order_items').insert(itemsToInsert).throwOnError();
-            await supabase.from('cart_items').delete().in('id', newItemsFromCart.map(i => i.id)).throwOnError();
-            return orderIdToUse;
-        } catch (error: any) { Alert.alert("Lỗi Gửi Bếp", error.message); return null; }
-    };
-
-    const handleSendToKitchen = async () => { setLoading(true); await sendNewItemsToKitchen(); await fetchAllData(false);  setLoading(false); };
-
-    const handlePayment = async () => {
-        if (billableItems.length === 0) {
-            Alert.alert("Thông báo", "Không có món nào cần thanh toán.");
-            return;
+              const remaining_quantity = item.quantity - item.returned_quantity;
+              if (remaining_quantity > 0) {
+                const displayItem: DisplayItem = {
+                  id: item.id,
+                  uniqueKey: `${orderDetails.status}-${item.id}`,
+                  name,
+                  quantity: remaining_quantity,
+                  unit_price: item.unit_price,
+                  totalPrice: remaining_quantity * item.unit_price,
+                  customizations: item.customizations,
+                  created_at: item.created_at,
+                  isNew: false,
+                  isPaid: orderDetails.status === 'paid' || orderDetails.status === 'closed',
+                  is_served: item.is_served,
+                  returned_quantity: item.returned_quantity,
+                  image_url, // Thêm image_url
+                };
+                if (displayItem.isPaid) paidItemsData.push(displayItem);
+                else pendingItems.push(displayItem);
+              }
+            });
+          }
         }
 
-        setLoading(true);
-        let finalOrderId = activeOrderId;
-        if (hasNewItems) {
-            const returnedOrderId = await sendNewItemsToKitchen();
-            if (!returnedOrderId) { setLoading(false); return; }
-            finalOrderId = returnedOrderId;
-        }
+        // Lấy dữ liệu từ giỏ hàng (cart_items), cần join với menu_items để có image_url
+        const representativeTableId = freshTables[0]?.id || initialTableId;
+        if (representativeTableId) {
+          const { data: cartData, error: cartError } = await supabase
+            .from('cart_items')
+            .select('*, menu_items(image_url)')
+            .eq('table_id', representativeTableId);
 
-        if (!finalOrderId) {
-            Alert.alert("Lỗi", "Không tìm thấy order để thanh toán.");
-            setLoading(false);
-            return;
-        }
+          if (cartError) throw cartError;
 
-        const { data: finalItemsData } = await supabase.from('order_items').select('quantity, unit_price, returned_quantity').eq('order_id', finalOrderId);
-        const finalBillToPay = (finalItemsData || []).reduce((sum, item) => {
-            const remainingQty = item.quantity - item.returned_quantity;
-            return sum + (remainingQty * item.unit_price);
-        }, 0);
-
-        setLoading(false);
-        Alert.alert(
-            "Xác nhận thanh toán", `Tổng hóa đơn là ${finalBillToPay.toLocaleString('vi-VN')}đ.`,
-            [
-                { text: "Hủy" },
-                { text: "Giữ phiên", onPress: () => handleKeepSessionAfterPayment(finalOrderId!, finalBillToPay) },
-                { text: "Kết thúc", onPress: () => handleEndSessionAfterPayment(finalOrderId!, finalBillToPay) }
-            ]
-        );
-    };
-
-    const handleKeepSessionAfterPayment = async (orderId: string, finalBill: number) => {
-        setLoading(true);
-        try {
-            await supabase.from('orders').update({ status: 'paid', total_price: finalBill }).eq('id', orderId).throwOnError();
-            Alert.alert("Thành công", "Đã thanh toán. Bàn vẫn đang được phục vụ.");
-        } catch (error: any) {
-            Alert.alert("Lỗi", `Không thể cập nhật trạng thái order: ${error.message}`);
-        } finally { setLoading(false); }
-    };
-
-    const handleEndSessionAfterPayment = async (orderId: string, finalBill: number) => {
-        setLoading(true);
-        try {
-            const { data: orderTables, error: tablesError } = await supabase.from('order_tables').select('table_id').eq('order_id', orderId);
-            if (tablesError) throw tablesError;
-            const tableIdsToUpdate = orderTables.map(t => t.table_id);
-
-            await supabase.from('orders').update({ status: 'closed', total_price: finalBill }).eq('id', orderId).throwOnError();
-            await supabase.from('tables').update({ status: 'Trống' }).in('id', tableIdsToUpdate).throwOnError();
-
-            Alert.alert("Hoàn tất", "Bàn đã được thanh toán và dọn dẹp.");
-            navigation.navigate(ROUTES.APP_TABS, { screen: ROUTES.HOME_TAB });
-        } catch (error: any) {
-            Alert.alert("Lỗi", `Không thể kết thúc phiên làm việc: ${error.message}`);
-        } finally { setLoading(false); }
-    };
-
-    const handleCloseSessionAfterPayment = () => {
-        if (!activeOrderId) return;
-        Alert.alert("Xác nhận Đóng Bàn", "Bạn có chắc muốn kết thúc phiên và dọn bàn này không?",
-            [{ text: "Hủy" }, { text: "Đồng ý", style: "destructive", onPress: async () => {
-                setLoading(true);
-                try {
-                    const { data: orderTables, error: tablesError } = await supabase.from('order_tables').select('table_id').eq('order_id', activeOrderId);
-                    if (tablesError) throw tablesError;
-                    const tableIdsToUpdate = orderTables.map(t => t.table_id);
-                    await supabase.from('orders').update({ status: 'closed' }).eq('id', activeOrderId).throwOnError();
-                    await supabase.from('tables').update({ status: 'Trống' }).in('id', tableIdsToUpdate).throwOnError();
-                    Alert.alert("Thành công", "Đã đóng bàn và kết thúc phiên.");
-                    navigation.navigate(ROUTES.APP_TABS, { screen: ROUTES.HOME_TAB });
-                } catch(error: any) {
-                    Alert.alert("Lỗi", `Không thể đóng bàn: ${error.message}`);
-                } finally { setLoading(false); }
-            }}]
-        )
-    };
-
-    const handleGoToReturnScreen = async () => {
-        if (hasNewItems) {
-            Alert.alert("Món mới chưa gửi", "Bạn cần 'Gửi bếp' các món mới trước khi thực hiện trả món.", [
-                { text: "Để sau" },
-                { text: "Gửi bếp ngay", onPress: async () => {
-                    setLoading(true);
-                    const success = await sendNewItemsToKitchen();
-                    setLoading(false);
-                    if (success) { setTimeout(navigateToReturn, 500); }
-                }}
-            ]);
-        } else {
-            navigateToReturn();
-        }
-    };
-
-    // [SỬA LỖI TẠI ĐÂY]
-    const navigateToReturn = () => {
-        const returnableItems = billableItems.map(item => ({
+          newItems = (cartData || []).map((item) => ({
             id: item.id,
-            name: item.name,
+            uniqueKey: `new-${item.id}`,
+            name: item.customizations.name || 'Món mới',
             quantity: item.quantity,
             unit_price: item.unit_price,
-            image_url: item.image_url, // <-- LẤY TỪ `item.image_url` ĐÃ LƯU
-        }));
+            totalPrice: item.total_price,
+            menuItemId: item.menu_item_id,
+            customizations: item.customizations,
+            isNew: true,
+            isPaid: false,
+            is_served: false,
+            returned_quantity: 0,
+            image_url: item.menu_items?.image_url || null, // Lấy ảnh cho món mới
+          }));
+        }
 
-        if (returnableItems.length === 0) {
-            Alert.alert("Thông báo", "Không có món nào đã gửi bếp để có thể trả.");
-            return;
+        const sections: OrderSection[] = [];
+        if (newItems.length > 0) sections.push({ title: 'Món mới chờ gửi bếp', data: newItems });
+
+        const groupedPendingItems = pendingItems.reduce(
+          (acc, item) => {
+            const timestamp = item.created_at || new Date().toISOString();
+            if (!acc[timestamp]) acc[timestamp] = [];
+            acc[timestamp].push(item);
+            return acc;
+          },
+          {} as Record<string, DisplayItem[]>
+        );
+
+        const pendingSections = Object.keys(groupedPendingItems)
+          .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
+          .map((timestamp, index) => ({
+            title: `Đợt ${index + 1} - ${new Date(timestamp).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`,
+            data: groupedPendingItems[timestamp],
+          }));
+
+        sections.push(...pendingSections);
+
+        if (returnedItemsSectionData.length > 0) {
+          sections.push({ title: 'Món đã trả lại', data: returnedItemsSectionData });
         }
-        if (activeOrderId) {
-            navigation.navigate(ROUTES.RETURN_SELECTION, {
-                orderId: activeOrderId,
-                items: returnableItems,
-            });
-        }
+        if (paidItemsData.length > 0)
+          sections.push({ title: 'Món đã thanh toán', data: paidItemsData });
+
+        setDisplayedSections(sections);
+      } catch (error: any) {
+        if (error.code !== 'PGRST116')
+          Alert.alert('Lỗi', `Không thể tải dữ liệu: ${error.message}`);
+      } finally {
+        if (isInitialLoad) setLoading(false);
+      }
+    },
+    [activeOrderId, initialTableId]
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchAllData(true);
+      const channel = supabase
+        .channel(`public:order_confirmation_v2:${activeOrderId || initialTableId}`)
+        .on('postgres_changes', { event: '*', schema: 'public' }, () => {
+          fetchAllData(false);
+        })
+        .subscribe();
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }, [fetchAllData, activeOrderId, initialTableId])
+  );
+
+  const handleUpdateQuantity = async (item: DisplayItem, newQuantity: number) => {
+    if (!item.isNew) return;
+    try {
+      if (newQuantity < 1) {
+        await supabase.from('cart_items').delete().eq('id', item.id).throwOnError();
+      } else {
+        await supabase
+          .from('cart_items')
+          .update({ quantity: newQuantity, total_price: item.unit_price * newQuantity })
+          .eq('id', item.id)
+          .throwOnError();
+      }
+      // [FIX] Tải lại dữ liệu ngay để cập nhật UI
+      await fetchAllData(false);
+    } catch (error: any) {
+      Alert.alert('Lỗi', `Không thể cập nhật số lượng: ${error.message}`);
     }
+  };
 
-    const handleProvisionalBill = async () => {
-        if (!activeOrderId) { Alert.alert("Lỗi", "Không tìm thấy order để tạm tính."); return; }
-        setLoading(true);
-        try {
-            const { error } = await supabase.rpc('toggle_provisional_bill_status', { p_order_id: activeOrderId });
-            if (error) throw error;
-            Alert.alert("Thành công", "Đã cập nhật trạng thái tạm tính. Bạn có thể xem trong tab Tạm tính.");
-        } catch (error: any) {
-            Alert.alert("Lỗi", "Không thể cập nhật trạng thái tạm tính: " + error.message);
-        } finally { setLoading(false); }
+  const handleRemoveItem = (itemToRemove: DisplayItem) => {
+    const action = async () => {
+      try {
+        await supabase
+          .from(itemToRemove.isNew ? 'cart_items' : 'order_items')
+          .delete()
+          .eq('id', itemToRemove.id)
+          .throwOnError();
+        // [FIX] Tải lại dữ liệu ngay để cập nhật UI
+        await fetchAllData(false);
+      } catch (error: any) {
+        Alert.alert('Lỗi', `Không thể hủy món: ${error.message}`);
+      }
     };
 
-    if (loading) { return <View style={styles.containerCenter}><ActivityIndicator size="large" color="#3B82F6" /></View>; }
+    // Nếu món mới, không cần hỏi lại
+    if (itemToRemove.isNew) {
+      action();
+    } else {
+      Alert.alert('Xác nhận Hủy Món', `Bạn có chắc muốn hủy món "${itemToRemove.name}"?`, [
+        { text: 'Không' },
+        { text: 'Đồng ý', style: 'destructive', onPress: action },
+      ]);
+    }
+  };
 
-    const AddMoreItemsButton = () => (
-        <TouchableOpacity style={styles.addMoreButton} onPress={() => navigation.navigate(ROUTES.MENU, { tableId: representativeTable.id, tableName: currentTableNameForDisplay, orderId: activeOrderId || undefined })}>
-            <Icon name="add-outline" size={22} color="#3B82F6" />
-            <Text style={styles.addMoreButtonText}>Thêm món khác</Text>
-        </TouchableOpacity>
+  const handleOpenItemMenu = (item: DisplayItem) => {
+    setEditingItem(item);
+    setActionSheetVisible(true);
+  };
+
+  const handleSaveNote = async (newNote: string) => {
+    if (!editingItem) return;
+    try {
+      const updatedCustomizations = { ...editingItem.customizations, note: newNote };
+      await supabase
+        .from(editingItem.isNew ? 'cart_items' : 'order_items')
+        .update({ customizations: updatedCustomizations })
+        .eq('id', editingItem.id)
+        .throwOnError();
+      // [FIX] Tải lại dữ liệu ngay để cập nhật UI
+      await fetchAllData(false);
+    } catch (error: any) {
+      Alert.alert('Lỗi', `Không thể lưu ghi chú: ${error.message}`);
+    } finally {
+      setNoteModalVisible(false);
+      setEditingItem(null);
+    }
+  };
+  const itemActions: ActionSheetItem[] = [];
+  if (editingItem && !editingItem.isPaid && !editingItem.isReturnedItem) {
+    itemActions.push({
+      id: 'note',
+      text: 'Thêm/Sửa Ghi chú',
+      icon: 'create-outline',
+      onPress: () => {
+        // 1. Đóng ActionSheet
+        setActionSheetVisible(false);
+        // 2. Đợi một chút cho hiệu ứng đóng hoàn tất rồi mới mở modal ghi chú
+        setTimeout(() => {
+          setNoteModalVisible(true);
+        }, 250); // 250ms là khoảng thời gian hợp lý
+      },
+    });
+    itemActions.push({
+      id: 'remove',
+      text: 'Hủy món',
+      icon: 'trash-outline',
+      color: '#EF4444',
+      onPress: () => {
+        const itemToRemove = editingItem;
+        // 1. Đóng ActionSheet và xóa item đang sửa khỏi state
+        setActionSheetVisible(false);
+        setEditingItem(null);
+        // 2. Đợi một chút rồi mới thực hiện hành động hủy món để UI mượt mà
+        setTimeout(() => {
+          if (itemToRemove) {
+            handleRemoveItem(itemToRemove);
+          }
+        }, 250);
+      },
+    });
+  }
+
+  const allItems = displayedSections.flatMap((s) => s.data);
+  const representativeTable = currentTables[0] || { id: initialTableId, name: initialTableName };
+  const currentTableNameForDisplay = currentTables.map((t) => t.name).join(', ');
+  const newItemsFromCart = allItems.filter((item) => item.isNew);
+  const billableItems = allItems.filter((item) => !item.isPaid && !item.isReturnedItem);
+  const paidItems = allItems.filter((item) => item.isPaid);
+  const hasNewItems = newItemsFromCart.length > 0;
+  const totalBill = billableItems.reduce((sum, item) => sum + item.totalPrice, 0);
+
+  const sendNewItemsToKitchen = async (): Promise<string | null> => {
+    if (!hasNewItems) return activeOrderId;
+    let orderIdToUse = activeOrderId;
+    try {
+      if (!orderIdToUse) {
+        const { data: newOrder } = await supabase
+          .from('orders')
+          .insert({ status: 'pending', total_price: 0 })
+          .select('id')
+          .single();
+        if (!newOrder) throw new Error('Không thể tạo order mới.');
+        orderIdToUse = newOrder.id;
+        await supabase
+          .from('order_tables')
+          .insert({ order_id: orderIdToUse, table_id: representativeTable.id })
+          .throwOnError();
+        await supabase
+          .from('tables')
+          .update({ status: 'Đang phục vụ' })
+          .eq('id', representativeTable.id)
+          .throwOnError();
+        setActiveOrderId(orderIdToUse);
+      }
+      const itemsToInsert = newItemsFromCart.map((item) => ({
+        order_id: orderIdToUse,
+        menu_item_id: item.menuItemId,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        customizations: item.customizations,
+      }));
+      await supabase.from('order_items').insert(itemsToInsert).throwOnError();
+      await supabase
+        .from('cart_items')
+        .delete()
+        .in(
+          'id',
+          newItemsFromCart.map((i) => i.id)
+        )
+        .throwOnError();
+      return orderIdToUse;
+    } catch (error: any) {
+      Alert.alert('Lỗi Gửi Bếp', error.message);
+      return null;
+    }
+  };
+
+  const handleSendToKitchen = async () => {
+    setLoading(true);
+    await sendNewItemsToKitchen();
+    await fetchAllData(false);
+    setLoading(false);
+  };
+
+  const handlePayment = async () => {
+    if (billableItems.length === 0) {
+      Alert.alert('Thông báo', 'Không có món nào cần thanh toán.');
+      return;
+    }
+
+    setLoading(true);
+    let finalOrderId = activeOrderId;
+    if (hasNewItems) {
+      const returnedOrderId = await sendNewItemsToKitchen();
+      if (!returnedOrderId) {
+        setLoading(false);
+        return;
+      }
+      finalOrderId = returnedOrderId;
+    }
+
+    if (!finalOrderId) {
+      Alert.alert('Lỗi', 'Không tìm thấy order để thanh toán.');
+      setLoading(false);
+      return;
+    }
+
+    const { data: finalItemsData } = await supabase
+      .from('order_items')
+      .select('quantity, unit_price, returned_quantity')
+      .eq('order_id', finalOrderId);
+    const finalBillToPay = (finalItemsData || []).reduce((sum, item) => {
+      const remainingQty = item.quantity - item.returned_quantity;
+      return sum + remainingQty * item.unit_price;
+    }, 0);
+
+    setLoading(false);
+    Alert.alert(
+      'Xác nhận thanh toán',
+      `Tổng hóa đơn là ${finalBillToPay.toLocaleString('vi-VN')}đ.`,
+      [
+        { text: 'Hủy' },
+        {
+          text: 'Giữ phiên',
+          onPress: () => handleKeepSessionAfterPayment(finalOrderId!, finalBillToPay),
+        },
+        {
+          text: 'Kết thúc',
+          onPress: () => handleEndSessionAfterPayment(finalOrderId!, finalBillToPay),
+        },
+      ]
     );
+  };
 
-    const hasBillableItems = billableItems.length > 0;
-    const isSessionClosable = paidItems.length > 0 && billableItems.length === 0 && !hasNewItems;
+  const handleKeepSessionAfterPayment = async (orderId: string, finalBill: number) => {
+    setLoading(true);
+    try {
+      await supabase
+        .from('orders')
+        .update({ status: 'paid', total_price: finalBill })
+        .eq('id', orderId)
+        .throwOnError();
+      Alert.alert('Thành công', 'Đã thanh toán. Bàn vẫn đang được phục vụ.');
+    } catch (error: any) {
+      Alert.alert('Lỗi', `Không thể cập nhật trạng thái order: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  const handleEndSessionAfterPayment = async (orderId: string, finalBill: number) => {
+    setLoading(true);
+    try {
+      const { data: orderTables, error: tablesError } = await supabase
+        .from('order_tables')
+        .select('table_id')
+        .eq('order_id', orderId);
+      if (tablesError) throw tablesError;
+      const tableIdsToUpdate = orderTables.map((t) => t.table_id);
+
+      await supabase
+        .from('orders')
+        .update({ status: 'closed', total_price: finalBill })
+        .eq('id', orderId)
+        .throwOnError();
+      await supabase
+        .from('tables')
+        .update({ status: 'Trống' })
+        .in('id', tableIdsToUpdate)
+        .throwOnError();
+
+      Alert.alert('Hoàn tất', 'Bàn đã được thanh toán và dọn dẹp.');
+      navigation.navigate(ROUTES.APP_TABS, { screen: ROUTES.HOME_TAB });
+    } catch (error: any) {
+      Alert.alert('Lỗi', `Không thể kết thúc phiên làm việc: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCloseSessionAfterPayment = () => {
+    if (!activeOrderId) return;
+    Alert.alert('Xác nhận Đóng Bàn', 'Bạn có chắc muốn kết thúc phiên và dọn bàn này không?', [
+      { text: 'Hủy' },
+      {
+        text: 'Đồng ý',
+        style: 'destructive',
+        onPress: async () => {
+          setLoading(true);
+          try {
+            const { data: orderTables, error: tablesError } = await supabase
+              .from('order_tables')
+              .select('table_id')
+              .eq('order_id', activeOrderId);
+            if (tablesError) throw tablesError;
+            const tableIdsToUpdate = orderTables.map((t) => t.table_id);
+            await supabase
+              .from('orders')
+              .update({ status: 'closed' })
+              .eq('id', activeOrderId)
+              .throwOnError();
+            await supabase
+              .from('tables')
+              .update({ status: 'Trống' })
+              .in('id', tableIdsToUpdate)
+              .throwOnError();
+            Alert.alert('Thành công', 'Đã đóng bàn và kết thúc phiên.');
+            navigation.navigate(ROUTES.APP_TABS, { screen: ROUTES.HOME_TAB });
+          } catch (error: any) {
+            Alert.alert('Lỗi', `Không thể đóng bàn: ${error.message}`);
+          } finally {
+            setLoading(false);
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleGoToReturnScreen = async () => {
+    if (hasNewItems) {
+      Alert.alert(
+        'Món mới chưa gửi',
+        "Bạn cần 'Gửi bếp' các món mới trước khi thực hiện trả món.",
+        [
+          { text: 'Để sau' },
+          {
+            text: 'Gửi bếp ngay',
+            onPress: async () => {
+              setLoading(true);
+              const success = await sendNewItemsToKitchen();
+              setLoading(false);
+              if (success) {
+                setTimeout(navigateToReturn, 500);
+              }
+            },
+          },
+        ]
+      );
+    } else {
+      navigateToReturn();
+    }
+  };
+
+  // [SỬA LỖI TẠI ĐÂY]
+  const navigateToReturn = () => {
+    const returnableItems = billableItems.map((item) => ({
+      id: item.id,
+      name: item.name,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      image_url: item.image_url, // <-- LẤY TỪ `item.image_url` ĐÃ LƯU
+    }));
+
+    if (returnableItems.length === 0) {
+      Alert.alert('Thông báo', 'Không có món nào đã gửi bếp để có thể trả.');
+      return;
+    }
+    if (activeOrderId) {
+      navigation.navigate(ROUTES.RETURN_SELECTION, {
+        orderId: activeOrderId,
+        items: returnableItems,
+      });
+    }
+  };
+
+  const handleProvisionalBill = async () => {
+    if (!activeOrderId) {
+      Alert.alert('Lỗi', 'Không tìm thấy order để tạm tính.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const { error } = await supabase.rpc('toggle_provisional_bill_status', {
+        p_order_id: activeOrderId,
+      });
+      if (error) throw error;
+      Alert.alert(
+        'Thành công',
+        'Đã cập nhật trạng thái tạm tính. Bạn có thể xem trong tab Tạm tính.'
+      );
+    } catch (error: any) {
+      Alert.alert('Lỗi', 'Không thể cập nhật trạng thái tạm tính: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
     return (
-        <View style={styles.flex1}>
-            <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-            <View style={{ paddingTop: insets.top + 10 }} className="px-4 pb-3">
-                <View className="flex-row items-center justify-between">
-                    <TouchableOpacity onPress={() => navigation.goBack()} className="p-2 -ml-2"><Icon name="arrow-back-outline" size={26} color="#1F2937" /></TouchableOpacity>
-                    <Text className="text-xl font-bold text-gray-800 flex-1 text-center" numberOfLines={1} ellipsizeMode='tail'>
-                        Order cho {currentTableNameForDisplay}
-                    </Text>
-                    <View className="w-8" />
-                </View>
-            </View>
-            <SectionList
-                sections={displayedSections}
-                keyExtractor={(item) => item.uniqueKey}
-                renderItem={({ item }) => (
-                    <OrderListItem
-                        item={item}
-                        isExpanded={expandedItemKey === item.uniqueKey}
-                        onPress={() => setExpandedItemKey(prevKey => (prevKey === item.uniqueKey ? null : item.uniqueKey))}
-                        onUpdateQuantity={(newQuantity) => handleUpdateQuantity(item, newQuantity)}
-                        onOpenMenu={() => handleOpenItemMenu(item)}
-                    />
-                )}
-                renderSectionHeader={({ section: { title } }) => (<Text style={styles.sectionHeader}>{title}</Text>)}
-                ListHeaderComponent={
-                    // Đảm bảo bạn truyền đúng activeOrderId
-                    activeOrderId ? <ReturnedItemsIndicatorCard orderId={activeOrderId} /> : null
-                }
-                contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 220 }}
-                ListEmptyComponent={<View className="mt-20 items-center"><Text className="text-gray-500 mb-6">Chưa có món nào được gọi.</Text><AddMoreItemsButton /></View>}
-                ListFooterComponent={allItems.length > 0 ? <AddMoreItemsButton /> : null}
-            />
-
-            <View style={[styles.bottomBar, { paddingBottom: insets.bottom > 0 ? insets.bottom : 16 }]}>
-                <View className="flex-row items-center justify-between w-full mb-4 px-2">
-                    <Text className="text-gray-500 text-base font-medium">Cần thanh toán</Text>
-                    <Text className="text-3xl font-bold text-gray-900">{totalBill.toLocaleString('vi-VN')}đ</Text>
-                </View>
-                <View className="flex-row justify-around w-full">
-                    <ActionButton icon="paper-plane-outline" text="Gửi bếp" color="#3B82F6" disabled={!hasNewItems} onPress={handleSendToKitchen} />
-                    <ActionButton icon="arrow-undo-outline" text="Trả Món" color="#F97316" disabled={!hasBillableItems} onPress={handleGoToReturnScreen} />
-                    <ActionButton icon="receipt-outline" text="Tạm tính" color="#8B5CF6" disabled={!hasBillableItems && !hasNewItems} onPress={handleProvisionalBill} />
-                    {isSessionClosable
-                        ? (<ActionButton icon="close-circle-outline" text="Đóng bàn" color="#EF4444" onPress={handleCloseSessionAfterPayment} disabled={loading}/>)
-                        : (<ActionButton icon="cash-outline" text="Thanh toán" color="#10B981" onPress={handlePayment} disabled={!hasBillableItems && !hasNewItems} />)
-                    }
-                </View>
-            </View>
-                {editingItem && (<NoteInputModal visible={isNoteModalVisible} onClose={() => setNoteModalVisible(false)} initialValue={editingItem.customizations?.note || ''} onSave={handleSaveNote}/>)}
-                {editingItem && (
-                    <ActionSheetModal
-                        visible={isActionSheetVisible}
-                        onClose={() => {
-                            setActionSheetVisible(false);
-                            setEditingItem(null); // Reset item đang sửa khi đóng bằng cách nhấn ra ngoài hoặc nút "Đóng"
-                        }}
-                        title={`Tùy chỉnh "${editingItem.name}"`}
-                        actions={itemActions}
-                    />
-                )}
-        </View>
+      <View style={styles.containerCenter}>
+        <ActivityIndicator size="large" color="#3B82F6" />
+      </View>
     );
+  }
+
+  const AddMoreItemsButton = () => (
+    <TouchableOpacity
+      style={styles.addMoreButton}
+      onPress={() =>
+        navigation.navigate(ROUTES.MENU, {
+          tableId: representativeTable.id,
+          tableName: currentTableNameForDisplay,
+          orderId: activeOrderId || undefined,
+        })
+      }
+    >
+      <Icon name="add-outline" size={22} color="#3B82F6" />
+      <Text style={styles.addMoreButtonText}>Thêm món khác</Text>
+    </TouchableOpacity>
+  );
+
+  const hasBillableItems = billableItems.length > 0;
+  const isSessionClosable = paidItems.length > 0 && billableItems.length === 0 && !hasNewItems;
+
+  return (
+    <View style={styles.flex1}>
+      <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
+      <View style={{ paddingTop: insets.top + 10 }} className="px-4 pb-3">
+        <View className="flex-row items-center justify-between">
+          <TouchableOpacity onPress={() => navigation.goBack()} className="p-2 -ml-2">
+            <Icon name="arrow-back-outline" size={26} color="#1F2937" />
+          </TouchableOpacity>
+          <Text
+            className="text-xl font-bold text-gray-800 flex-1 text-center"
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
+            Order cho {currentTableNameForDisplay}
+          </Text>
+          <View className="w-8" />
+        </View>
+      </View>
+      <SectionList
+        sections={displayedSections}
+        keyExtractor={(item) => item.uniqueKey}
+        renderItem={({ item }) => (
+          <OrderListItem
+            item={item}
+            isExpanded={expandedItemKey === item.uniqueKey}
+            onPress={() =>
+              setExpandedItemKey((prevKey) => (prevKey === item.uniqueKey ? null : item.uniqueKey))
+            }
+            onUpdateQuantity={(newQuantity) => handleUpdateQuantity(item, newQuantity)}
+            onOpenMenu={() => handleOpenItemMenu(item)}
+          />
+        )}
+        renderSectionHeader={({ section: { title } }) => (
+          <Text style={styles.sectionHeader}>{title}</Text>
+        )}
+        ListHeaderComponent={
+          // Đảm bảo bạn truyền đúng activeOrderId
+          activeOrderId ? <ReturnedItemsIndicatorCard orderId={activeOrderId} /> : null
+        }
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 220 }}
+        ListEmptyComponent={
+          <View className="mt-20 items-center">
+            <Text className="text-gray-500 mb-6">Chưa có món nào được gọi.</Text>
+            <AddMoreItemsButton />
+          </View>
+        }
+        ListFooterComponent={allItems.length > 0 ? <AddMoreItemsButton /> : null}
+      />
+
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom > 0 ? insets.bottom : 16 }]}>
+        <View className="flex-row items-center justify-between w-full mb-4 px-2">
+          <Text className="text-gray-500 text-base font-medium">Cần thanh toán</Text>
+          <Text className="text-3xl font-bold text-gray-900">
+            {totalBill.toLocaleString('vi-VN')}đ
+          </Text>
+        </View>
+        <View className="flex-row justify-around w-full">
+          <ActionButton
+            icon="paper-plane-outline"
+            text="Gửi bếp"
+            color="#3B82F6"
+            disabled={!hasNewItems}
+            onPress={handleSendToKitchen}
+          />
+          <ActionButton
+            icon="arrow-undo-outline"
+            text="Trả Món"
+            color="#F97316"
+            disabled={!hasBillableItems}
+            onPress={handleGoToReturnScreen}
+          />
+          <ActionButton
+            icon="receipt-outline"
+            text="Tạm tính"
+            color="#8B5CF6"
+            disabled={!hasBillableItems && !hasNewItems}
+            onPress={handleProvisionalBill}
+          />
+          {isSessionClosable ? (
+            <ActionButton
+              icon="close-circle-outline"
+              text="Đóng bàn"
+              color="#EF4444"
+              onPress={handleCloseSessionAfterPayment}
+              disabled={loading}
+            />
+          ) : (
+            <ActionButton
+              icon="cash-outline"
+              text="Thanh toán"
+              color="#10B981"
+              onPress={handlePayment}
+              disabled={!hasBillableItems && !hasNewItems}
+            />
+          )}
+        </View>
+      </View>
+      {editingItem && (
+        <NoteInputModal
+          visible={isNoteModalVisible}
+          onClose={() => setNoteModalVisible(false)}
+          initialValue={editingItem.customizations?.note || ''}
+          onSave={handleSaveNote}
+        />
+      )}
+      {editingItem && (
+        <ActionSheetModal
+          visible={isActionSheetVisible}
+          onClose={() => {
+            setActionSheetVisible(false);
+            setEditingItem(null); // Reset item đang sửa khi đóng bằng cách nhấn ra ngoài hoặc nút "Đóng"
+          }}
+          title={`Tùy chỉnh "${editingItem.name}"`}
+          actions={itemActions}
+        />
+      )}
+    </View>
+  );
 };
 
 const styles = StyleSheet.create({
-    flex1: { flex: 1, backgroundColor: '#F8F9FA' },
-    containerCenter: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    shadow: { shadowColor: "#475569", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 15, elevation: 5 },
-    paidItem: { backgroundColor: '#F9FAFB', opacity: 0.8 },
-    sectionHeader: { fontSize: 16, fontWeight: 'bold', color: '#4B5563', backgroundColor: '#F8F9FA', paddingTop: 20, paddingBottom: 8 },
-    bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingTop: 20, paddingHorizontal: 16, backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, elevation: 15, alignItems: 'center', shadowColor: "#000", shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.1, shadowRadius: 10 },
-    addMoreButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#A5B4FC', borderStyle: 'dashed', borderRadius: 16, paddingVertical: 16, marginTop: 16, marginBottom: 8 },
-    addMoreButtonText: { color: '#3B82F6', fontSize: 16, fontWeight: '600', marginLeft: 8 },
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' },
-    modalContainer: { width: '90%', backgroundColor: 'white', borderRadius: 20, padding: 20, elevation: 5 },
-    modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 16, textAlign: 'center' },
-    noteInput: { backgroundColor: '#F9FAFB', borderColor: '#E5E7EB', borderWidth: 1, borderRadius: 12, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12, minHeight: 100, textAlignVertical: 'top', fontSize: 16, marginBottom: 20, color: '#1F2937' },
-    modalButtons: { flexDirection: 'row', justifyContent: 'flex-end' },
-    modalButton: { paddingVertical: 10, paddingHorizontal: 20, borderRadius: 10 },
-    modalButtonText: { fontSize: 16, fontWeight: '600' },
-    saveButton: { backgroundColor: '#3B82F6', marginLeft: 12 },
-    saveButtonText: { color: 'white' },
+  flex1: { flex: 1, backgroundColor: '#F8F9FA' },
+  containerCenter: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  shadow: {
+    shadowColor: '#475569',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 15,
+    elevation: 5,
+  },
+  paidItem: { backgroundColor: '#F9FAFB', opacity: 0.8 },
+  sectionHeader: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#4B5563',
+    backgroundColor: '#F8F9FA',
+    paddingTop: 20,
+    paddingBottom: 8,
+  },
+  bottomBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingTop: 20,
+    paddingHorizontal: 16,
+    backgroundColor: 'white',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    elevation: 15,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+  },
+  addMoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#A5B4FC',
+    borderStyle: 'dashed',
+    borderRadius: 16,
+    paddingVertical: 16,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  addMoreButtonText: { color: '#3B82F6', fontSize: 16, fontWeight: '600', marginLeft: 8 },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContainer: {
+    width: '90%',
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 20,
+    elevation: 5,
+  },
+  modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 16, textAlign: 'center' },
+  noteInput: {
+    backgroundColor: '#F9FAFB',
+    borderColor: '#E5E7EB',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 12,
+    minHeight: 100,
+    textAlignVertical: 'top',
+    fontSize: 16,
+    marginBottom: 20,
+    color: '#1F2937',
+  },
+  modalButtons: { flexDirection: 'row', justifyContent: 'flex-end' },
+  modalButton: { paddingVertical: 10, paddingHorizontal: 20, borderRadius: 10 },
+  modalButtonText: { fontSize: 16, fontWeight: '600' },
+  saveButton: { backgroundColor: '#3B82F6', marginLeft: 12 },
+  saveButtonText: { color: 'white' },
 });
 
 export default OrderConfirmationScreen;

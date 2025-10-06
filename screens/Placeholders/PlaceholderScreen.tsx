@@ -7,10 +7,8 @@ import { AppTabParamList, ROUTES } from '../../constants/routes';
 
 // 1. Định nghĩa kiểu cho props của màn hình này (giữ nguyên)
 type PlaceholderScreenProps = BottomTabScreenProps<
-  AppTabParamList, 
-  | typeof ROUTES.RETURN_ITEMS_TAB 
-  | typeof ROUTES.PROVISIONAL_BILL_TAB 
-  | typeof ROUTES.UTILITIES_TAB
+  AppTabParamList,
+  typeof ROUTES.RETURN_ITEMS_TAB | typeof ROUTES.PROVISIONAL_BILL_TAB | typeof ROUTES.UTILITIES_TAB
 >;
 
 // 2. Áp dụng kiểu và sửa lỗi
@@ -46,7 +44,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#007bff',
     marginTop: 8,
-  }
+  },
 });
 
 export default PlaceholderScreen;

@@ -20,7 +20,7 @@ interface CartContextState {
 const CartContext = createContext<CartContextState | undefined>(undefined);
 
 // Tạo Provider component
-export const CartProvider: React.FC<{children: ReactNode}> = ({ children }) => {
+export const CartProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [carts, setCarts] = useState<CartsState>({});
 
   const getCartForTable = (tableId: string): CartItem[] => {
@@ -28,12 +28,12 @@ export const CartProvider: React.FC<{children: ReactNode}> = ({ children }) => {
   };
 
   const addToCart = (tableId: string, newItem: CartItem) => {
-    setCarts(prevCarts => {
+    setCarts((prevCarts) => {
       const currentCart = prevCarts[tableId] || [];
       // Tạo một ID duy nhất cho mỗi item trong giỏ hàng để xử lý việc trùng lặp
-      const uniqueItemId = `${newItem.id}-${newItem.size.name}-${newItem.sugar.name}-${newItem.toppings.map(t => t.name).join('-')}`;
-      
-      const existingItemIndex = currentCart.findIndex(item => item.id === uniqueItemId);
+      const uniqueItemId = `${newItem.id}-${newItem.size.name}-${newItem.sugar.name}-${newItem.toppings.map((t) => t.name).join('-')}`;
+
+      const existingItemIndex = currentCart.findIndex((item) => item.id === uniqueItemId);
 
       let updatedCart;
       if (existingItemIndex > -1) {
@@ -46,28 +46,30 @@ export const CartProvider: React.FC<{children: ReactNode}> = ({ children }) => {
         // Món chưa có, thêm mới vào giỏ
         updatedCart = [...currentCart, { ...newItem, id: uniqueItemId }];
       }
-      
+
       return { ...prevCarts, [tableId]: updatedCart };
     });
   };
-  
-  const updateCartItemQuantity = (tableId: string, itemId: string, newQuantity: number) => {
-     setCarts(prevCarts => {
-        const currentCart = prevCarts[tableId] || [];
-        const updatedCart = currentCart.map(item => {
-            if (item.id === itemId) {
-                const pricePerItem = item.totalPrice / item.quantity;
-                return { ...item, quantity: newQuantity, totalPrice: pricePerItem * newQuantity };
-            }
-            return item;
-        }).filter(item => item.quantity > 0); // Lọc bỏ món có số lượng bằng 0
 
-        return { ...prevCarts, [tableId]: updatedCart };
-     });
+  const updateCartItemQuantity = (tableId: string, itemId: string, newQuantity: number) => {
+    setCarts((prevCarts) => {
+      const currentCart = prevCarts[tableId] || [];
+      const updatedCart = currentCart
+        .map((item) => {
+          if (item.id === itemId) {
+            const pricePerItem = item.totalPrice / item.quantity;
+            return { ...item, quantity: newQuantity, totalPrice: pricePerItem * newQuantity };
+          }
+          return item;
+        })
+        .filter((item) => item.quantity > 0); // Lọc bỏ món có số lượng bằng 0
+
+      return { ...prevCarts, [tableId]: updatedCart };
+    });
   };
 
   const clearCart = (tableId: string) => {
-    setCarts(prevCarts => {
+    setCarts((prevCarts) => {
       const newCarts = { ...prevCarts };
       delete newCarts[tableId];
       return newCarts;
@@ -75,7 +77,9 @@ export const CartProvider: React.FC<{children: ReactNode}> = ({ children }) => {
   };
 
   return (
-    <CartContext.Provider value={{ carts, addToCart, updateCartItemQuantity, clearCart, getCartForTable }}>
+    <CartContext.Provider
+      value={{ carts, addToCart, updateCartItemQuantity, clearCart, getCartForTable }}
+    >
       {children}
     </CartContext.Provider>
   );

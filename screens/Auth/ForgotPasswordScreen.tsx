@@ -1,5 +1,5 @@
 // ForgotPasswordScreen.tsx
-import React, { useState } from "react";
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -8,30 +8,33 @@ import {
   SafeAreaView,
   ScrollView,
   Alert,
-} from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { NativeStackScreenProps } from "@react-navigation/native-stack";
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
-import { AuthStackParamList, ROUTES } from "../../constants/routes";
-import { sendPasswordResetOtp } from "../../services/authService";
+import { AuthStackParamList, ROUTES } from '../../constants/routes';
+import { sendPasswordResetOtp } from '../../services/authService';
 
-type ForgotPasswordProps = NativeStackScreenProps<AuthStackParamList, typeof ROUTES.FORGOT_PASSWORD>;
+type ForgotPasswordProps = NativeStackScreenProps<
+  AuthStackParamList,
+  typeof ROUTES.FORGOT_PASSWORD
+>;
 
 export default function ForgotPasswordScreen({ navigation }: ForgotPasswordProps) {
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSendRequest = async () => {
     setError(null);
     if (!email) {
-      setError("Vui lòng nhập Email của bạn.");
+      setError('Vui lòng nhập Email của bạn.');
       return;
     }
     const emailRegex = /\S+@\S+\.\S+/;
     if (!emailRegex.test(email)) {
-      setError("Địa chỉ Email không hợp lệ.");
+      setError('Địa chỉ Email không hợp lệ.');
       return;
     }
 
@@ -39,9 +42,9 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordProps
     try {
       await sendPasswordResetOtp(email);
       Alert.alert(
-        "Thành công",
+        'Thành công',
         `Một mã OTP đã được gửi đến ${email}. Vui lòng kiểm tra hộp thư của bạn.`,
-        [{ text: "OK", onPress: () => navigation.navigate(ROUTES.OTP, { email }) }]
+        [{ text: 'OK', onPress: () => navigation.navigate(ROUTES.OTP, { email }) }]
       );
     } catch (err: any) {
       setError(err.message);
@@ -58,8 +61,8 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordProps
         keyboardShouldPersistTaps="handled"
       >
         <View className="flex-1 px-8 pt-4">
-          <TouchableOpacity 
-            onPress={() => navigation.goBack()} 
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
             className="absolute top-12 left-5 z-10 p-2"
           >
             <Ionicons name="arrow-back" size={32} color="#14181B" />
@@ -67,25 +70,25 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordProps
 
           <View className="flex-1 justify-center pb-8">
             <View className="items-center mb-2">
-                <MaskedView
-                    maskElement={
-                        <Text className="text-4xl font-bold text-center">Đặt lại mật khẩu</Text>
-                    }
+              <MaskedView
+                maskElement={
+                  <Text className="text-4xl font-bold text-center">Đặt lại mật khẩu</Text>
+                }
+              >
+                <LinearGradient
+                  colors={['#3461FD', '#2A4ECA']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
                 >
-                    <LinearGradient
-                        colors={['#3461FD', '#2A4ECA']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                    >
-                        <Text className="text-4xl font-bold text-center" style={{ opacity: 0 }}>
-                            Đặt lại mật khẩu
-                        </Text>
-                    </LinearGradient>
-                </MaskedView>
+                  <Text className="text-4xl font-bold text-center" style={{ opacity: 0 }}>
+                    Đặt lại mật khẩu
+                  </Text>
+                </LinearGradient>
+              </MaskedView>
             </View>
-            
+
             <Text className="text-center text-base text-[#61677D] mb-8">
-                Nhập đúng email đã đăng ký để nhận mã OTP.
+              Nhập đúng email đã đăng ký để nhận mã OTP.
             </Text>
 
             <View className="mb-4">

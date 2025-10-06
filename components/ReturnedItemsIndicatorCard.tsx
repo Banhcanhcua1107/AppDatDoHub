@@ -25,21 +25,20 @@ const ReturnedItemsIndicatorCard: React.FC<Props> = ({ orderId }) => {
       if (!orderId) {
         setLoading(false);
         return;
-      };
+      }
 
       try {
         // Dùng rpc để tính tổng số lượng trả về từ DB cho hiệu năng tốt nhất
         const { data, error } = await supabase.rpc('get_total_returned_quantity_for_order', {
-          p_order_id: orderId
+          p_order_id: orderId,
         });
 
         if (error) throw error;
-        
-        setReturnedCount(data || 0);
 
+        setReturnedCount(data || 0);
       } catch (error) {
         // Không hiển thị lỗi cho người dùng, chỉ log ra console
-        console.error("Error fetching returned items count:", error);
+        console.error('Error fetching returned items count:', error);
       } finally {
         setLoading(false);
       }
@@ -54,8 +53,8 @@ const ReturnedItemsIndicatorCard: React.FC<Props> = ({ orderId }) => {
   }
 
   return (
-    <TouchableOpacity 
-      style={styles.card} 
+    <TouchableOpacity
+      style={styles.card}
       onPress={() => navigation.navigate('ReturnedItemsDetail', { orderId })}
     >
       <View style={styles.iconContainer}>

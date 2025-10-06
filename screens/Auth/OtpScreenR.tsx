@@ -1,14 +1,14 @@
 // OtpScreenR.tsx
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  SafeAreaView, 
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  SafeAreaView,
   Alert,
   Keyboard,
-  Platform
+  Platform,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -42,23 +42,22 @@ export default function OtpScreenR({ route, navigation }: OtpScreenRProps) {
     return () => clearTimeout(timer);
   }, [resendCooldown]);
 
-
   const handleVerifyOtp = async () => {
     Keyboard.dismiss();
     if (otp.length !== 6) {
-      setError("Mã OTP phải có 6 chữ số.");
+      setError('Mã OTP phải có 6 chữ số.');
       return;
     }
-    
+
     setIsLoading(true);
     setError(null);
 
     try {
       await verifyOtpForSignup(email, otp);
       Alert.alert(
-        "Xác thực thành công!",
-        "Tài khoản của bạn đã được kích hoạt. Vui lòng đăng nhập.",
-        [{ text: "OK", onPress: () => navigation.navigate(ROUTES.LOGIN) }]
+        'Xác thực thành công!',
+        'Tài khoản của bạn đã được kích hoạt. Vui lòng đăng nhập.',
+        [{ text: 'OK', onPress: () => navigation.navigate(ROUTES.LOGIN) }]
       );
     } catch (err: any) {
       setError(err.message || 'Mã OTP không chính xác. Vui lòng thử lại.');
@@ -69,14 +68,13 @@ export default function OtpScreenR({ route, navigation }: OtpScreenRProps) {
 
   const handleResendOtp = async () => {
     if (resendCooldown > 0) return;
-    
+
     try {
       await resendOtpForSignup(email);
-      Alert.alert("Thành công", "Một mã OTP mới đã được gửi đến email của bạn.");
+      Alert.alert('Thành công', 'Một mã OTP mới đã được gửi đến email của bạn.');
       setResendCooldown(60);
-    } catch (err: any)
-      {
-      Alert.alert("Lỗi", err.message || "Không thể gửi lại mã OTP. Vui lòng thử lại sau.");
+    } catch (err: any) {
+      Alert.alert('Lỗi', err.message || 'Không thể gửi lại mã OTP. Vui lòng thử lại sau.');
     }
   };
 
@@ -84,7 +82,7 @@ export default function OtpScreenR({ route, navigation }: OtpScreenRProps) {
     <SafeAreaView className="flex-1 bg-white">
       <View className="absolute top-12 left-5 z-10">
         <TouchableOpacity onPress={() => navigation.goBack()} className="p-2">
-            <Ionicons name="arrow-back" size={32} color="#1F2937" />
+          <Ionicons name="arrow-back" size={32} color="#1F2937" />
         </TouchableOpacity>
       </View>
       <View className="flex-1 justify-center px-8 pb-8">
@@ -110,25 +108,25 @@ export default function OtpScreenR({ route, navigation }: OtpScreenRProps) {
           autoFocus={true}
         />
         {error && <Text className="text-red-500 mt-2 text-center">{error}</Text>}
-        <TouchableOpacity 
-          onPress={handleVerifyOtp} 
+        <TouchableOpacity
+          onPress={handleVerifyOtp}
           disabled={isLoading}
           className="bg-[#3461FD] rounded-xl py-4 mt-8 items-center justify-center h-16"
         >
           <Text className="text-center text-white font-bold text-lg">
-            {isLoading ? "Đang xử lý..." : "Xác nhận"}
+            {isLoading ? 'Đang xử lý...' : 'Xác nhận'}
           </Text>
         </TouchableOpacity>
         <View className="flex-row justify-center mt-8 items-center">
           <Text className="text-base" style={{ color: '#7C8BA0' }}>
             Không nhận được mã?
           </Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             onPress={handleResendOtp}
             disabled={resendCooldown > 0}
             className="ml-1"
           >
-            <Text 
+            <Text
               className={`text-base font-bold ${resendCooldown > 0 ? 'text-gray-400' : ''}`}
               style={resendCooldown === 0 ? { color: '#3461FD' } : {}}
             >

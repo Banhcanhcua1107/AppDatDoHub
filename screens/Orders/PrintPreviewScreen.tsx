@@ -5,7 +5,7 @@ import { View, Text, TouchableOpacity, ScrollView, StyleSheet, StatusBar } from 
 import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppStackParamList } from '../../constants/routes';
-import BillContent from '../../components/BillContent'; 
+import BillContent from '../../components/BillContent';
 
 type PrintPreviewScreenRouteProp = RouteProp<AppStackParamList, 'PrintPreview'>;
 
@@ -19,36 +19,42 @@ const PrintPreviewScreen = () => {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 20 }]}>
-        <StatusBar barStyle="dark-content" />
-        {/* Header */}
-        <View style={styles.header}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
-                <Text style={styles.headerButtonText}>Đóng</Text>
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>Xem trước</Text>
-            <TouchableOpacity style={styles.headerButton}>
-                <Text style={[styles.headerButtonText, styles.printButton]}>In</Text>
-            </TouchableOpacity>
-        </View>
+      <StatusBar barStyle="dark-content" />
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
+          <Text style={styles.headerButtonText}>Đóng</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Xem trước</Text>
+        <TouchableOpacity style={styles.headerButton}>
+          <Text style={[styles.headerButtonText, styles.printButton]}>In</Text>
+        </TouchableOpacity>
+      </View>
 
-        {/* Stepper for number of copies */}
-        <View style={styles.stepperContainer}>
-            <Text style={styles.stepperLabel}>Số liên in</Text>
-            <View style={styles.stepper}>
-                <TouchableOpacity onPress={() => setCopyCount(Math.max(1, copyCount - 1))} style={styles.stepperButton}>
-                    <Text style={styles.stepperButtonText}>-</Text>
-                </TouchableOpacity>
-                <Text style={styles.stepperValue}>{copyCount}</Text>
-                <TouchableOpacity onPress={() => setCopyCount(copyCount + 1)} style={styles.stepperButton}>
-                    <Text style={styles.stepperButtonText}>+</Text>
-                </TouchableOpacity>
-            </View>
+      {/* Stepper for number of copies */}
+      <View style={styles.stepperContainer}>
+        <Text style={styles.stepperLabel}>Số liên in</Text>
+        <View style={styles.stepper}>
+          <TouchableOpacity
+            onPress={() => setCopyCount(Math.max(1, copyCount - 1))}
+            style={styles.stepperButton}
+          >
+            <Text style={styles.stepperButtonText}>-</Text>
+          </TouchableOpacity>
+          <Text style={styles.stepperValue}>{copyCount}</Text>
+          <TouchableOpacity
+            onPress={() => setCopyCount(copyCount + 1)}
+            style={styles.stepperButton}
+          >
+            <Text style={styles.stepperButtonText}>+</Text>
+          </TouchableOpacity>
         </View>
+      </View>
 
-        {/* Dùng ScrollView và component BillContent để hiển thị */}
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-            <BillContent order={order} items={items} />
-        </ScrollView>
+      {/* Dùng ScrollView và component BillContent để hiển thị */}
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <BillContent order={order} items={items} />
+      </ScrollView>
     </View>
   );
 };
@@ -56,17 +62,46 @@ const PrintPreviewScreen = () => {
 // Các style này chỉ dành cho phần khung của màn hình
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f0f0f0' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 15, paddingVertical: 10, backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#e0e0e0' },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    backgroundColor: '#ffffff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
   headerButton: { padding: 5 },
   headerButtonText: { fontSize: 16, color: '#007AFF' },
   printButton: { fontWeight: 'bold' },
   headerTitle: { fontSize: 17, fontWeight: '600', color: '#000' },
-  stepperContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, backgroundColor: '#ffffff' },
+  stepperContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: '#ffffff',
+  },
   stepperLabel: { fontSize: 16, color: '#333' },
-  stepper: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#ccc', borderRadius: 8 },
+  stepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 8,
+  },
   stepperButton: { paddingHorizontal: 15, paddingVertical: 5 },
   stepperButtonText: { fontSize: 20, color: '#007AFF' },
-  stepperValue: { fontSize: 16, paddingHorizontal: 15, borderLeftWidth: 1, borderRightWidth: 1, borderColor: '#ccc', color: '#000' },
+  stepperValue: {
+    fontSize: 16,
+    paddingHorizontal: 15,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: '#ccc',
+    color: '#000',
+  },
   scrollContent: { padding: 16 },
 });
 
