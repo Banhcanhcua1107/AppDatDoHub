@@ -255,9 +255,11 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
         }
         await fetchData(); 
     } catch (error: any) {
-        Alert.alert("Lỗi", "Không thể thêm món vào giỏ hàng.");
+        // [ĐÃ SỬA] Sử dụng biến `error` để hiển thị thông báo chi tiết
+        Alert.alert("Lỗi", `Không thể thêm món vào giỏ hàng: ${error.message}`);
     }
   };
+
   const handleConfirmOrder = () => {
     if (cartItems.length === 0 && existingItems.length === 0) {
       Alert.alert("Thông báo", "Vui lòng thêm món vào giỏ hàng!"); return;
@@ -273,21 +275,30 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
         await supabase.from('cart_items').update({ quantity: newQuantity, total_price: item.unit_price * newQuantity }).eq('id', cartItemId).throwOnError();
       }
       await fetchData();
-    } catch (error: any) { Alert.alert("Lỗi", "Không thể cập nhật số lượng món."); }
+    } catch (error: any) { 
+        // [ĐÃ SỬA] Sử dụng biến `error` để hiển thị thông báo chi tiết
+        Alert.alert("Lỗi", `Không thể cập nhật số lượng món: ${error.message}`); 
+    }
   };
 
   const handleRemoveItem = async (cartItemId: number) => {
     try {
       await supabase.from('cart_items').delete().eq('id', cartItemId).throwOnError();
       await fetchData();
-    } catch (error: any) { Alert.alert("Lỗi", "Không thể xóa món khỏi giỏ hàng."); }
+    } catch (error: any) { 
+        // [ĐÃ SỬA] Sử dụng biến `error` để hiển thị thông báo chi tiết
+        Alert.alert("Lỗi", `Không thể xóa món khỏi giỏ hàng: ${error.message}`);
+    }
   };
 
   const handleClearCart = async () => {
     try {
       await supabase.from('cart_items').delete().eq('table_id', tableId).throwOnError();
       await fetchData();
-    } catch (error: any) { Alert.alert("Lỗi", "Không thể xóa giỏ hàng."); }
+    } catch (error: any) { 
+        // [ĐÃ SỬA] Sử dụng biến `error` để hiển thị thông báo chi tiết
+        Alert.alert("Lỗi", `Không thể xóa giỏ hàng: ${error.message}`);
+    }
   };
 
   const handleGoBackWithConfirmation = () => {
