@@ -1,16 +1,20 @@
-// --- START OF FILE ProvisionalBillScreen.tsx ---
+// --- START OF FILE: screens/Orders/ProvisionalBillScreen.tsx ---
 
 import React, { useState, useCallback } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StatusBar, ActivityIndicator, Alert, StyleSheet } from 'react-native';
+import { View, Text, FlatList, TouchableOpacity, StatusBar, ActivityIndicator, Alert, StyleSheet, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import Icon from 'react-native-vector-icons/Ionicons';
-import { supabase } from '../../services/supabase';
-import { Ionicons } from '@expo/vector-icons';
-import { AppStackParamList } from '../../constants/routes';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import Icon from 'react-native-vector-icons/Ionicons';
+import { Ionicons } from '@expo/vector-icons';
 
-// --- Định nghĩa kiểu dữ liệu ---
+import { supabase } from '../../services/supabase';
+import { AppStackParamList, ROUTES } from '../../constants/routes';
+
+// Import component giao diện hóa đơn chung
+import BillContent from '../../components/BillContent'; // <-- SỬA ĐÚNG ĐƯỜNG DẪN NẾU CẦN
+
+// --- Định nghĩa và Export các kiểu dữ liệu để file khác có thể dùng ---
 type TableInfo = { id: string; name: string };
 export interface BillItem { 
     name: string; 
@@ -26,12 +30,13 @@ export interface ProvisionalOrder {
     createdAt: string;
 }
 
-
+// Định nghĩa kiểu cho navigation
 type ProvisionalBillScreenNavigationProp = NativeStackNavigationProp<
   AppStackParamList,
-  'ProvisionalBill' // Tên của màn hình hiện tại
+  'ProvisionalBill'
 >;
-// --- Component Card hiển thị Order (tái sử dụng từ OrderScreen) ---
+
+// --- Component Card hiển thị Order (không thay đổi) ---
 const OrderCard: React.FC<{ item: ProvisionalOrder; onPress: () => void; }> = ({ item, onPress }) => {
     const displayTableName = item.tables.map(t => t.name).join(', ');
     const formatTimeElapsed = (startTime: string) => {
@@ -72,16 +77,13 @@ const ProvisionalBillScreen = () => {
   const [selectedOrder, setSelectedOrder] = useState<ProvisionalOrder | null>(null);
   const [billItems, setBillItems] = useState<BillItem[]>([]);
   
+  // Logic fetch dữ liệu không thay đổi
   const fetchProvisionalOrders = useCallback(async (isInitialLoad = true) => {
     if (isInitialLoad) setLoading(true);
     try {
         const { data, error } = await supabase
             .from('orders')
-            .select(`
-                id, created_at, 
-                order_items(quantity, unit_price), 
-                order_tables(tables(id, name))
-            `)
+            .select(`id, created_at, order_items(quantity, unit_price), order_tables(tables(id, name))`)
             .eq('status', 'pending')
             .eq('is_provisional', true);
         
@@ -102,9 +104,7 @@ const ProvisionalBillScreen = () => {
 
         formattedOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
         setProvisionalOrders(formattedOrders);
-
     } catch (err: any) {
-        // [SỬA LỖI] Hiển thị chi tiết lỗi
         Alert.alert("Lỗi", "Không thể tải danh sách phiếu tạm tính: " + err.message);
     } finally {
         if (isInitialLoad) setLoading(false);
@@ -136,9 +136,7 @@ const ProvisionalBillScreen = () => {
         }));
         
         setBillItems(items);
-
     } catch (error: any) {
-        // [SỬA LỖI] Hiển thị chi tiết lỗi
         Alert.alert("Lỗi", "Không thể tải chi tiết hóa đơn: " + error.message);
         setSelectedOrder(null);
     } finally {
@@ -146,7 +144,7 @@ const ProvisionalBillScreen = () => {
     }
   };
   
-  // ...Phần JSX render không thay đổi...
+  // Giao diện chi tiết hóa đơn, NAY ĐÃ DÙNG COMPONENT CHUNG
   const BillDetails = () => (
     <View className="flex-1">
       <View className="flex-row items-center justify-between p-4">
@@ -156,34 +154,22 @@ const ProvisionalBillScreen = () => {
         </TouchableOpacity>
       </View>
 
-      <View className="bg-white rounded-2xl mx-4 p-5 flex-1 shadow-lg">
-          <Text className="text-2xl font-bold text-center text-gray-800 mb-2">PHIẾU TẠM TÍNH</Text>
-          <Text className="text-lg font-semibold text-center text-gray-600 mb-6">{selectedOrder?.tables.map(t => t.name).join(', ')}</Text>
-          
-          <FlatList
-              data={billItems}
-              keyExtractor={(item, index) => `${item.name}-${index}`}
-              renderItem={({item}) => (
-                  <View className="flex-row justify-between items-center py-3 border-b border-dashed border-gray-300">
-                      <View className="flex-1 pr-2">
-                        <Text className="text-base text-gray-800 font-medium">{item.name}</Text>
-                        <Text className="text-sm text-gray-500">{item.quantity} x {item.unit_price.toLocaleString('vi-VN')}đ</Text>
-                      </View>
-                      <Text className="text-base font-semibold text-gray-900">{item.totalPrice.toLocaleString('vi-VN')}đ</Text>
-                  </View>
-              )}
-          />
-
-          <View className="flex-row justify-between items-center pt-5 mt-auto">
-              <Text className="text-xl font-bold text-gray-800">TỔNG CỘNG</Text>
-              <Text className="text-2xl font-bold text-blue-600">{selectedOrder?.totalPrice.toLocaleString('vi-VN')}đ</Text>
-          </View>
-      </View>
+      {/* Dùng ScrollView và component BillContent để hiển thị */}
+      {selectedOrder && billItems.length > 0 && (
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 16 }}>
+            {/* TRUYỀN PROP `title` VÀO ĐÂY */}
+            <BillContent 
+                order={selectedOrder} 
+                items={billItems} 
+                title="PHIẾU TẠM TÍNH" 
+            />
+        </ScrollView>
+      )}
       
       <TouchableOpacity 
             onPress={() => {
                 if (selectedOrder && billItems) {
-                    navigation.navigate('PrintPreview', { 
+                    navigation.navigate(ROUTES.PRINT_PREVIEW, { 
                         order: selectedOrder, 
                         items: billItems 
                     });
@@ -197,6 +183,7 @@ const ProvisionalBillScreen = () => {
     </View>
   );
 
+  // Giao diện chọn order, không thay đổi
   const OrderSelection = () => (
     <FlatList
         data={provisionalOrders}
@@ -225,7 +212,7 @@ const ProvisionalBillScreen = () => {
   return (
     <View style={{ flex: 1, backgroundColor: '#F8F9FA' }}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-      <View style={{ paddingTop: insets.top + 10 }} className="px-4 pb-3">
+      <View style={{ paddingTop: insets.top + 20 }} className="px-4 pb-3">
         <Text className="text-3xl font-bold text-gray-800">Tạm tính</Text>
       </View>
       {selectedOrder ? <BillDetails /> : <OrderSelection />}
@@ -236,6 +223,5 @@ const ProvisionalBillScreen = () => {
 const styles = StyleSheet.create({ 
     cardShadow: { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 3 },
 });
-
 
 export default ProvisionalBillScreen;

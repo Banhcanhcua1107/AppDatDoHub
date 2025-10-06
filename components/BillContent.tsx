@@ -11,6 +11,7 @@ import { ProvisionalOrder, BillItem } from '../screens/Orders/ProvisionalBillScr
 interface BillContentProps {
   order: ProvisionalOrder;
   items: BillItem[];
+  title?: string;
 }
 
 const formatCurrency = (value: number) => value.toLocaleString('vi-VN');
@@ -20,7 +21,7 @@ const formatDateTime = (dateString: string) => {
            ' ' + date.toLocaleDateString('vi-VN');
 }
 
-const BillContent: React.FC<BillContentProps> = ({ order, items }) => {
+const BillContent: React.FC<BillContentProps> = ({ order, items, title = 'PHIẾU TÍNH TIỀN' }) => {
   // --- Dữ liệu và logic tính toán được giữ nguyên ---
   const invoiceId = `HD${order.orderId.substring(0, 6).toUpperCase()}`;
   const cashierName = "Hà Trang";
@@ -39,7 +40,7 @@ const BillContent: React.FC<BillContentProps> = ({ order, items }) => {
             <Text style={styles.tableName}>{order.tables.map((t: { name: string }) => t.name).join(', ')}</Text>
         </View>
         
-        <Text style={styles.billTitle}>PHIẾU TÍNH TIỀN</Text>
+        <Text style={styles.billTitle}>{title}</Text>
         <Text style={styles.invoiceId}>{invoiceId}</Text>
 
         <View style={styles.timeInfoContainer}>
