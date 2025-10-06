@@ -24,10 +24,7 @@ const ActionSheetModal: React.FC<Props> = ({ visible, onClose, actions, title })
   const insets = useSafeAreaInsets();
 
   const renderItem = ({ item }: { item: ActionSheetItem }) => (
-    <TouchableOpacity style={styles.actionButton} onPress={() => {
-        item.onPress();
-        onClose(); // Tự động đóng sau khi nhấn
-    }}>
+    <TouchableOpacity style={styles.actionButton} onPress={item.onPress}>
       <Icon name={item.icon} size={24} color={item.color || '#374151'} style={styles.icon} />
       <Text style={[styles.actionText, { color: item.color || '#374151' }]}>{item.text}</Text>
     </TouchableOpacity>

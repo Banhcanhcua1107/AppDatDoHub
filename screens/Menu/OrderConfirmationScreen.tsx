@@ -292,8 +292,12 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
             text: 'Thêm/Sửa Ghi chú',
             icon: 'create-outline',
             onPress: () => {
-                setActionSheetVisible(false); // Đóng action sheet trước
-                setNoteModalVisible(true);  // Sau đó mở modal ghi chú
+                // 1. Đóng ActionSheet
+                setActionSheetVisible(false);
+                // 2. Đợi một chút cho hiệu ứng đóng hoàn tất rồi mới mở modal ghi chú
+                setTimeout(() => {
+                    setNoteModalVisible(true);
+                }, 250); // 250ms là khoảng thời gian hợp lý
             },
         });
         itemActions.push({
@@ -302,9 +306,16 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
             icon: 'trash-outline',
             color: '#EF4444',
             onPress: () => {
+                const itemToRemove = editingItem;
+                // 1. Đóng ActionSheet và xóa item đang sửa khỏi state
                 setActionSheetVisible(false);
-                // Dùng timeout nhỏ để modal kịp đóng trước khi Alert hiện ra
-                setTimeout(() => handleRemoveItem(editingItem), 150);
+                setEditingItem(null);
+                // 2. Đợi một chút rồi mới thực hiện hành động hủy món để UI mượt mà
+                setTimeout(() => {
+                    if (itemToRemove) {
+                        handleRemoveItem(itemToRemove);
+                    }
+                }, 250);
             },
         });
     }
@@ -541,7 +552,7 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
                         visible={isActionSheetVisible}
                         onClose={() => {
                             setActionSheetVisible(false);
-                            setEditingItem(null); // Reset item đang sửa khi đóng
+                            setEditingItem(null); // Reset item đang sửa khi đóng bằng cách nhấn ra ngoài hoặc nút "Đóng"
                         }}
                         title={`Tùy chỉnh "${editingItem.name}"`}
                         actions={itemActions}
