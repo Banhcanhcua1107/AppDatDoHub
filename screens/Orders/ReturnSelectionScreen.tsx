@@ -147,13 +147,16 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
   return (
     <View style={styles.flex1}>
       <StatusBar barStyle="dark-content" />
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Icon name="arrow-back-outline" size={26} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Chọn món cần trả</Text>
-        <View style={{ width: 40 }} />
+      {/* [ĐÃ SỬA] Header mới */}
+      <View style={[styles.headerContainer, { paddingTop: insets.top }]}>
+        <View style={styles.headerContent}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
+                <Icon name="arrow-back-outline" size={26} color="#1F2937" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Chọn món cần trả</Text>
+            {/* Spacer view để căn giữa tiêu đề */}
+            <View style={styles.headerSpacer} />
+        </View>
       </View>
 
       {/* Danh sách các món ăn */}
@@ -203,9 +206,31 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
 // Stylesheet được cải tiến để giao diện đẹp hơn
 const styles = StyleSheet.create({
     flex1: { flex: 1, backgroundColor: '#F8F9FA' },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 10, backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#EEE' },
-    backButton: { padding: 5 },
-    headerTitle: { fontSize: 20, fontWeight: 'bold' },
+    // [ĐÃ SỬA] Styles cho header mới
+    headerContainer: {
+        backgroundColor: '#F8F9FA', // Hoặc 'white' nếu bạn muốn
+        paddingHorizontal: 16,
+        paddingBottom: 12,
+    },
+    headerContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    headerButton: {
+        padding: 8,
+        marginLeft: -8, // Bù lại padding để icon thẳng hàng
+    },
+    headerTitle: {
+        flex: 1,
+        textAlign: 'center',
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: '#1F2937',
+    },
+    headerSpacer: {
+        width: 32, // Phải bằng chiều rộng của nút back (padding + icon size) để căn giữa
+    },
     card: {
         flexDirection: 'row',
         alignItems: 'center',

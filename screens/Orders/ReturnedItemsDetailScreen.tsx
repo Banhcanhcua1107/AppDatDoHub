@@ -117,18 +117,22 @@ const ReturnedItemsDetailScreen = ({ navigation }: { navigation: ReturnedItemsDe
         return <View style={styles.center}><ActivityIndicator size="large" /></View>;
     }
 
-    return (
+     return (
         <View style={styles.flex1}>
             <StatusBar barStyle="dark-content" />
-            <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                    <Icon name="arrow-back-outline" size={26} />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Chi tiết món đã trả</Text>
-                <TouchableOpacity onPress={fetchReturnedItems} style={styles.refreshButton}>
-                    <Icon name="refresh-outline" size={24} color="#333" />
-                </TouchableOpacity>
+            {/* [ĐÃ SỬA] Header mới giống hệt OrderConfirmationScreen */}
+            <View style={[styles.headerContainer, { paddingTop: insets.top + 10 }]}>
+                <View style={styles.headerContent}>
+                    <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
+                        <Icon name="arrow-back-outline" size={26} color="#1F2937" />
+                    </TouchableOpacity>
+                    <Text style={styles.headerTitle}>Chi tiết món đã trả</Text>
+                    <TouchableOpacity onPress={fetchReturnedItems} style={styles.headerButton}>
+                        <Icon name="refresh-outline" size={26} color="#1F2937" />
+                    </TouchableOpacity>
+                </View>
             </View>
+
             <FlatList
                 data={slips}
                 keyExtractor={item => item.id.toString()}
@@ -167,10 +171,29 @@ const ReturnedItemsDetailScreen = ({ navigation }: { navigation: ReturnedItemsDe
 const styles = StyleSheet.create({
     flex1: { flex: 1, backgroundColor: '#F8F9FA' },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 10, backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#EEE' },
-    backButton: { padding: 5, marginRight: 10 },
-    headerTitle: { fontSize: 20, fontWeight: 'bold' },
-    refreshButton: { padding: 5 },
+    // [ĐÃ SỬA] Styles cho header mới
+    headerContainer: {
+        backgroundColor: '#F8F9FA', // Nền trùng với màu nền của trang
+        paddingHorizontal: 16,
+        paddingBottom: 12,
+        // Không có borderBottom
+    },
+    headerContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    headerButton: {
+        padding: 8,
+        marginHorizontal: -8, // Bù lại padding để icon thẳng hàng
+    },
+    headerTitle: {
+        flex: 1,
+        textAlign: 'center',
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: '#1F2937',
+    },
     slipCard: { backgroundColor: 'white', borderRadius: 12, marginBottom: 16, elevation: 2, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8 },
     slipHeader: { padding: 12, borderBottomWidth: 1, borderColor: '#E5E7EB' },
     slipTimestamp: { fontSize: 14, color: '#6B7280', fontWeight: '500' },
