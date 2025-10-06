@@ -1,4 +1,4 @@
-// --- START OF FILE screens/Orders/ReturnSelectionScreen.tsx (ĐÃ CẢI TIẾN GIAO DIỆN) ---
+// --- START OF FILE screens/Orders/ReturnSelectionScreen.tsx (ĐÃ SỬA LỖI ĐIỀU HƯỚNG) ---
 
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, StatusBar, FlatList, TouchableOpacity, Alert, ActivityIndicator, TextInput, Image } from 'react-native';
@@ -25,7 +25,6 @@ const ReturnItemCard: React.FC<{
   returnQuantity: number;
   onUpdateQuantity: (amount: number) => void;
 }> = ({ item, returnQuantity, onUpdateQuantity }) => {
-  // Sử dụng ảnh placeholder nếu món ăn không có ảnh
   const placeholderImage = 'https://via.placeholder.com/150';
 
   return (
@@ -52,14 +51,12 @@ const ReturnItemCard: React.FC<{
 };
 
 const ReturnSelectionScreen = ({ route, navigation }: Props) => {
-  const { orderId, items } = route.params;
+  const { orderId, items, source } = route.params;
   const insets = useSafeAreaInsets();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [reason, setReason] = useState('');
-  // State để lưu số lượng trả của từng món, với key là item.id
   const [itemsToReturn, setItemsToReturn] = useState<{ [itemId: number]: number }>({});
 
-  // Cập nhật số lượng món cần trả
   const handleUpdateQuantity = (itemId: number, amount: number) => {
     const originalItem = items.find(i => i.id === itemId);
     if (!originalItem) return;
@@ -67,15 +64,13 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
     const currentQty = itemsToReturn[itemId] || 0;
     let newQty = currentQty + amount;
 
-    // Giới hạn số lượng trả không được âm và không vượt quá số lượng đã gọi
     if (newQty < 0) newQty = 0;
     if (newQty > originalItem.quantity) newQty = originalItem.quantity;
 
     setItemsToReturn(prev => ({ ...prev, [itemId]: newQty }));
   };
-
-  // Xử lý khi nhấn nút xác nhận trả món
-  const handleConfirmReturn = async () => {
+  
+  const processItemReturns = async () => {
     const itemsToReturnList = Object.entries(itemsToReturn)
       .map(([itemId, quantity]) => {
         const originalItem = items.find(i => i.id === Number(itemId));
@@ -88,17 +83,15 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
       .filter(i => i.quantity > 0);
 
     if (itemsToReturnList.length === 0) {
-      Alert.alert("Chưa chọn món", "Vui lòng chọn số lượng món cần trả.");
-      return;
+      return { success: true };
     }
+    
     if (!reason.trim()) {
       Alert.alert("Thiếu lý do", "Vui lòng nhập lý do trả món.");
-      return;
+      return { success: false };
     }
-
-    setIsSubmitting(true);
+    
     try {
-      // 1. Tạo một phiếu trả hàng (return_slip) mới
       const { data: newSlip, error: slipError } = await supabase
         .from('return_slips')
         .insert({ order_id: orderId, reason: reason.trim() })
@@ -109,7 +102,6 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
       if (!newSlip) throw new Error("Không thể tạo phiếu trả hàng.");
       const newSlipId = newSlip.id;
 
-      // 2. Thêm các món trong phiếu trả hàng vào bảng return_slip_items
       const slipItemsToInsert = itemsToReturnList.map(item => ({
         return_slip_id: newSlipId,
         order_item_id: item.order_item_id,
@@ -119,7 +111,6 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
       const { error: slipItemsError } = await supabase.from('return_slip_items').insert(slipItemsToInsert);
       if (slipItemsError) throw slipItemsError;
 
-      // 3. Cập nhật lại số lượng đã trả (returned_quantity) trong bảng order_items
       const updatePromises = itemsToReturnList.map(itemToReturn => {
           return supabase.rpc('update_returned_quantity', {
               p_order_item_id: itemToReturn.order_item_id,
@@ -130,59 +121,88 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
       const results = await Promise.all(updatePromises);
       const updateError = results.find(res => res.error);
       if (updateError) throw updateError.error;
-
-      Alert.alert("Thành công", "Đã cập nhật trả món thành công.");
-      navigation.goBack();
-
+      
+      return { success: true };
     } catch (error: any) {
       Alert.alert("Lỗi", "Đã xảy ra lỗi khi trả món: " + error.message);
-    } finally {
-      setIsSubmitting(false);
+      return { success: false };
     }
   };
 
-  // Tính tổng số lượng món đang được chọn để trả
-  const totalReturnQuantity = Object.values(itemsToReturn).reduce((sum, qty) => sum + qty, 0);
+  const handleConfirmReturn = async () => {
+    setIsSubmitting(true);
+    const { success } = await processItemReturns();
+    if (success) {
+      Alert.alert("Thành công", "Đã cập nhật trả món thành công.");
+      navigation.goBack();
+    }
+    setIsSubmitting(false);
+  };
+  
+  const handleProvisionalBill = async () => {
+    setIsSubmitting(true);
+    const { success: returnSuccess } = await processItemReturns();
+    
+    if (returnSuccess) {
+        try {
+            const { error } = await supabase
+                .from('orders')
+                .update({ is_provisional: true })
+                .eq('id', orderId);
 
-  return (
-    <View style={styles.flex1}>
-      <StatusBar barStyle="dark-content" />
-      {/* [ĐÃ SỬA] Header mới */}
-      <View style={[styles.headerContainer, { paddingTop: insets.top }]}>
-        <View style={styles.headerContent}>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
-                <Icon name="arrow-back-outline" size={26} color="#1F2937" />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>Chọn món cần trả</Text>
-            {/* Spacer view để căn giữa tiêu đề */}
-            <View style={styles.headerSpacer} />
-        </View>
-      </View>
-
-      {/* Danh sách các món ăn */}
-      <FlatList
-        data={items}
-        renderItem={({ item }) => (
-          <ReturnItemCard
-            item={item}
-            returnQuantity={itemsToReturn[item.id] || 0}
-            onUpdateQuantity={(amount) => handleUpdateQuantity(item.id, amount)}
-          />
-        )}
-        keyExtractor={(item) => item.id.toString()}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 200 }}
-        ListFooterComponent={
-          <TextInput
-            value={reason}
-            onChangeText={setReason}
-            placeholder="Nhập lý do trả món (ví dụ: khách đổi ý, món bị lỗi...)"
-            style={styles.reasonInput}
-            multiline
-          />
+            if (error) throw error;
+            
+            Alert.alert("Thành công", "Đã tạm tính và xử lý trả món (nếu có).");
+            // [ĐÃ SỬA] Sử dụng goBack() để quay lại màn hình trước đó (OrderScreen)
+            navigation.goBack(); 
+        } catch(error: any) {
+            Alert.alert("Lỗi", "Không thể cập nhật trạng thái tạm tính: " + error.message);
         }
-      />
+    }
+    setIsSubmitting(false);
+  };
 
-      {/* Thanh công cụ dưới cùng */}
+  const handlePayment = async () => {
+     setIsSubmitting(true);
+     const { success: returnSuccess } = await processItemReturns();
+     if(returnSuccess) {
+         Alert.alert("Chuyển đến thanh toán", "Đã xử lý trả món (nếu có). Sẵn sàng chuyển đến màn hình thanh toán.");
+         // Sắp tới: navigation.navigate(ROUTES.PAYMENT_SCREEN, { orderId });
+     }
+     setIsSubmitting(false);
+  };
+
+  const totalReturnQuantity = Object.values(itemsToReturn).reduce((sum, qty) => sum + qty, 0);
+  
+  const renderBottomBar = () => {
+    if (source === 'OrderScreen') {
+      return (
+        <View style={[styles.bottomBar, { paddingBottom: insets.bottom > 0 ? insets.bottom : 20 }]}>
+           <View style={styles.summaryContainer}>
+              <Text style={styles.summaryText}>Tổng số món trả</Text>
+              <Text style={styles.summaryQuantity}>{totalReturnQuantity}</Text>
+          </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <TouchableOpacity
+                style={[styles.halfButton, styles.provisionalButton, isSubmitting && styles.disabledButton]}
+                onPress={handleProvisionalBill}
+                disabled={isSubmitting}
+            >
+              {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.confirmButtonText}>Tạm tính</Text>}
+            </TouchableOpacity>
+            <TouchableOpacity
+                style={[styles.halfButton, styles.paymentButton, isSubmitting && styles.disabledButton]}
+                onPress={handlePayment}
+                disabled={isSubmitting}
+            >
+              {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.confirmButtonText}>Thanh toán</Text>}
+            </TouchableOpacity>
+          </View>
+        </View>
+      );
+    }
+
+    return (
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom > 0 ? insets.bottom : 20 }]}>
          <View style={styles.summaryContainer}>
             <Text style={styles.summaryText}>Tổng số món trả</Text>
@@ -199,16 +219,55 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
           }
         </TouchableOpacity>
       </View>
+    );
+  };
+
+  return (
+    <View style={styles.flex1}>
+      <StatusBar barStyle="dark-content" />
+      <View style={[styles.headerContainer, { paddingTop: insets.top }]}>
+        <View style={styles.headerContent}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
+                <Icon name="arrow-back-outline" size={26} color="#1F2937" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Chọn món cần trả</Text>
+            <View style={styles.headerSpacer} />
+        </View>
+      </View>
+
+      <FlatList
+        data={items}
+        renderItem={({ item }) => (
+          <ReturnItemCard
+            item={item}
+            returnQuantity={itemsToReturn[item.id] || 0}
+            onUpdateQuantity={(amount) => handleUpdateQuantity(item.id, amount)}
+          />
+        )}
+        keyExtractor={(item) => item.id.toString()}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 200 }}
+        ListFooterComponent={
+          totalReturnQuantity > 0 ? (
+            <TextInput
+              value={reason}
+              onChangeText={setReason}
+              placeholder="Nhập lý do trả món (bắt buộc nếu có trả món)"
+              style={styles.reasonInput}
+              multiline
+            />
+          ) : null
+        }
+      />
+
+      {renderBottomBar()}
     </View>
   );
 };
 
-// Stylesheet được cải tiến để giao diện đẹp hơn
 const styles = StyleSheet.create({
     flex1: { flex: 1, backgroundColor: '#F8F9FA' },
-    // [ĐÃ SỬA] Styles cho header mới
     headerContainer: {
-        backgroundColor: '#F8F9FA', // Hoặc 'white' nếu bạn muốn
+        backgroundColor: '#F8F9FA',
         paddingHorizontal: 16,
         paddingBottom: 12,
     },
@@ -217,10 +276,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
     },
-    headerButton: {
-        padding: 8,
-        marginLeft: -8, // Bù lại padding để icon thẳng hàng
-    },
+    headerButton: { padding: 8, marginLeft: -8 },
     headerTitle: {
         flex: 1,
         textAlign: 'center',
@@ -228,9 +284,7 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         color: '#1F2937',
     },
-    headerSpacer: {
-        width: 32, // Phải bằng chiều rộng của nút back (padding + icon size) để căn giữa
-    },
+    headerSpacer: { width: 32 },
     card: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -250,20 +304,14 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         marginRight: 12,
     },
-    itemInfo: {
-        flex: 1,
-        justifyContent: 'center',
-    },
+    itemInfo: { flex: 1, justifyContent: 'center' },
     itemName: {
         fontSize: 16,
         fontWeight: '600',
         color: '#1F2937',
         marginBottom: 4,
     },
-    itemQuantity: {
-        fontSize: 14,
-        color: '#6B7280',
-    },
+    itemQuantity: { fontSize: 14, color: '#6B7280' },
     quantityContainer: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -298,16 +346,11 @@ const styles = StyleSheet.create({
     },
     bottomBar: {
         position: 'absolute',
-        bottom: 0,
-        left: 0,
-        right: 0,
-        paddingHorizontal: 20,
-        paddingTop: 16,
+        bottom: 0, left: 0, right: 0,
+        paddingHorizontal: 20, paddingTop: 16,
         backgroundColor: 'white',
-        borderTopWidth: 1,
-        borderTopColor: '#E5E7EB',
-        borderTopLeftRadius: 24,
-        borderTopRightRadius: 24,
+        borderTopWidth: 1, borderTopColor: '#E5E7EB',
+        borderTopLeftRadius: 24, borderTopRightRadius: 24,
         elevation: 10,
     },
     summaryContainer: {
@@ -337,8 +380,19 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: 'bold'
     },
-    disabledButton: {
-        backgroundColor: '#9CA3AF'
-    }
+    disabledButton: { backgroundColor: '#9CA3AF' },
+    halfButton: {
+        flex: 1,
+        paddingVertical: 16,
+        borderRadius: 12,
+        alignItems: 'center',
+        marginHorizontal: 6,
+    },
+    provisionalButton: {
+        backgroundColor: '#8B5CF6',
+    },
+    paymentButton: {
+        backgroundColor: '#10B981',
+    },
 });
 export default ReturnSelectionScreen;

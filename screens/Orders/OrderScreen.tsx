@@ -14,6 +14,13 @@ import { AppTabParamList, AppStackParamList, ROUTES } from '../../constants/rout
 type TableInfo = { id: string; name: string };
 type ActiveOrder = { orderId: string; representativeTableId: string; tables: TableInfo[]; totalPrice: number; createdAt: string; totalItemCount: number; is_provisional: boolean; };
 interface MenuItemProps { icon: string; text: string; action: string; color?: string; }
+interface ItemToReturn {
+  id: number;
+  name: string;
+  quantity: number;
+  unit_price: number;
+  image_url: string | null;
+}
 
 const MenuActionItem: React.FC<{ item: MenuItemProps; onPress: (action: string) => void }> = ({ item, onPress }) => (
   <TouchableOpacity onPress={() => onPress(item.action)} style={styles.menuItem}>
@@ -45,16 +52,60 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
 
   const handlePressCard = () => { navigation.navigate(ROUTES.ORDER_CONFIRMATION, { tableId: representativeTable.id, tableName: displayTableName, orderId: item.orderId }); };
 
-  const handleProvisionalBill = async () => {
+
+  // const handleProvisionalBill = async () => {
+  //   setIsToggling(true);
+  //   try {
+  //       const { error } = await supabase.rpc('toggle_provisional_bill_status', {
+  //           p_order_id: item.orderId
+  //       });
+  //       if (error) throw error;
+  //       // Dựa vào real-time để tự cập nhật UI, không cần làm gì thêm ở đây
+  //   } catch (error: any) {
+  //       Alert.alert("Lỗi", "Không thể cập nhật trạng thái tạm tính: " + error.message);
+  //   } finally {
+  //       setIsToggling(false);
+  //   }
+  // };
+
+  const handleNavigateToReturnOrBill = async () => {
     setIsToggling(true);
     try {
-        const { error } = await supabase.rpc('toggle_provisional_bill_status', {
-            p_order_id: item.orderId
-        });
+        // Lấy danh sách các món trong order để truyền sang màn hình trả món
+        const { data: orderItems, error } = await supabase
+            .from('order_items')
+            .select(`
+                id,
+                quantity,
+                unit_price,
+                menu_items (
+                    name,
+                    image_url
+                )
+            `)
+            .eq('order_id', item.orderId)
+            .gt('quantity', 0); // Chỉ lấy những món có số lượng > 0
+
         if (error) throw error;
-        // Dựa vào real-time để tự cập nhật UI, không cần làm gì thêm ở đây
+        
+        // Định dạng lại dữ liệu cho đúng với kiểu ItemToReturn
+        const formattedItems: ItemToReturn[] = orderItems.map((oi: any) => ({
+            id: oi.id,
+            name: oi.menu_items?.name || 'Món không xác định',
+            quantity: oi.quantity,
+            unit_price: oi.unit_price,
+            image_url: oi.menu_items?.image_url,
+        }));
+
+        // Điều hướng đến màn hình chọn món trả, với "source" để phân biệt luồng
+        navigation.navigate(ROUTES.RETURN_SELECTION, {
+            orderId: item.orderId,
+            items: formattedItems,
+            source: 'OrderScreen' // Đánh dấu là đi từ màn hình Order
+        });
+
     } catch (error: any) {
-        Alert.alert("Lỗi", "Không thể cập nhật trạng thái tạm tính: " + error.message);
+        Alert.alert("Lỗi", "Không thể lấy thông tin món ăn: " + error.message);
     } finally {
         setIsToggling(false);
     }
@@ -93,7 +144,8 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
       <View className="flex-row justify-around items-center bg-gray-50 border-t border-gray-200 rounded-b-lg">
           <TouchableOpacity onPress={() => navigation.navigate(ROUTES.ORDER_CONFIRMATION, { tableId: representativeTable.id, tableName: displayTableName, orderId: item.orderId })} className="py-3 items-center justify-center flex-1"><Ionicons name="calculator-outline" size={24} color="gray" /></TouchableOpacity>
           <TouchableOpacity onPress={() => navigation.navigate(ROUTES.MENU, { tableId: representativeTable.id, tableName: displayTableName, orderId: item.orderId })} className="py-3 items-center justify-center flex-1"><Ionicons name="restaurant-outline" size={24} color="gray" /></TouchableOpacity>
-          <TouchableOpacity onPress={handleProvisionalBill} disabled={isToggling} className="py-3 items-center justify-center flex-1">
+          {/* [CẬP NHẬT] Nút này sẽ điều hướng đến màn hình trả món */}
+          <TouchableOpacity onPress={handleNavigateToReturnOrBill} disabled={isToggling} className="py-3 items-center justify-center flex-1">
             {isToggling ? <ActivityIndicator size="small" color="#3B82F6"/> : <Ionicons name="receipt-outline" size={24} color={item.is_provisional ? "#2E8540" : "gray"} />}
           </TouchableOpacity>
           <TouchableOpacity onPress={() => onShowMenu(item)} className="py-3 items-center justify-center flex-1"><Ionicons name="ellipsis-horizontal" size={24} color="gray" /></TouchableOpacity>
