@@ -1,7 +1,7 @@
 // --- START OF FILE screens/Orders/ReturnSelectionScreen.tsx (ĐÃ SỬA LỖI ĐIỀU HƯỚNG) ---
 
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, StatusBar, FlatList, TouchableOpacity, Alert, ActivityIndicator, TextInput, Image } from 'react-native';
+import { View, Text, StyleSheet, StatusBar, FlatList, TouchableOpacity, Alert, TextInput, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppStackParamList } from '../../constants/routes';
@@ -175,6 +175,8 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
   const totalReturnQuantity = Object.values(itemsToReturn).reduce((sum, qty) => sum + qty, 0);
   
   const renderBottomBar = () => {
+    const isActionDisabled = isSubmitting;
+    
     if (source === 'OrderScreen') {
       return (
         <View style={[styles.bottomBar, { paddingBottom: insets.bottom > 0 ? insets.bottom : 20 }]}>
@@ -182,42 +184,41 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
               <Text style={styles.summaryText}>Tổng số món trả</Text>
               <Text style={styles.summaryQuantity}>{totalReturnQuantity}</Text>
           </View>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-            <TouchableOpacity
-                style={[styles.halfButton, styles.provisionalButton, isSubmitting && styles.disabledButton]}
-                onPress={handleProvisionalBill}
-                disabled={isSubmitting}
-            >
-              {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.confirmButtonText}>Tạm tính</Text>}
-            </TouchableOpacity>
-            <TouchableOpacity
-                style={[styles.halfButton, styles.paymentButton, isSubmitting && styles.disabledButton]}
-                onPress={handlePayment}
-                disabled={isSubmitting}
-            >
-              {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.confirmButtonText}>Thanh toán</Text>}
-            </TouchableOpacity>
+          <View style={styles.bottomActionsContainer}>
+              <TouchableOpacity style={styles.actionButton} onPress={handleProvisionalBill} disabled={isActionDisabled}>
+                  <View style={[styles.iconCircle, { backgroundColor: isActionDisabled ? '#E5E7EB' : '#F3E8FF'}]}>
+                      <Icon name="receipt-outline" size={26} color={isActionDisabled ? '#9CA3AF' : '#8B5CF6'} />
+                  </View>
+                  <Text style={[styles.actionText, { color: isActionDisabled ? '#9CA3AF' : '#8B5CF6'}]}>Tạm tính</Text>
+              </TouchableOpacity>
+              {/* [ĐÃ SỬA] Thêm style `marginLeft` để tạo khoảng cách giữa 2 nút */}
+              <TouchableOpacity style={[styles.actionButton, { marginLeft: 16 }]} onPress={handlePayment} disabled={isActionDisabled}>
+                  <View style={[styles.iconCircle, { backgroundColor: isActionDisabled ? '#E5E7EB' : '#D1FAE5'}]}>
+                      <Icon name="cash-outline" size={26} color={isActionDisabled ? '#9CA3AF' : '#10B981'} />
+                  </View>
+                  <Text style={[styles.actionText, { color: isActionDisabled ? '#9CA3AF' : '#10B981'}]}>Thanh toán</Text>
+              </TouchableOpacity>
           </View>
         </View>
       );
     }
 
+    const isReturnDisabled = totalReturnQuantity === 0 || isSubmitting;
     return (
       <View style={[styles.bottomBar, { paddingBottom: insets.bottom > 0 ? insets.bottom : 20 }]}>
          <View style={styles.summaryContainer}>
             <Text style={styles.summaryText}>Tổng số món trả</Text>
             <Text style={styles.summaryQuantity}>{totalReturnQuantity}</Text>
         </View>
-        <TouchableOpacity
-            style={[styles.confirmButton, (totalReturnQuantity === 0 || isSubmitting) && styles.disabledButton]}
-            onPress={handleConfirmReturn}
-            disabled={totalReturnQuantity === 0 || isSubmitting}
-        >
-          {isSubmitting
-            ? <ActivityIndicator color="#fff" />
-            : <Text style={styles.confirmButtonText}>Xác nhận trả món</Text>
-          }
-        </TouchableOpacity>
+        {/* [ĐÃ SỬA] Bỏ justifyContent: 'center' để style mặc định (flex-end) được áp dụng */}
+        <View style={styles.bottomActionsContainer}>
+            <TouchableOpacity style={styles.actionButton} onPress={handleConfirmReturn} disabled={isReturnDisabled}>
+              <View style={[styles.iconCircle, { backgroundColor: isReturnDisabled ? '#E5E7EB' : '#FFE4E6'}]}>
+                  <Icon name="return-up-back-outline" size={26} color={isReturnDisabled ? '#9CA3AF' : '#F43F5E'} />
+              </View>
+              <Text style={[styles.actionText, { color: isReturnDisabled ? '#9CA3AF' : '#F43F5E'}]}>Xác nhận trả</Text>
+            </TouchableOpacity>
+        </View>
       </View>
     );
   };
@@ -264,6 +265,7 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
   );
 };
 
+// [ĐÃ SỬA] Cập nhật StyleSheet
 const styles = StyleSheet.create({
     flex1: { flex: 1, backgroundColor: '#F8F9FA' },
     headerContainer: {
@@ -369,30 +371,28 @@ const styles = StyleSheet.create({
         color: '#1F2937',
         fontWeight: 'bold',
     },
-    confirmButton: {
-        backgroundColor: '#EF4444',
-        paddingVertical: 16,
-        borderRadius: 12,
-        alignItems: 'center'
+    bottomActionsContainer: {
+        flexDirection: 'row',
+        // [ĐÃ SỬA] Đổi từ 'space-around' thành 'flex-end' để căn phải
+        justifyContent: 'flex-end', 
+        alignItems: 'flex-start',
     },
-    confirmButtonText: {
-        color: 'white',
-        fontSize: 16,
-        fontWeight: 'bold'
-    },
-    disabledButton: { backgroundColor: '#9CA3AF' },
-    halfButton: {
-        flex: 1,
-        paddingVertical: 16,
-        borderRadius: 12,
+    actionButton: {
         alignItems: 'center',
-        marginHorizontal: 6,
+        width: 90,
     },
-    provisionalButton: {
-        backgroundColor: '#8B5CF6',
+    iconCircle: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 8,
     },
-    paymentButton: {
-        backgroundColor: '#10B981',
+    actionText: {
+        fontSize: 13,
+        fontWeight: '600',
+        textAlign: 'center',
     },
 });
 export default ReturnSelectionScreen;
