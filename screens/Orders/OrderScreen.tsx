@@ -21,6 +21,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../services/supabase';
 import { AppTabParamList, AppStackParamList, ROUTES } from '../../constants/routes';
 import Toast from 'react-native-toast-message';
+import { useNetwork } from '../../context/NetworkContext';
 // --- [SỬA LỖI] Định nghĩa kiểu dữ liệu rõ ràng ---
 type TableInfo = { id: string; name: string };
 type ActiveOrder = {
@@ -73,7 +74,7 @@ type OrderItemCardProps = {
 const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowMenu }) => {
   // [SỬA LỖI] Thêm dòng này để khai báo state
   const [isToggling, setIsToggling] = useState(false);
-
+  const { isOnline } = useNetwork();
   const formatTimeElapsed = (startTime: string) => {
     const start = new Date(startTime).getTime();
     const now = new Date().getTime();
@@ -98,6 +99,10 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
   };
 
   const handleToggleProvisionalBill = async () => {
+     if (!isOnline) {
+      Toast.show({ type: 'error', text1: 'Không có kết nối mạng' });
+      return;
+    }
     setIsToggling(true);
     try {
         const { error } = await supabase.rpc('toggle_provisional_bill_status', {

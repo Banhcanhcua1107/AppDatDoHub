@@ -18,6 +18,7 @@ import { loginUser } from '../../services/authService';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth } from '../../context/AuthContext';
 import Toast from 'react-native-toast-message';
+import { useNetwork } from '../../context/NetworkContext';
 // --- Định nghĩa kiểu (Types) ---
 type LoginScreenProps = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 type FormErrors = {
@@ -30,7 +31,7 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
   const [password, setPassword] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
-
+  const { isOnline } = useNetwork();
   const { login } = useAuth();
 
   const validateForm = (): boolean => {
@@ -46,6 +47,10 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
   };
 
   const handleLogin = async () => {
+    if (!isOnline) {
+        Toast.show({ type: 'error', text1: 'Không có kết nối mạng' });
+        return;
+    }
     if (validateForm()) {
       try {
         await loginUser(email, password);

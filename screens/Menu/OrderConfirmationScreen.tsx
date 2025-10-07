@@ -21,6 +21,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import ReturnedItemsIndicatorCard from '../../components/ReturnedItemsIndicatorCard';
 import ActionSheetModal, { ActionSheetItem } from '../../components/ActionSheetModal';
 import Toast from 'react-native-toast-message';
+import { useNetwork } from '../../context/NetworkContext';
 interface OrderSection {
   title: string;
   data: DisplayItem[];
@@ -230,6 +231,7 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
     orderId: routeOrderId,
   } = route.params;
   const insets = useSafeAreaInsets();
+  const { isOnline } = useNetwork();
   const [loading, setLoading] = useState(true);
   const [activeOrderId, setActiveOrderId] = useState<string | null>(routeOrderId || null);
 
@@ -442,6 +444,10 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
 
   const handleRemoveItem = (itemToRemove: DisplayItem) => {
     const action = async () => {
+      if (!isOnline) {
+        Toast.show({ type: 'error', text1: 'Không có kết nối mạng', text2: 'Vui lòng thử lại sau.' });
+        return;
+      }
       try {
         await supabase
           .from(itemToRemove.isNew ? 'cart_items' : 'order_items')
@@ -544,6 +550,10 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
 
   const sendNewItemsToKitchen = async (): Promise<string | null> => {
     if (!hasNewItems) return activeOrderId;
+    if (!isOnline) {
+      Toast.show({ type: 'error', text1: 'Không có kết nối mạng', text2: 'Không thể gửi bếp lúc này.' });
+      return null;
+    }
     let orderIdToUse = activeOrderId;
     try {
       if (!orderIdToUse) {
@@ -604,6 +614,10 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
   };
 
   const handlePayment = async () => {
+    if (!isOnline) {
+      Toast.show({ type: 'error', text1: 'Không có kết nối mạng', text2: 'Chức năng thanh toán cần có mạng.' });
+      return;
+    }
     if (billableItems.length === 0) {
       Alert.alert('Thông báo', 'Không có món nào cần thanh toán.');
       return;
@@ -802,6 +816,10 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
   };
 
   const handleProvisionalBill = async () => {
+    if (!isOnline) {
+        Toast.show({ type: 'error', text1: 'Không có kết nối mạng', text2: 'Vui lòng thử lại sau.' });
+        return;
+    }
     if (!activeOrderId) {
       Alert.alert('Lỗi', 'Không tìm thấy order để tạm tính.');
       return;
@@ -916,21 +934,22 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
             icon="paper-plane-outline"
             text="Gửi bếp"
             color="#3B82F6"
-            disabled={!hasNewItems}
+            disabled={!hasNewItems || !isOnline}
+            
             onPress={handleSendToKitchen}
           />
           <ActionButton
             icon="arrow-undo-outline"
             text="Trả Món"
             color="#F97316"
-            disabled={!hasBillableItems}
+            disabled={!hasBillableItems || !isOnline}
             onPress={handleGoToReturnScreen}
           />
           <ActionButton
             icon="receipt-outline"
             text="Tạm tính"
             color="#8B5CF6"
-            disabled={!hasBillableItems && !hasNewItems}
+            disabled={(!hasBillableItems && !hasNewItems) || !isOnline}
             onPress={handleProvisionalBill}
           />
           {isSessionClosable ? (
@@ -939,7 +958,7 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
               text="Đóng bàn"
               color="#EF4444"
               onPress={handleCloseSessionAfterPayment}
-              disabled={loading}
+              disabled={loading || !isOnline}
             />
           ) : (
             <ActionButton
@@ -947,7 +966,7 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
               text="Thanh toán"
               color="#10B981"
               onPress={handlePayment}
-              disabled={!hasBillableItems && !hasNewItems}
+              disabled={(!hasBillableItems && !hasNewItems) || !isOnline}
             />
           )}
         </View>

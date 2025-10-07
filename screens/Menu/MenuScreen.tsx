@@ -25,7 +25,8 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import CustomizeItemModal from './CustomizeItemModal';
 import CartDetailModal from './CartDetailModal';
 import { supabase } from '../../services/supabase';
-
+import { useNetwork } from '../../context/NetworkContext';
+import Toast from 'react-native-toast-message';
 const normalizeText = (text: string): string => {
   if (!text) return '';
   return text
@@ -210,6 +211,7 @@ type MenuScreenProps = NativeStackScreenProps<AppStackParamList, 'Menu'>;
 const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
   const { tableId, tableName } = route.params;
   const insets = useSafeAreaInsets();
+  const { isOnline } = useNetwork();
 
   const [menuData, setMenuData] = useState<CategoryFromDB[]>([]);
   const [loading, setLoading] = useState(true);
@@ -324,6 +326,11 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
   };
 
   const handleAddToCart = async (itemWithOptions: CartItem) => {
+    if (!isOnline) {
+      Toast.show({ type: 'error', text1: 'Không có kết nối mạng', text2: 'Món ăn sẽ không được lưu.' });
+      // Ở đây sau này sẽ là logic lưu vào state tạm
+      return;
+    }
     try {
       const uniqueId = `${tableId}-${itemWithOptions.menuItemId}-${itemWithOptions.size.name}-${itemWithOptions.sugar.name}-${itemWithOptions.toppings
         .map((t) => t.name)

@@ -18,6 +18,7 @@ import { AppStackParamList } from '../../constants/routes';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { supabase } from '../../services/supabase';
 import Toast from 'react-native-toast-message';
+import { useNetwork } from '../../context/NetworkContext';
 // Interface cho món hàng cần trả, bao gồm cả image_url
 interface ItemToReturn {
   id: number;
@@ -60,6 +61,7 @@ const ReturnItemCard: React.FC<{
 
 const ReturnSelectionScreen = ({ route, navigation }: Props) => {
   const { orderId, items, source } = route.params;
+  const { isOnline } = useNetwork();
   const insets = useSafeAreaInsets();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [reason, setReason] = useState('');
@@ -140,6 +142,10 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
   };
 
   const handleConfirmReturn = async () => {
+    if (!isOnline) {
+      Toast.show({ type: 'error', text1: 'Không có kết nối mạng' });
+      return;
+    }
     setIsSubmitting(true);
     const { success } = await processItemReturns();
     if (success) {
