@@ -36,6 +36,7 @@ export const ROUTES = {
   RETURNED_ITEMS_DETAIL: 'ReturnedItemsDetail',
   PROVISIONAL_BILL: 'ProvisionalBill',
   PRINT_PREVIEW: 'PrintPreview',
+  KITCHEN_SCREEN: 'KitchenScreen',
 } as const;
 
 export type AuthStackParamList = {
@@ -93,4 +94,5 @@ export type AppStackParamList = {
     order: ProvisionalOrder;
     items: BillItem[];
   };
+  [ROUTES.KITCHEN_SCREEN]: undefined;
 };

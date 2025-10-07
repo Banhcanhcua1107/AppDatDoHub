@@ -36,7 +36,7 @@ interface DisplayItem {
   isNew: boolean;
   isPaid: boolean;
   created_at?: string;
-  is_served: boolean;
+  status: string; // <-- Đảm bảo chỉ có 'status', không có 'is_served'
   returned_quantity: number;
   image_url: string | null;
   isReturnedItem?: boolean; // Cờ để đánh dấu đây là dòng hiển thị món đã trả
@@ -90,7 +90,7 @@ const OrderListItem: React.FC<{
   onUpdateQuantity: (newQuantity: number) => void;
   onOpenMenu: () => void;
 }> = ({ item, isExpanded, onPress, onUpdateQuantity, onOpenMenu }) => {
-  const { customizations, isNew, isPaid, is_served, isReturnedItem } = item;
+  const { customizations, isNew, isPaid, isReturnedItem } = item;
   const sizeText = customizations.size?.name || 'N/A';
   const sugarText = customizations.sugar?.name || 'N/A';
   const toppingsText =
@@ -134,13 +134,14 @@ const OrderListItem: React.FC<{
         <View className="flex-row justify-between items-start">
           <View className="flex-1 pr-4">
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              {is_served && !isReturnedItem && (
-                <Icon
-                  name="checkmark-circle"
-                  size={20}
-                  color="#10B981"
-                  style={{ marginRight: 6 }}
-                />
+              {item.status === 'served' && !isReturnedItem && (
+              <Icon name="checkmark-circle" size={20} color="#3B82F6" style={{ marginRight: 6 }} />
+              )}
+              {item.status === 'in_progress' && (
+                <Icon name="flame-outline" size={20} color="#F97316" style={{ marginRight: 6 }} />
+              )}
+              {item.status === 'completed' && (
+                <Icon name="restaurant-outline" size={20} color="#10B981" style={{ marginRight: 6 }} />
               )}
               <Text
                 className={`text-lg font-bold ${isPaid || isReturnedItem ? 'text-gray-500' : 'text-gray-800'} ${isReturnedItem ? 'line-through' : ''}`}
@@ -278,8 +279,8 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
                         id, 
                         status, 
                         order_items(
-                            id, quantity, unit_price, customizations, created_at, is_served, returned_quantity,
-                            menu_items(name, image_url)
+                            id, quantity, unit_price, customizations, created_at, returned_quantity,
+                            status, menu_items(name, image_url)
                         ), 
                         order_tables(tables(id, name))
                     `
@@ -293,7 +294,6 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
             if (freshTables.length > 0) setCurrentTables(freshTables);
 
             (orderDetails.order_items || []).forEach((item: any) => {
-              // [SỬA LỖI 2] Lấy tên và ảnh từ menu_items thay vì customizations
               const name = item.menu_items?.name || item.customizations?.name || 'Món đã xóa';
               const image_url = item.menu_items?.image_url || null;
 
@@ -308,9 +308,9 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
                   customizations: item.customizations,
                   isNew: false,
                   isPaid: false,
-                  is_served: true,
+                  status: 'served', // <--- SỬA THÀNH DÒNG NÀY
                   returned_quantity: item.returned_quantity,
-                  image_url, // Thêm image_url
+                  image_url,
                   isReturnedItem: true,
                 });
               }
@@ -328,9 +328,9 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
                   created_at: item.created_at,
                   isNew: false,
                   isPaid: orderDetails.status === 'paid' || orderDetails.status === 'closed',
-                  is_served: item.is_served,
+                  status: item.status, // Chỗ này đã đúng từ trước
                   returned_quantity: item.returned_quantity,
-                  image_url, // Thêm image_url
+                  image_url,
                 };
                 if (displayItem.isPaid) paidItemsData.push(displayItem);
                 else pendingItems.push(displayItem);
@@ -360,7 +360,7 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
             customizations: item.customizations,
             isNew: true,
             isPaid: false,
-            is_served: false,
+            status: 'new',
             returned_quantity: 0,
             image_url: item.menu_items?.image_url || null, // Lấy ảnh cho món mới
           }));

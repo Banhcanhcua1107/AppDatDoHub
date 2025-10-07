@@ -1,4 +1,4 @@
-// --- START OF FILE ServeStatusScreen.tsx ---
+// --- START OF FILE ServeStatusScreen.tsx (ĐÃ NÂNG CẤP) ---
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -17,35 +17,56 @@ import { AppStackParamList } from '../../constants/routes';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { supabase } from '../../services/supabase';
 
+type ItemStatus = 'waiting' | 'in_progress' | 'completed' | 'served';
+
 interface ServeItem {
   id: number;
   name: string;
   quantity: number;
-  is_served: boolean;
+  status: ItemStatus;
 }
 
 type Props = NativeStackScreenProps<AppStackParamList, 'ServeStatus'>;
 
 const ServeItemRow: React.FC<{
   item: ServeItem;
-  onToggleStatus: () => void;
-}> = ({ item, onToggleStatus }) => {
+  onMarkAsServed: () => void;
+}> = ({ item, onMarkAsServed }) => {
+  const getStatusInfo = () => {
+    switch (item.status) {
+      case 'waiting':
+        return { text: 'Chờ bếp', color: '#6B7280', icon: 'time-outline' };
+      case 'in_progress':
+        return { text: 'Đang làm', color: '#F97316', icon: 'flame-outline' };
+      case 'completed':
+        return { text: 'Sẵn sàng', color: '#10B981', icon: 'restaurant-outline' };
+      case 'served':
+        return { text: 'Đã phục vụ', color: '#3B82F6', icon: 'checkmark-done-outline' };
+      default:
+        return { text: 'Không rõ', color: 'gray', icon: 'help-circle-outline' };
+    }
+  };
+  const statusInfo = getStatusInfo();
+  const isServed = item.status === 'served';
+
   return (
     <View style={styles.itemContainer}>
       <View style={styles.itemInfo}>
-        <Text style={[styles.itemName, item.is_served && styles.servedItemText]}>{item.name}</Text>
-        <Text style={styles.itemQuantity}>Số lượng: {item.quantity}</Text>
+        <Text style={[styles.itemName, isServed && styles.servedItemText]}>{item.name}</Text>
+        <View style={[styles.statusBadge, { backgroundColor: `${statusInfo.color}20` }]}>
+          <Icon name={statusInfo.icon as any} size={14} color={statusInfo.color} />
+          <Text style={[styles.statusText, { color: statusInfo.color }]}>{statusInfo.text}</Text>
+        </View>
       </View>
-      <TouchableOpacity
-        onPress={onToggleStatus}
-        style={[styles.checkButton, item.is_served ? styles.checkedButton : styles.uncheckedButton]}
-      >
-        <Icon
-          name={item.is_served ? 'checkmark-circle' : 'ellipse-outline'}
-          size={28}
-          color={item.is_served ? '#10B981' : '#9CA3AF'}
-        />
-      </TouchableOpacity>
+      {item.status === 'completed' ? (
+        <TouchableOpacity onPress={onMarkAsServed} style={styles.serveButton}>
+          <Text style={styles.serveButtonText}>Phục vụ</Text>
+        </TouchableOpacity>
+      ) : (
+         <View style={{width: 80, alignItems: 'center'}}>
+            <Icon name={statusInfo.icon as any} size={28} color={statusInfo.color} />
+         </View>
+      )}
     </View>
   );
 };
@@ -57,11 +78,11 @@ const ServeStatusScreen = ({ route, navigation }: Props) => {
   const [items, setItems] = useState<ServeItem[]>([]);
 
   const fetchItems = useCallback(async () => {
+    // Không set loading ở đây để refresh nền mượt hơn
     try {
-      setLoading(true);
       const { data, error } = await supabase
         .from('order_items')
-        .select('id, quantity, is_served, customizations')
+        .select('id, quantity, status, customizations') // Lấy cột status mới
         .eq('order_id', orderId);
 
       if (error) throw error;
@@ -70,7 +91,7 @@ const ServeStatusScreen = ({ route, navigation }: Props) => {
         id: item.id,
         name: item.customizations?.name || 'Món không xác định',
         quantity: item.quantity,
-        is_served: item.is_served,
+        status: item.status, // Gán status mới
       }));
       setItems(formattedItems);
     } catch (err: any) {
@@ -81,56 +102,48 @@ const ServeStatusScreen = ({ route, navigation }: Props) => {
   }, [orderId]);
 
   useEffect(() => {
+    setLoading(true);
     fetchItems();
-  }, [fetchItems]);
+    const channel = supabase.channel(`public:order_items:serve_status:${orderId}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'order_items', filter: `order_id=eq.${orderId}`},
+      () => { fetchItems() }
+    ).subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [fetchItems, orderId]);
 
-  const handleToggleStatus = async (itemToUpdate: ServeItem) => {
-    const newStatus = !itemToUpdate.is_served;
+  const handleMarkAsServed = async (itemToUpdate: ServeItem) => {
     try {
       const { error } = await supabase
         .from('order_items')
-        .update({ is_served: newStatus })
+        .update({ status: 'served' }) // Cập nhật status thành 'served'
         .eq('id', itemToUpdate.id);
 
       if (error) throw error;
-
-      setItems((currentItems) =>
-        currentItems.map((item) =>
-          item.id === itemToUpdate.id ? { ...item, is_served: newStatus } : item
-        )
-      );
     } catch (err: any) {
       Alert.alert('Lỗi', 'Không thể cập nhật trạng thái món: ' + err.message);
     }
   };
 
   if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
+    return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator size="large" /></View>;
   }
 
   return (
     <View style={styles.flex1}>
-      {/* [SỬA] Đổi StatusBar để chữ và icon trên cùng (pin, sóng) thành màu trắng */}
       <StatusBar barStyle="light-content" backgroundColor="#3B82F6" />
       <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          {/* [SỬA] Đổi màu icon thành trắng */}
           <Icon name="arrow-back-outline" size={26} color="white" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Kiểm tra món cho {tableName}</Text>
         <TouchableOpacity onPress={fetchItems} style={styles.backButton}>
-          {/* [SỬA] Đổi màu icon thành trắng */}
           <Icon name="refresh-outline" size={26} color="white" />
         </TouchableOpacity>
       </View>
       <FlatList
         data={items}
         renderItem={({ item }) => (
-          <ServeItemRow item={item} onToggleStatus={() => handleToggleStatus(item)} />
+          <ServeItemRow item={item} onMarkAsServed={() => handleMarkAsServed(item)} />
         )}
         keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={{ padding: 16 }}
@@ -146,41 +159,18 @@ const ServeStatusScreen = ({ route, navigation }: Props) => {
 
 const styles = StyleSheet.create({
   flex1: { flex: 1, backgroundColor: '#F8F9FA' },
-  // [SỬA] Đổi màu nền header và bỏ đường viền dưới
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingBottom: 10,
-    backgroundColor: '#3B82F6', // Màu xanh dương
-  },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 10, backgroundColor: '#3B82F6' },
   backButton: { padding: 5 },
-  // [SỬA] Đổi màu chữ header thành trắng
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: 'white',
-  },
-  itemContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'white',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-  },
+  headerTitle: { fontSize: 18, fontWeight: 'bold', color: 'white' },
+  itemContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', padding: 16, borderRadius: 12, marginBottom: 12, elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5 },
   itemInfo: { flex: 1 },
   itemName: { fontSize: 16, fontWeight: '600', color: '#1F2937' },
-  itemQuantity: { fontSize: 13, color: 'gray', marginTop: 4 },
   servedItemText: { textDecorationLine: 'line-through', color: '#9CA3AF' },
-  checkButton: { padding: 8 },
-  checkedButton: {},
-  uncheckedButton: {},
+  statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, marginTop: 6, alignSelf: 'flex-start' },
+  statusText: { marginLeft: 6, fontWeight: '600', fontSize: 12 },
+  serveButton: { backgroundColor: '#10B981', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  serveButtonText: { color: 'white', fontWeight: 'bold' },
 });
 
 export default ServeStatusScreen;
+// --- END OF FILE ServeStatusScreen.tsx (ĐÃ NÂNG CẤP) ---
