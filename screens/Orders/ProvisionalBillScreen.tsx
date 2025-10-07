@@ -106,7 +106,7 @@ const ProvisionalBillScreen = () => {
     try {
       const { data, error } = await supabase
         .from('orders')
-        .select(`id, created_at, order_items(quantity, unit_price), order_tables(tables(id, name))`)
+        .select(`id, created_at, order_items(quantity, unit_price, returned_quantity), order_tables(tables(id, name))`) 
         .eq('status', 'pending')
         .eq('is_provisional', true);
 
@@ -115,20 +115,24 @@ const ProvisionalBillScreen = () => {
       const formattedOrders: ProvisionalOrder[] = data
         .map((order) => {
           const totalPrice = order.order_items.reduce(
-            (sum, item) => sum + item.quantity * item.unit_price,
+            (sum, item) => sum + (item.quantity - item.returned_quantity) * item.unit_price,
             0
           );
-          const totalItemCount = order.order_items.reduce((sum, item) => sum + item.quantity, 0);
+          const totalItemCount = order.order_items.reduce(
+              (sum, item) => sum + (item.quantity - item.returned_quantity),
+              0
+          );
           const tables = order.order_tables.map((ot: any) => ot.tables).filter(Boolean);
+          
           return {
             orderId: order.id,
             tables: tables,
-            totalPrice,
-            totalItemCount,
+            totalPrice, // <-- GIÁ TRỊ MỚI ĐÃ ĐÚNG
+            totalItemCount, // <-- SỐ LƯỢNG MỚI ĐÃ ĐÚNG
             createdAt: order.created_at,
           };
         })
-        .filter((order) => order.tables.length > 0);
+        .filter((order) => order.totalItemCount > 0);
 
       formattedOrders.sort(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()

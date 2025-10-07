@@ -283,24 +283,29 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
 
       const formattedOrders: ActiveOrder[] = data
         .map((order) => {
+          // [SỬA LỖI TẠI ĐÂY] Tính lại tổng tiền và số lượng sau khi trừ món trả
           const totalPrice = order.order_items.reduce(
-            (sum, item) => sum + item.quantity * item.unit_price,
+            (sum, item) => sum + (item.quantity - item.returned_quantity) * item.unit_price,
             0
           );
-          const totalItemCount = order.order_items.reduce((sum, item) => sum + item.quantity, 0);
+          const totalItemCount = order.order_items.reduce(
+              (sum, item) => sum + (item.quantity - item.returned_quantity),
+              0
+          );
           const tables = order.order_tables.map((ot: any) => ot.tables).filter(Boolean);
 
           return {
             orderId: order.id,
             representativeTableId: tables[0]?.id,
             tables: tables,
-            totalPrice,
+            totalPrice, // <-- GIÁ TRỊ MỚI ĐÃ ĐÚNG
             createdAt: order.created_at,
-            totalItemCount,
-            is_provisional: order.is_provisional, // Thêm trạng thái vào object
+            totalItemCount, // <-- SỐ LƯỢNG MỚI ĐÃ ĐÚNG
+            is_provisional: order.is_provisional,
           };
         })
-        .filter((order) => order.tables.length > 0);
+        // [CẢI TIẾN] Lọc bỏ những order đã trả hết món, không còn gì để hiển thị
+        .filter((order) => order.totalItemCount > 0);
 
       formattedOrders.sort(
         (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
