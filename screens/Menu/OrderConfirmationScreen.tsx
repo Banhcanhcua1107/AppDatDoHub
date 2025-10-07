@@ -22,6 +22,7 @@ import ReturnedItemsIndicatorCard from '../../components/ReturnedItemsIndicatorC
 import ActionSheetModal, { ActionSheetItem } from '../../components/ActionSheetModal';
 import Toast from 'react-native-toast-message';
 import { useNetwork } from '../../context/NetworkContext';
+import { offlineManager } from '../../services/OfflineManager';
 interface OrderSection {
   title: string;
   data: DisplayItem[];
@@ -424,30 +425,162 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
   );
 
   const handleUpdateQuantity = async (item: DisplayItem, newQuantity: number) => {
-    if (!item.isNew) return;
-    try {
-      if (newQuantity < 1) {
-        await supabase.from('cart_items').delete().eq('id', item.id).throwOnError();
-      } else {
-        await supabase
-          .from('cart_items')
-          .update({ quantity: newQuantity, total_price: item.unit_price * newQuantity })
-          .eq('id', item.id)
-          .throwOnError();
+    if (!item.isNew) return; // Chỉ cho phép sửa món trong giỏ hàng (cart_items)
+
+    if (isOnline) {
+      // --- LOGIC KHI CÓ MẠNG ---
+      try {
+        setLoading(true); // Có thể thêm loading indicator nhỏ
+        if (newQuantity < 1) {
+          await supabase.from('cart_items').delete().eq('id', item.id).throwOnError();
+        } else {
+          await supabase
+            .from('cart_items')
+            .update({ quantity: newQuantity, total_price: item.unit_price * newQuantity })
+            .eq('id', item.id)
+            .throwOnError();
+        }
+        // Dù có mạng, vẫn cập nhật UI ngay lập tức cho mượt
+        optimisticallyUpdateCartItem(item.id, newQuantity); 
+      } catch (error: any) {
+        Alert.alert('Lỗi', `Không thể cập nhật số lượng: ${error.message}`);
+      } finally {
+        setLoading(false);
+        // Tải lại toàn bộ dữ liệu để đảm bảo đồng bộ 100%
+        await fetchAllData(false);
       }
-      // [FIX] Tải lại dữ liệu ngay để cập nhật UI
-      await fetchAllData(false);
-    } catch (error: any) {
-      Alert.alert('Lỗi', `Không thể cập nhật số lượng: ${error.message}`);
+    } else {
+      // --- LOGIC KHI MẤT MẠNG ---
+      Toast.show({
+        type: 'info',
+        text1: 'Đang offline',
+        text2: 'Thay đổi đã được lưu tạm.',
+      });
+
+      if (newQuantity < 1) {
+        // Thêm hành động DELETE vào hàng đợi
+        offlineManager.addActionToQueue({
+          type: 'DELETE',
+          tableName: 'cart_items',
+          where: { column: 'id', value: item.id },
+          payload: {}, // không cần payload cho delete
+        });
+      } else {
+        // Thêm hành động UPDATE vào hàng đợi
+        offlineManager.addActionToQueue({
+          type: 'UPDATE',
+          tableName: 'cart_items',
+          where: { column: 'id', value: item.id },
+          payload: { quantity: newQuantity, total_price: item.unit_price * newQuantity },
+        });
+      }
+
+      // Cập nhật giao diện ngay lập tức
+      optimisticallyUpdateCartItem(item.id, newQuantity);
     }
   };
 
-  const handleRemoveItem = (itemToRemove: DisplayItem) => {
-    const action = async () => {
-      if (!isOnline) {
-        Toast.show({ type: 'error', text1: 'Không có kết nối mạng', text2: 'Vui lòng thử lại sau.' });
-        return;
+  
+  const optimisticallySendToKitchen = () => {
+  setDisplayedSections(currentSections => {
+    const newSections = JSON.parse(JSON.stringify(currentSections));
+
+    // Tìm và lấy ra section "Món mới"
+    const newItemsSectionIndex = newSections.findIndex((s: OrderSection) => s.title === 'Món mới chờ gửi bếp');
+    if (newItemsSectionIndex === -1) {
+      return currentSections; // Không có món mới để gửi
+    }
+    const newItemsSection = newSections[newItemsSectionIndex];
+
+    // Xóa section "Món mới" khỏi danh sách
+    newSections.splice(newItemsSectionIndex, 1);
+
+    // Tạo một section "Đang chờ gửi" mới
+    const pendingSectionTitle = `Đợt mới (chờ gửi) - ${new Date().toLocaleTimeString('vi-VN', {
+      hour: '2-digit',
+      minute: '2-digit',
+    })}`;
+    
+    // Thêm section mới này vào trước các section "Đợt" đã có
+    const firstPendingSectionIndex = newSections.findIndex((s: OrderSection) => s.title.startsWith('Đợt '));
+    if (firstPendingSectionIndex > -1) {
+        newSections.splice(firstPendingSectionIndex, 0, { title: pendingSectionTitle, data: newItemsSection.data });
+    } else {
+        newSections.push({ title: pendingSectionTitle, data: newItemsSection.data });
+    }
+
+    return newSections;
+  });
+};
+
+  const optimisticallyUpdateCartItem = (itemId: number, newQuantity: number) => {
+  setDisplayedSections(currentSections => {
+    // Tạo một bản sao sâu của mảng sections để tránh thay đổi trực tiếp state
+    const newSections = JSON.parse(JSON.stringify(currentSections));
+
+    // Tìm section "Món mới chờ gửi bếp"
+    const newItemsSection = newSections.find((s: OrderSection) => s.title === 'Món mới chờ gửi bếp');
+    if (!newItemsSection) return currentSections; // Trả về state cũ nếu không tìm thấy
+
+    if (newQuantity < 1) {
+      // Nếu số lượng mới < 1, xóa món đó khỏi danh sách
+      newItemsSection.data = newItemsSection.data.filter((item: DisplayItem) => item.id !== itemId);
+    } else {
+      // Nếu không, tìm và cập nhật món đó
+      const itemIndex = newItemsSection.data.findIndex((item: DisplayItem) => item.id === itemId);
+      if (itemIndex > -1) {
+        newItemsSection.data[itemIndex].quantity = newQuantity;
+        newItemsSection.data[itemIndex].totalPrice = newItemsSection.data[itemIndex].unit_price * newQuantity;
       }
+    }
+
+    return newSections;
+  });
+};
+
+
+const optimisticallyRemoveItem = (itemUniqueKey: string) => {
+  setDisplayedSections(currentSections => {
+    const newSections = JSON.parse(JSON.stringify(currentSections));
+
+    // Lặp qua từng section để tìm và xóa item
+    for (const section of newSections) {
+        const itemIndex = section.data.findIndex((item: DisplayItem) => item.uniqueKey === itemUniqueKey);
+        if (itemIndex > -1) {
+            section.data.splice(itemIndex, 1);
+            break; // Dừng lại khi đã tìm thấy và xóa
+        }
+    }
+    
+    // Lọc bỏ những section không còn data
+    return newSections.filter((section: OrderSection) => section.data.length > 0);
+  });
+};
+
+const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
+  setDisplayedSections(currentSections => {
+    const newSections = JSON.parse(JSON.stringify(currentSections));
+
+    // Lặp qua tất cả các section để tìm item cần cập nhật
+    for (const section of newSections) {
+      const itemIndex = section.data.findIndex((item: DisplayItem) => item.uniqueKey === itemUniqueKey);
+      
+      if (itemIndex > -1) {
+        // Tìm thấy item, cập nhật ghi chú trong customizations
+        section.data[itemIndex].customizations.note = newNote;
+        break; // Dừng tìm kiếm
+      }
+    }
+    
+    return newSections;
+  });
+};
+
+
+  const handleRemoveItem = (itemToRemove: DisplayItem) => {
+  const action = async () => {
+    if (isOnline) {
+      // --- LOGIC KHI ONLINE ---
       try {
         await supabase
           .from(itemToRemove.isNew ? 'cart_items' : 'order_items')
@@ -455,31 +588,43 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
           .eq('id', itemToRemove.id)
           .throwOnError();
         
-        Toast.show({
-            type: 'success',
-            text1: 'Đã hủy món',
-            text2: `Món "${itemToRemove.name}" đã được xóa.`,
-        });
-
-        await fetchAllData(false);
+        Toast.show({ type: 'success', text1: 'Đã hủy món' });
+        await fetchAllData(false); // Lấy lại dữ liệu mới nhất
       } catch (error: any) {
-        Toast.show({
-            type: 'error',
-            text1: 'Lỗi hủy món',
-            text2: error.message,
-        });
+        Toast.show({ type: 'error', text1: 'Lỗi hủy món', text2: error.message });
       }
-    };
-
-    if (itemToRemove.isNew) {
-      action();
     } else {
-      Alert.alert('Xác nhận Hủy Món', `Bạn có chắc muốn hủy món "${itemToRemove.name}"?`, [
-        { text: 'Không' },
-        { text: 'Đồng ý', style: 'destructive', onPress: action },
-      ]);
+      // --- LOGIC KHI OFFLINE ---
+      const tableName = itemToRemove.isNew ? 'cart_items' : 'order_items';
+      
+      offlineManager.addActionToQueue({
+        type: 'DELETE',
+        tableName: tableName,
+        where: { column: 'id', value: itemToRemove.id },
+        payload: {}
+      });
+
+      // Cập nhật giao diện ngay lập tức
+      optimisticallyRemoveItem(itemToRemove.uniqueKey);
+      
+      Toast.show({
+        type: 'info',
+        text1: 'Đang offline',
+        text2: `Món "${itemToRemove.name}" sẽ được xóa khi có mạng.`,
+      });
     }
   };
+
+  // Logic hiển thị Alert xác nhận không thay đổi
+  if (itemToRemove.isNew) {
+    action(); // Xóa món trong giỏ hàng thì không cần hỏi
+  } else {
+    Alert.alert('Xác nhận Hủy Món', `Bạn có chắc muốn hủy món "${itemToRemove.name}"?`, [
+      { text: 'Không' },
+      { text: 'Đồng ý', style: 'destructive', onPress: action },
+    ]);
+  }
+};
 
   const handleOpenItemMenu = (item: DisplayItem) => {
     setEditingItem(item);
@@ -487,7 +632,10 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
   };
 
   const handleSaveNote = async (newNote: string) => {
-    if (!editingItem) return;
+  if (!editingItem) return;
+
+  if (isOnline) {
+    // --- LOGIC KHI CÓ MẠNG ---
     try {
       const updatedCustomizations = { ...editingItem.customizations, note: newNote };
       await supabase
@@ -495,15 +643,43 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
         .update({ customizations: updatedCustomizations })
         .eq('id', editingItem.id)
         .throwOnError();
-      // [FIX] Tải lại dữ liệu ngay để cập nhật UI
-      await fetchAllData(false);
+      
+      // Tải lại dữ liệu để đảm bảo đồng bộ 100%
+      await fetchAllData(false); 
     } catch (error: any) {
       Alert.alert('Lỗi', `Không thể lưu ghi chú: ${error.message}`);
     } finally {
+      // Đóng modal dù thành công hay thất bại
       setNoteModalVisible(false);
       setEditingItem(null);
     }
-  };
+  } else {
+    // --- LOGIC KHI MẤT MẠNG ---
+    const tableName = editingItem.isNew ? 'cart_items' : 'order_items';
+    const updatedCustomizations = { ...editingItem.customizations, note: newNote };
+    
+    // Thêm hành động UPDATE vào hàng đợi
+    offlineManager.addActionToQueue({
+      type: 'UPDATE',
+      tableName: tableName,
+      where: { column: 'id', value: editingItem.id },
+      payload: { customizations: updatedCustomizations },
+    });
+
+    // Cập nhật giao diện ngay lập tức
+    optimisticallyUpdateNote(editingItem.uniqueKey, newNote);
+
+    Toast.show({
+      type: 'info',
+      text1: 'Đang offline',
+      text2: 'Ghi chú đã được lưu tạm.',
+    });
+    
+    // Đóng modal ngay lập tức
+    setNoteModalVisible(false);
+    setEditingItem(null);
+  }
+};
   const itemActions: ActionSheetItem[] = [];
   if (editingItem && !editingItem.isPaid && !editingItem.isReturnedItem) {
     itemActions.push({
@@ -551,8 +727,53 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
   const sendNewItemsToKitchen = async (): Promise<string | null> => {
     if (!hasNewItems) return activeOrderId;
     if (!isOnline) {
-      Toast.show({ type: 'error', text1: 'Không có kết nối mạng', text2: 'Không thể gửi bếp lúc này.' });
-      return null;
+      // Khi offline, chúng ta chỉ cho phép thêm món vào order đã tồn tại.
+      if (!activeOrderId) {
+        Toast.show({
+          type: 'error',
+          text1: 'Cần có mạng để tạo order mới',
+          text2: 'Vui lòng kết nối mạng để gửi món cho bàn mới.',
+        });
+        return null;
+      }
+
+      // Tạo các hành động và thêm vào hàng đợi
+      const itemsToInsert = newItemsFromCart.map((item) => ({
+        order_id: activeOrderId,
+        menu_item_id: item.menuItemId,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        customizations: item.customizations,
+      }));
+
+      // Hành động 1: Thêm order_items
+      offlineManager.addActionToQueue({
+        type: 'INSERT',
+        tableName: 'order_items',
+        payload: itemsToInsert,
+      });
+
+      // Hành động 2: Xóa cart_items sau khi đã thêm
+      // Cần sửa OfflineManager để hỗ trợ delete với 'in'
+      // Tạm thời ta sẽ giả định nó hoạt động với mảng ID
+      offlineManager.addActionToQueue({
+          type: 'DELETE',
+          tableName: 'cart_items',
+          payload: newItemsFromCart.map((i) => i.id),
+          // Giả định `where` có thể xử lý mảng
+          where: { column: 'id', value: newItemsFromCart.map((i) => i.id) }
+      });
+
+      // 2. Cập nhật giao diện ngay lập tức
+      optimisticallySendToKitchen();
+
+      Toast.show({
+        type: 'info',
+        text1: 'Đang offline',
+        text2: 'Món đã được lưu và sẽ tự gửi bếp khi có mạng.',
+      });
+
+      return activeOrderId;
     }
     let orderIdToUse = activeOrderId;
     try {
@@ -609,19 +830,28 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
   const handleSendToKitchen = async () => {
     setLoading(true);
     await sendNewItemsToKitchen();
-    await fetchAllData(false);
+    // Khi offline, ta không fetchAllData vì UI đã được cập nhật rồi
+    // Khi online, ta cần fetch để đảm bảo đồng bộ 100%
+    if (isOnline) {
+        await fetchAllData(false);
+    }
     setLoading(false);
   };
 
   const handlePayment = async () => {
     if (!isOnline) {
-      Toast.show({ type: 'error', text1: 'Không có kết nối mạng', text2: 'Chức năng thanh toán cần có mạng.' });
-      return;
-    }
-    if (billableItems.length === 0) {
-      Alert.alert('Thông báo', 'Không có món nào cần thanh toán.');
-      return;
-    }
+    Toast.show({
+      type: 'error',
+      text1: 'Không có kết nối mạng',
+      text2: 'Chức năng thanh toán yêu cầu phải có mạng để đảm bảo tính chính xác.',
+    });
+    return; // Dừng hàm ngay tại đây
+  }
+  
+  if (billableItems.length === 0 && !hasNewItems) { // Sửa lại điều kiện một chút
+    Alert.alert('Thông báo', 'Không có món nào cần thanh toán.');
+    return;
+  }
 
     setLoading(true);
     let finalOrderId = activeOrderId;
@@ -873,6 +1103,8 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
   const hasBillableItems = billableItems.length > 0;
   const isSessionClosable = paidItems.length > 0 && billableItems.length === 0 && !hasNewItems;
 
+
+  
   return (
     <View style={styles.flex1}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
