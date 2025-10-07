@@ -64,52 +64,63 @@ class OfflineManager {
   public async processQueue(): Promise<void> {
     let queue = this.getQueue();
     if (queue.length === 0) {
-      return; // Không có gì để xử lý
+      return;
     }
 
     console.log(`Processing ${queue.length} actions from the queue...`);
 
-    // Dùng `while` để xử lý lần lượt từng action, đảm bảo đúng thứ tự
     while (queue.length > 0) {
-      const action = queue[0]; // Lấy action đầu tiên
+      const action = queue[0];
       try {
-        let error = null;
+        let response: { error: any } | null = null;
 
         // Dựa vào `type` của action để gọi hàm Supabase tương ứng
         switch (action.type) {
           case 'INSERT':
-            ({ error } = await supabase.from(action.tableName).insert(action.payload));
+            response = await supabase.from(action.tableName).insert(action.payload);
             break;
+
           case 'UPDATE':
-            ({ error } = await supabase
+            response = await supabase
               .from(action.tableName)
               .update(action.payload)
-              .eq(action.where!.column, action.where!.value));
+              .eq(action.where!.column, action.where!.value);
             break;
+
           case 'DELETE':
-             ({ error } = await supabase
-              .from(action.tableName)
-              .delete()
-              .eq(action.where!.column, action.where!.value));
+            // --- NÂNG CẤP LOGIC DELETE Ở ĐÂY ---
+            const isDeletingMultiple = Array.isArray(action.where?.value);
+            if (isDeletingMultiple) {
+              // Nếu value là một mảng, dùng .in()
+              response = await supabase
+                .from(action.tableName)
+                .delete()
+                .in(action.where!.column, action.where!.value);
+            } else {
+              // Nếu không, dùng .eq() như cũ
+              response = await supabase
+                .from(action.tableName)
+                .delete()
+                .eq(action.where!.column, action.where!.value);
+            }
             break;
+            // --- KẾT THÚC NÂNG CẤP ---
+
           case 'RPC':
-            ({ error } = await supabase.rpc(action.tableName, action.payload));
+            response = await supabase.rpc(action.tableName, action.payload);
             break;
         }
 
-        if (error) {
-          throw error; // Nếu có lỗi, ném ra để catch xử lý
+        if (response?.error) {
+          throw response.error;
         }
         
-        // Nếu thành công, xóa action vừa xử lý khỏi đầu hàng đợi
         console.log(`Action ${action.id} processed successfully.`);
         queue.shift(); 
         this.saveQueue(queue);
 
       } catch (error) {
         console.error(`Failed to process action ${action.id}. Queue processing paused.`, error);
-        // Nếu một action bị lỗi, tạm dừng việc xử lý hàng đợi để tránh lỗi dây chuyền.
-        // Các action vẫn được giữ lại để thử lại vào lần sau.
         return; 
       }
     }

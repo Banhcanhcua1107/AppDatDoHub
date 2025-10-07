@@ -425,60 +425,49 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
   );
 
   const handleUpdateQuantity = async (item: DisplayItem, newQuantity: number) => {
-    if (!item.isNew) return; // Chỉ cho phép sửa món trong giỏ hàng (cart_items)
+  if (!item.isNew) return;
 
-    if (isOnline) {
-      // --- LOGIC KHI CÓ MẠNG ---
-      try {
-        setLoading(true); // Có thể thêm loading indicator nhỏ
-        if (newQuantity < 1) {
-          await supabase.from('cart_items').delete().eq('id', item.id).throwOnError();
-        } else {
-          await supabase
-            .from('cart_items')
-            .update({ quantity: newQuantity, total_price: item.unit_price * newQuantity })
-            .eq('id', item.id)
-            .throwOnError();
-        }
-        // Dù có mạng, vẫn cập nhật UI ngay lập tức cho mượt
-        optimisticallyUpdateCartItem(item.id, newQuantity); 
-      } catch (error: any) {
-        Alert.alert('Lỗi', `Không thể cập nhật số lượng: ${error.message}`);
-      } finally {
-        setLoading(false);
-        // Tải lại toàn bộ dữ liệu để đảm bảo đồng bộ 100%
-        await fetchAllData(false);
-      }
-    } else {
-      // --- LOGIC KHI MẤT MẠNG ---
-      Toast.show({
-        type: 'info',
-        text1: 'Đang offline',
-        text2: 'Thay đổi đã được lưu tạm.',
-      });
+  if (isOnline) {
+    try {
 
       if (newQuantity < 1) {
-        // Thêm hành động DELETE vào hàng đợi
-        offlineManager.addActionToQueue({
-          type: 'DELETE',
-          tableName: 'cart_items',
-          where: { column: 'id', value: item.id },
-          payload: {}, // không cần payload cho delete
-        });
+        await supabase.from('cart_items').delete().eq('id', item.id).throwOnError();
       } else {
-        // Thêm hành động UPDATE vào hàng đợi
-        offlineManager.addActionToQueue({
-          type: 'UPDATE',
-          tableName: 'cart_items',
-          where: { column: 'id', value: item.id },
-          payload: { quantity: newQuantity, total_price: item.unit_price * newQuantity },
-        });
+        await supabase
+          .from('cart_items')
+          .update({ quantity: newQuantity, total_price: item.unit_price * newQuantity })
+          .eq('id', item.id)
+          .throwOnError();
       }
-
-      // Cập nhật giao diện ngay lập tức
-      optimisticallyUpdateCartItem(item.id, newQuantity);
+    } catch (error: any) {
+      Alert.alert('Lỗi', `Không thể cập nhật số lượng: ${error.message}`);
+    } finally {
+      await fetchAllData(false);
     }
-  };
+  } else {
+    Toast.show({
+      type: 'info',
+      text1: 'Đang offline',
+      text2: 'Thay đổi đã được lưu tạm.',
+    });
+    if (newQuantity < 1) {
+      offlineManager.addActionToQueue({
+        type: 'DELETE',
+        tableName: 'cart_items',
+        where: { column: 'id', value: item.id },
+        payload: {},
+      });
+    } else {
+      offlineManager.addActionToQueue({
+        type: 'UPDATE',
+        tableName: 'cart_items',
+        where: { column: 'id', value: item.id },
+        payload: { quantity: newQuantity, total_price: item.unit_price * newQuantity },
+      });
+    }
+    optimisticallyUpdateCartItem(item.id, newQuantity);
+  }
+};
 
   
   const optimisticallySendToKitchen = () => {
@@ -759,9 +748,10 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
       offlineManager.addActionToQueue({
           type: 'DELETE',
           tableName: 'cart_items',
-          payload: newItemsFromCart.map((i) => i.id),
+          // payload: newItemsFromCart.map((i) => i.id),
           // Giả định `where` có thể xử lý mảng
-          where: { column: 'id', value: newItemsFromCart.map((i) => i.id) }
+          where: { column: 'id', value: newItemsFromCart.map((i) => i.id) },
+          payload: {}
       });
 
       // 2. Cập nhật giao diện ngay lập tức
