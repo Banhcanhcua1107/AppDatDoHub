@@ -18,7 +18,7 @@ import { AppStackParamList } from '../../constants/routes';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { supabase } from '../../services/supabase';
 import { useFocusEffect } from '@react-navigation/native';
-
+import Toast from 'react-native-toast-message';
 // [CẬP NHẬT] Thêm 'image' vào interface
 interface SplitItem {
   id: number;
@@ -129,19 +129,23 @@ const SplitOrderScreen = ({ route, navigation }: Props) => {
       }));
 
     if (itemsToMove.length === 0) {
-      Alert.alert('Thông báo', 'Vui lòng chọn ít nhất một món để tách.');
+      Toast.show({
+        type: 'info',
+        text1: 'Chưa chọn món',
+        text2: 'Vui lòng chọn số lượng món cần tách.',
+      });
       return;
     }
 
     const totalItems = items.reduce((sum, item) => sum + item.originalQuantity, 0);
     const totalItemsToMove = itemsToMove.reduce((sum, item) => sum + item.quantity, 0);
 
-    // Logic kiểm tra không cho tách hết món (đã có)
     if (totalItems === totalItemsToMove) {
-      Alert.alert(
-        'Hành động không hợp lệ',
-        "Bạn đang chọn tách toàn bộ order. Vui lòng sử dụng chức năng 'Chuyển Bàn' để thay thế."
-      );
+      Toast.show({
+        type: 'info',
+        text1: 'Hành động không hợp lệ',
+        text2: "Để chuyển toàn bộ, vui lòng dùng chức năng 'Chuyển Bàn'.",
+      });
       return;
     }
 
@@ -155,10 +159,18 @@ const SplitOrderScreen = ({ route, navigation }: Props) => {
 
       if (error) throw error;
 
-      Alert.alert('Thành công', `Đã tách món sang bàn ${targetTable.name}.`);
-      navigation.pop(2);
+      Toast.show({
+        type: 'success',
+        text1: 'Tách món thành công',
+        text2: `Đã tạo một order mới cho bàn ${targetTable.name}.`,
+      });
+      navigation.pop(2); // Quay lại 2 màn hình
     } catch (error: any) {
-      Alert.alert('Lỗi', 'Không thể tách order: ' + error.message);
+      Toast.show({
+        type: 'error',
+        text1: 'Lỗi tách order',
+        text2: error.message,
+      });
     } finally {
       setIsSubmitting(false);
     }
