@@ -97,20 +97,25 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
     });
   };
 
-  // const handleProvisionalBill = async () => {
-  //   setIsToggling(true);
-  //   try {
-  //       const { error } = await supabase.rpc('toggle_provisional_bill_status', {
-  //           p_order_id: item.orderId
-  //       });
-  //       if (error) throw error;
-  //       // Dựa vào real-time để tự cập nhật UI, không cần làm gì thêm ở đây
-  //   } catch (error: any) {
-  //       Alert.alert("Lỗi", "Không thể cập nhật trạng thái tạm tính: " + error.message);
-  //   } finally {
-  //       setIsToggling(false);
-  //   }
-  // };
+  const handleToggleProvisionalBill = async () => {
+    setIsToggling(true);
+    try {
+        const { error } = await supabase.rpc('toggle_provisional_bill_status', {
+            p_order_id: item.orderId
+        });
+        if (error) throw error;
+        // Giao diện sẽ tự cập nhật nhờ real-time
+        Toast.show({
+            type: 'info',
+            text1: `Đã ${item.is_provisional ? 'hủy' : 'gửi'} tạm tính`,
+            text2: `Bàn ${displayTableName} đã được cập nhật.`
+        });
+    } catch (error: any) {
+        Alert.alert("Lỗi", "Không thể cập nhật trạng thái tạm tính: " + error.message);
+    } finally {
+        setIsToggling(false);
+    }
+  };
 
   const handleNavigateToReturnOrBill = async () => {
     setIsToggling(true);
@@ -220,7 +225,7 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
         </TouchableOpacity>
         {/* [CẬP NHẬT] Nút này sẽ điều hướng đến màn hình trả món */}
         <TouchableOpacity
-          onPress={handleNavigateToReturnOrBill}
+          onPress={handleToggleProvisionalBill} // <--- GỌI HÀM MỚI
           disabled={isToggling}
           className="py-3 items-center justify-center flex-1"
         >
@@ -230,7 +235,7 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
             <Ionicons
               name="receipt-outline"
               size={24}
-              color={item.is_provisional ? '#2E8540' : 'gray'}
+              color={item.is_provisional ? '#2E8540' : 'gray'} // <-- Màu thay đổi theo trạng thái
             />
           )}
         </TouchableOpacity>
@@ -268,7 +273,7 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
           id, 
           created_at, 
           is_provisional,
-          order_items(quantity, unit_price), 
+          order_items(quantity, unit_price, returned_quantity), 
           order_tables(tables(id, name))
         `
         )

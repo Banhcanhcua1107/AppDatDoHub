@@ -155,17 +155,24 @@ const ProvisionalBillScreen = () => {
     try {
       const { data, error } = await supabase
         .from('order_items')
-        .select('quantity, unit_price, customizations')
+        .select('quantity, unit_price, customizations, returned_quantity') // <-- Lấy thêm returned_quantity
         .eq('order_id', order.orderId);
 
       if (error) throw error;
 
-      const items: BillItem[] = (data || []).map((item) => ({
-        name: item.customizations?.name || 'Món đã xóa',
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        totalPrice: item.quantity * item.unit_price,
-      }));
+      const items: BillItem[] = (data || [])
+        .map((item) => {
+            const remainingQuantity = item.quantity - item.returned_quantity;
+            if (remainingQuantity <= 0) return null; // Bỏ qua nếu món đã trả hết
+
+            return {
+                name: item.customizations?.name || 'Món đã xóa',
+                quantity: remainingQuantity, // <-- Chỉ lấy số lượng còn lại
+                unit_price: item.unit_price,
+                totalPrice: remainingQuantity * item.unit_price, // <-- Tính tiền cho số lượng còn lại
+            };
+        })
+        .filter((item): item is BillItem => item !== null); // Lọc bỏ các giá trị null
 
       setBillItems(items);
     } catch (error: any) {
