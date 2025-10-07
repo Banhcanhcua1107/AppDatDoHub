@@ -6,7 +6,6 @@ import {
   TextInput,
   TouchableOpacity,
   SafeAreaView,
-  Alert,
   Keyboard,
   Platform,
 } from 'react-native';
@@ -15,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { AuthStackParamList, ROUTES } from '../../constants/routes';
 import { verifyOtpForSignup, resendOtpForSignup } from '../../services/authService';
-
+import Toast from 'react-native-toast-message';
 type OtpScreenRProps = NativeStackScreenProps<AuthStackParamList, typeof ROUTES.OTP_REGISTER>;
 
 export default function OtpScreenR({ route, navigation }: OtpScreenRProps) {
@@ -54,13 +53,17 @@ export default function OtpScreenR({ route, navigation }: OtpScreenRProps) {
 
     try {
       await verifyOtpForSignup(email, otp);
-      Alert.alert(
-        'Xác thực thành công!',
-        'Tài khoản của bạn đã được kích hoạt. Vui lòng đăng nhập.',
-        [{ text: 'OK', onPress: () => navigation.navigate(ROUTES.LOGIN) }]
-      );
+      Toast.show({
+        type: 'success',
+        text1: 'Xác thực thành công!',
+        text2: 'Tài khoản của bạn đã được kích hoạt.',
+      });
     } catch (err: any) {
-      setError(err.message || 'Mã OTP không chính xác. Vui lòng thử lại.');
+      Toast.show({
+        type: 'error',
+        text1: 'Xác thực thất bại',
+        text2: err.message || 'Mã OTP không chính xác. Vui lòng thử lại.',
+      });
     } finally {
       setIsLoading(false);
     }
@@ -71,10 +74,18 @@ export default function OtpScreenR({ route, navigation }: OtpScreenRProps) {
 
     try {
       await resendOtpForSignup(email);
-      Alert.alert('Thành công', 'Một mã OTP mới đã được gửi đến email của bạn.');
+      Toast.show({
+        type: 'success',
+        text1: 'Đã gửi lại mã',
+        text2: 'Một mã OTP mới đã được gửi đến email của bạn.',
+      });
       setResendCooldown(60);
     } catch (err: any) {
-      Alert.alert('Lỗi', err.message || 'Không thể gửi lại mã OTP. Vui lòng thử lại sau.');
+      Toast.show({
+        type: 'error',
+        text1: 'Gửi lại thất bại',
+        text2: err.message || 'Không thể gửi lại mã OTP. Vui lòng thử lại sau.',
+      });
     }
   };
 

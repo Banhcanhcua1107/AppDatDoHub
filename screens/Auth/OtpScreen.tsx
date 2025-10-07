@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   SafeAreaView,
   TextInput,
-  Alert,
   Keyboard,
   Platform,
 } from 'react-native';
@@ -14,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AuthStackParamList, ROUTES } from '../../constants/routes';
 import { verifyPasswordResetOtp, sendPasswordResetOtp } from '../../services/authService';
-
+import Toast from 'react-native-toast-message';
 type OtpProps = NativeStackScreenProps<AuthStackParamList, typeof ROUTES.OTP>;
 
 export default function OtpScreen({ route, navigation }: OtpProps) {
@@ -58,11 +57,17 @@ export default function OtpScreen({ route, navigation }: OtpProps) {
     try {
       // Logic nghiệp vụ vẫn giữ nguyên
       await verifyPasswordResetOtp(email, otp);
-      Alert.alert('Thành công', 'Xác thực OTP thành công! Vui lòng tạo mật khẩu mới.', [
-        { text: 'OK', onPress: () => navigation.navigate(ROUTES.RESET_PASSWORD, { email }) },
-      ]);
+      Toast.show({
+          type: 'success',
+          text1: 'Xác thực thành công',
+          text2: 'Vui lòng tạo mật khẩu mới.',
+        });
     } catch (err: any) {
-      setError(err.message || 'Mã OTP không chính xác. Vui lòng thử lại.');
+      Toast.show({
+        type: 'error',
+        text1: 'Xác thực thất bại',
+        text2: err.message || 'Mã OTP không chính xác. Vui lòng thử lại.',
+      });
     } finally {
       setIsLoading(false);
     }
@@ -73,11 +78,19 @@ export default function OtpScreen({ route, navigation }: OtpProps) {
     try {
       // Logic nghiệp vụ vẫn giữ nguyên
       await sendPasswordResetOtp(email);
-      Alert.alert('Đã gửi lại', `Một mã OTP mới đã được gửi đến ${email}.`);
+      Toast.show({
+        type: 'success',
+        text1: 'Đã gửi lại mã',
+        text2: `Một mã OTP mới đã được gửi đến ${email}.`,
+      });
       // --- THÊM MỚI: Bật lại bộ đếm ---
       setResendCooldown(60);
     } catch (err: any) {
-      Alert.alert('Lỗi', err.message || 'Không thể gửi lại OTP.');
+      Toast.show({
+        type: 'error',
+        text1: 'Gửi lại thất bại',
+        text2: err.message || 'Không thể gửi lại OTP.',
+      });
     }
   };
 

@@ -54,8 +54,11 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     if (validateForm()) {
       try {
         await loginUser(email, password);
-        // Toast cho đăng nhập thành công có thể không cần thiết vì app sẽ chuyển màn hình
-        // Nhưng nếu muốn, bạn có thể thêm ở đây
+        Toast.show({
+          type: 'success',
+          text1: 'Đăng nhập thành công',
+          text2: 'Chào mừng trở lại!',
+        });
         login();
       } catch (error: any) {
         // --- THAY THẾ ALERT BẰNG TOAST ---

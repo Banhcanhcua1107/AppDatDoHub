@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   SafeAreaView,
   ScrollView,
-  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -15,7 +14,7 @@ import MaskedView from '@react-native-masked-view/masked-view';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AuthStackParamList, ROUTES } from '../../constants/routes';
 import { sendPasswordResetOtp } from '../../services/authService';
-
+import Toast from 'react-native-toast-message';
 type ForgotPasswordProps = NativeStackScreenProps<
   AuthStackParamList,
   typeof ROUTES.FORGOT_PASSWORD
@@ -41,13 +40,17 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordProps
     setIsLoading(true);
     try {
       await sendPasswordResetOtp(email);
-      Alert.alert(
-        'Thành công',
-        `Một mã OTP đã được gửi đến ${email}. Vui lòng kiểm tra hộp thư của bạn.`,
-        [{ text: 'OK', onPress: () => navigation.navigate(ROUTES.OTP, { email }) }]
-      );
+      Toast.show({
+        type: 'success',
+        text1: 'Đã gửi yêu cầu',
+        text2: `Một mã OTP đã được gửi đến ${email}.`,
+      });
     } catch (err: any) {
-      setError(err.message);
+      Toast.show({
+        type: 'error',
+        text1: 'Gửi yêu cầu thất bại',
+        text2: err.message,
+      });
     } finally {
       setIsLoading(false);
     }

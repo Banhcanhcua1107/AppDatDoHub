@@ -7,13 +7,12 @@ import {
   TouchableOpacity,
   SafeAreaView,
   ScrollView,
-  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AuthStackParamList, ROUTES } from '../../constants/routes';
 import { updateUserPassword } from '../../services/authService';
-
+import Toast from 'react-native-toast-message';
 type ResetPasswordProps = NativeStackScreenProps<AuthStackParamList, typeof ROUTES.RESET_PASSWORD>;
 
 export default function ResetPasswordScreen({ route, navigation }: ResetPasswordProps) {
@@ -44,7 +43,11 @@ export default function ResetPasswordScreen({ route, navigation }: ResetPassword
         await updateUserPassword(password);
         navigation.navigate(ROUTES.RESET_SUCCESS);
       } catch (err: any) {
-        Alert.alert('Lỗi', err.message || 'Không thể cập nhật mật khẩu.');
+        Toast.show({
+          type: 'error',
+          text1: 'Cập nhật thất bại',
+          text2: err.message || 'Không thể cập nhật mật khẩu.',
+        });
       } finally {
         setIsLoading(false);
       }
