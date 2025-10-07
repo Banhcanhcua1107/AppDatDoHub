@@ -20,7 +20,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../services/supabase';
 import { AppTabParamList, AppStackParamList, ROUTES } from '../../constants/routes';
-
+import Toast from 'react-native-toast-message';
 // --- [SỬA LỖI] Định nghĩa kiểu dữ liệu rõ ràng ---
 type TableInfo = { id: string; name: string };
 type ActiveOrder = {
@@ -421,10 +421,39 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
           });
           break;
         case 'cancel_order':
-          Alert.alert('Hủy order', `Bạn có chắc muốn hủy order cho nhóm bàn ${displayTableName}?`, [
-            { text: 'Không' },
-            { text: 'Hủy', style: 'destructive' },
-          ]);
+          Alert.alert(
+            'Xác nhận Hủy Order', 
+            `Toàn bộ order cho nhóm bàn "${displayTableName}" sẽ bị xóa vĩnh viễn và các bàn sẽ trở về trạng thái 'Trống'. Bạn có chắc chắn không?`, 
+            [
+              { text: 'Không' },
+              { 
+                text: 'Hủy Order', 
+                style: 'destructive',
+                onPress: async () => {
+                  try {
+                    // Gọi hàm RPC trên Supabase để hủy order
+                    const { error } = await supabase.rpc('cancel_order_and_reset_tables', {
+                      p_order_id: selectedOrder.orderId
+                    });
+                    if (error) throw error;
+
+                    Toast.show({
+                      type: 'success',
+                      text1: 'Đã hủy order',
+                      text2: `Order cho ${displayTableName} đã được hủy thành công.`
+                    });
+                    // Real-time sẽ tự động cập nhật lại danh sách, không cần gọi fetch lại
+                  } catch (err: any) {
+                    Toast.show({
+                      type: 'error',
+                      text1: 'Lỗi hủy order',
+                      text2: err.message
+                    });
+                  }
+                }
+              },
+            ]
+          );
           break;
         default:
           break;

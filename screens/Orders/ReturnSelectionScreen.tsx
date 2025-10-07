@@ -17,7 +17,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppStackParamList } from '../../constants/routes';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { supabase } from '../../services/supabase';
-
+import Toast from 'react-native-toast-message';
 // Interface cho món hàng cần trả, bao gồm cả image_url
 interface ItemToReturn {
   id: number;
@@ -143,7 +143,11 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
     setIsSubmitting(true);
     const { success } = await processItemReturns();
     if (success) {
-      Alert.alert('Thành công', 'Đã cập nhật trả món thành công.');
+      Toast.show({
+        type: 'success',
+        text1: 'Trả món thành công',
+        text2: 'Thông tin order đã được cập nhật.'
+      });
       navigation.goBack();
     }
     setIsSubmitting(false);

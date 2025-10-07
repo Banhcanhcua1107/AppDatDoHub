@@ -15,7 +15,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppStackParamList, ROUTES } from '../../constants/routes';
 import { supabase } from '../../services/supabase';
 import Icon from 'react-native-vector-icons/Ionicons';
-
+import Toast from 'react-native-toast-message';
 interface Table {
   id: string;
   name: string;
@@ -140,11 +140,18 @@ const TableSelectionScreen = ({ route, navigation }: Props) => {
                 setLoading(true);
                 try {
                   await handleGroupTables(sourceTable.orderId!, selectedTables);
-                  Alert.alert('Thành công', `Đã gộp bàn thành công.`);
+                  Toast.show({
+                    type: 'success',
+                    text1: 'Gộp bàn thành công',
+                    text2: `Các bàn đã được gộp vào chung order.`
+                  });
                   navigation.goBack();
                 } catch (error: any) {
-                  Alert.alert('Lỗi', 'Không thể gộp bàn: ' + error.message);
-                } finally {
+                  Toast.show({
+                    type: 'error',
+                    text1: 'Lỗi gộp bàn',
+                    text2: error.message
+                  });
                   setLoading(false);
                 }
               },
@@ -166,10 +173,18 @@ const TableSelectionScreen = ({ route, navigation }: Props) => {
                 setLoading(true);
                 try {
                   await handleTransferTable(sourceTable.id, targetTable);
-                  Alert.alert('Thành công', `Đã chuyển order sang bàn ${targetTable.name}.`);
+                  Toast.show({
+                    type: 'success',
+                    text1: 'Chuyển bàn thành công',
+                    text2: `Order đã được chuyển sang ${targetTable.name}.`
+                  });
                   navigation.goBack();
                 } catch (error: any) {
-                  Alert.alert('Lỗi', 'Không thể chuyển bàn: ' + error.message);
+                  Toast.show({
+                    type: 'error',
+                    text1: 'Lỗi chuyển bàn',
+                    text2: error.message
+                  });
                 } finally {
                   setLoading(false);
                 }
@@ -195,10 +210,18 @@ const TableSelectionScreen = ({ route, navigation }: Props) => {
                 setLoading(true);
                 try {
                   await handleMergeOrder(sourceTable.orderId!, selectedTables);
-                  Alert.alert('Thành công', `Đã ghép order vào bàn ${sourceTable.name}.`);
+                  Toast.show({
+                    type: 'success',
+                    text1: 'Ghép order thành công',
+                    text2: `Các món đã được gộp vào order của ${sourceTable.name}.`
+                  });
                   navigation.goBack();
                 } catch (error: any) {
-                  Alert.alert('Lỗi', 'Không thể ghép order: ' + error.message);
+                  Toast.show({
+                    type: 'error',
+                    text1: 'Lỗi ghép order',
+                    text2: error.message
+                  });
                 } finally {
                   setLoading(false);
                 }

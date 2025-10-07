@@ -20,6 +20,7 @@ import { supabase } from '../../services/supabase';
 import { useFocusEffect } from '@react-navigation/native';
 import ReturnedItemsIndicatorCard from '../../components/ReturnedItemsIndicatorCard';
 import ActionSheetModal, { ActionSheetItem } from '../../components/ActionSheetModal';
+import Toast from 'react-native-toast-message';
 interface OrderSection {
   title: string;
   data: DisplayItem[];
@@ -447,14 +448,23 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
           .delete()
           .eq('id', itemToRemove.id)
           .throwOnError();
-        // [FIX] Tải lại dữ liệu ngay để cập nhật UI
+        
+        Toast.show({
+            type: 'success',
+            text1: 'Đã hủy món',
+            text2: `Món "${itemToRemove.name}" đã được xóa.`,
+        });
+
         await fetchAllData(false);
       } catch (error: any) {
-        Alert.alert('Lỗi', `Không thể hủy món: ${error.message}`);
+        Toast.show({
+            type: 'error',
+            text1: 'Lỗi hủy món',
+            text2: error.message,
+        });
       }
     };
 
-    // Nếu món mới, không cần hỏi lại
     if (itemToRemove.isNew) {
       action();
     } else {
@@ -566,14 +576,22 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
       await supabase
         .from('cart_items')
         .delete()
-        .in(
-          'id',
-          newItemsFromCart.map((i) => i.id)
-        )
+        .in('id', newItemsFromCart.map((i) => i.id))
         .throwOnError();
+
+      Toast.show({
+        type: 'success',
+        text1: 'Đã gửi bếp thành công!',
+        text2: `${newItemsFromCart.length} món mới đã được gửi đi.`
+      });
+
       return orderIdToUse;
     } catch (error: any) {
-      Alert.alert('Lỗi Gửi Bếp', error.message);
+      Toast.show({
+        type: 'error',
+        text1: 'Lỗi Gửi Bếp',
+        text2: error.message
+      });
       return null;
     }
   };
@@ -643,9 +661,18 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
         .update({ status: 'paid', total_price: finalBill })
         .eq('id', orderId)
         .throwOnError();
-      Alert.alert('Thành công', 'Đã thanh toán. Bàn vẫn đang được phục vụ.');
+      
+      Toast.show({
+        type: 'success',
+        text1: 'Thanh toán thành công',
+        text2: 'Bàn vẫn đang được phục vụ.'
+      });
     } catch (error: any) {
-      Alert.alert('Lỗi', `Không thể cập nhật trạng thái order: ${error.message}`);
+      Toast.show({
+        type: 'error',
+        text1: 'Lỗi thanh toán',
+        text2: error.message
+      });
     } finally {
       setLoading(false);
     }
@@ -672,10 +699,18 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
         .in('id', tableIdsToUpdate)
         .throwOnError();
 
-      Alert.alert('Hoàn tất', 'Bàn đã được thanh toán và dọn dẹp.');
+       Toast.show({
+        type: 'success',
+        text1: 'Hoàn tất phiên',
+        text2: 'Bàn đã được thanh toán và dọn dẹp.'
+      });
       navigation.navigate(ROUTES.APP_TABS, { screen: ROUTES.HOME_TAB });
     } catch (error: any) {
-      Alert.alert('Lỗi', `Không thể kết thúc phiên làm việc: ${error.message}`);
+      Toast.show({
+        type: 'error',
+        text1: 'Lỗi kết thúc phiên',
+        text2: error.message
+      });
     } finally {
       setLoading(false);
     }
@@ -777,12 +812,17 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
         p_order_id: activeOrderId,
       });
       if (error) throw error;
-      Alert.alert(
-        'Thành công',
-        'Đã cập nhật trạng thái tạm tính. Bạn có thể xem trong tab Tạm tính.'
-      );
+      Toast.show({
+          type: 'info',
+          text1: 'Đã gửi tạm tính',
+          text2: 'Có thể xem trong tab Tạm tính.'
+      });
     } catch (error: any) {
-      Alert.alert('Lỗi', 'Không thể cập nhật trạng thái tạm tính: ' + error.message);
+      Toast.show({
+          type: 'error',
+          text1: 'Lỗi tạm tính',
+          text2: error.message
+      });
     } finally {
       setLoading(false);
     }
