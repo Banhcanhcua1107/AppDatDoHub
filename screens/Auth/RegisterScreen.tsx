@@ -8,7 +8,6 @@ import {
   Image,
   SafeAreaView,
   ScrollView,
-  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import MaskedView from '@react-native-masked-view/masked-view';
@@ -16,7 +15,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { registerUser } from '../../services/authService';
 import { AuthStackParamList, ROUTES } from '../../constants/routes';
-
+import Toast from 'react-native-toast-message';
 type RegisterScreenProps = NativeStackScreenProps<AuthStackParamList, typeof ROUTES.REGISTER>;
 type FormErrors = {
   email?: string;
@@ -57,13 +56,20 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
     if (validateForm()) {
       try {
         await registerUser(email, password);
-        Alert.alert(
-          'Đăng ký thành công!',
-          'Vui lòng kiểm tra email để lấy mã OTP xác thực tài khoản.'
-        );
+        // --- THAY THẾ ALERT BẰNG TOAST ---
+        Toast.show({
+          type: 'success',
+          text1: 'Đăng ký thành công!',
+          text2: 'Vui lòng kiểm tra email để xác thực tài khoản.',
+        });
         navigation.navigate(ROUTES.OTP_REGISTER, { email: email });
       } catch (error: any) {
-        Alert.alert('Lỗi đăng ký', error.message);
+        // --- THAY THẾ ALERT BẰNG TOAST ---
+        Toast.show({
+          type: 'error',
+          text1: 'Đăng ký thất bại',
+          text2: error.message || 'Email đã tồn tại hoặc có lỗi xảy ra.',
+        });
       }
     }
   };

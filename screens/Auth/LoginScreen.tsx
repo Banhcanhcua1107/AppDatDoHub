@@ -17,7 +17,7 @@ import { AuthStackParamList, ROUTES } from '../../constants/routes';
 import { loginUser } from '../../services/authService';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useAuth } from '../../context/AuthContext';
-
+import Toast from 'react-native-toast-message';
 // --- Định nghĩa kiểu (Types) ---
 type LoginScreenProps = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 type FormErrors = {
@@ -49,9 +49,17 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     if (validateForm()) {
       try {
         await loginUser(email, password);
+        // Toast cho đăng nhập thành công có thể không cần thiết vì app sẽ chuyển màn hình
+        // Nhưng nếu muốn, bạn có thể thêm ở đây
         login();
       } catch (error: any) {
-        alert('Lỗi đăng nhập: ' + error.message);
+        // --- THAY THẾ ALERT BẰNG TOAST ---
+        Toast.show({
+          type: 'error', // Loại thông báo: 'success', 'error', 'info'
+          text1: 'Đăng nhập thất bại', // Dòng tiêu đề
+          text2: error.message || 'Email hoặc mật khẩu không chính xác.', // Dòng thông điệp
+          position: 'top', // Vị trí hiển thị
+        });
       }
     }
   };
