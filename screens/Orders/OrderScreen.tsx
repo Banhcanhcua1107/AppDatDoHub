@@ -38,13 +38,13 @@ interface MenuItemProps {
   action: string;
   color?: string;
 }
-interface ItemToReturn {
-  id: number;
-  name: string;
-  quantity: number;
-  unit_price: number;
-  image_url: string | null;
-}
+// interface ItemToReturn {
+//   id: number;
+//   name: string;
+//   quantity: number;
+//   unit_price: number;
+//   image_url: string | null;
+// }
 
 const MenuActionItem: React.FC<{ item: MenuItemProps; onPress: (action: string) => void }> = ({
   item,
@@ -117,49 +117,49 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
     }
   };
 
-  const handleNavigateToReturnOrBill = async () => {
-    setIsToggling(true);
-    try {
-      // Lấy danh sách các món trong order để truyền sang màn hình trả món
-      const { data: orderItems, error } = await supabase
-        .from('order_items')
-        .select(
-          `
-                id,
-                quantity,
-                unit_price,
-                menu_items (
-                    name,
-                    image_url
-                )
-            `
-        )
-        .eq('order_id', item.orderId)
-        .gt('quantity', 0); // Chỉ lấy những món có số lượng > 0
+  // const handleNavigateToReturnOrBill = async () => {
+  //   setIsToggling(true);
+  //   try {
+  //     // Lấy danh sách các món trong order để truyền sang màn hình trả món
+  //     const { data: orderItems, error } = await supabase
+  //       .from('order_items')
+  //       .select(
+  //         `
+  //               id,
+  //               quantity,
+  //               unit_price,
+  //               menu_items (
+  //                   name,
+  //                   image_url
+  //               )
+  //           `
+  //       )
+  //       .eq('order_id', item.orderId)
+  //       .gt('quantity', 0); // Chỉ lấy những món có số lượng > 0
 
-      if (error) throw error;
+  //     if (error) throw error;
 
-      // Định dạng lại dữ liệu cho đúng với kiểu ItemToReturn
-      const formattedItems: ItemToReturn[] = orderItems.map((oi: any) => ({
-        id: oi.id,
-        name: oi.menu_items?.name || 'Món không xác định',
-        quantity: oi.quantity,
-        unit_price: oi.unit_price,
-        image_url: oi.menu_items?.image_url,
-      }));
+  //     // Định dạng lại dữ liệu cho đúng với kiểu ItemToReturn
+  //     const formattedItems: ItemToReturn[] = orderItems.map((oi: any) => ({
+  //       id: oi.id,
+  //       name: oi.menu_items?.name || 'Món không xác định',
+  //       quantity: oi.quantity,
+  //       unit_price: oi.unit_price,
+  //       image_url: oi.menu_items?.image_url,
+  //     }));
 
-      // Điều hướng đến màn hình chọn món trả, với "source" để phân biệt luồng
-      navigation.navigate(ROUTES.RETURN_SELECTION, {
-        orderId: item.orderId,
-        items: formattedItems,
-        source: 'OrderScreen', // Đánh dấu là đi từ màn hình Order
-      });
-    } catch (error: any) {
-      Alert.alert('Lỗi', 'Không thể lấy thông tin món ăn: ' + error.message);
-    } finally {
-      setIsToggling(false);
-    }
-  };
+  //     // Điều hướng đến màn hình chọn món trả, với "source" để phân biệt luồng
+  //     navigation.navigate(ROUTES.RETURN_SELECTION, {
+  //       orderId: item.orderId,
+  //       items: formattedItems,
+  //       source: 'OrderScreen', // Đánh dấu là đi từ màn hình Order
+  //     });
+  //   } catch (error: any) {
+  //     Alert.alert('Lỗi', 'Không thể lấy thông tin món ăn: ' + error.message);
+  //   } finally {
+  //     setIsToggling(false);
+  //   }
+  // };
   return (
     // [SỬA LỖI] Cấu trúc JSX được thay đổi ở đây
     <View style={styles.cardShadow} className="bg-white rounded-lg mb-4 mx-4">
@@ -298,13 +298,12 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
             orderId: order.id,
             representativeTableId: tables[0]?.id,
             tables: tables,
-            totalPrice, // <-- GIÁ TRỊ MỚI ĐÃ ĐÚNG
+            totalPrice, 
             createdAt: order.created_at,
-            totalItemCount, // <-- SỐ LƯỢNG MỚI ĐÃ ĐÚNG
+            totalItemCount, 
             is_provisional: order.is_provisional,
           };
         })
-        // [CẢI TIẾN] Lọc bỏ những order đã trả hết món, không còn gì để hiển thị
         .filter((order) => order.totalItemCount > 0);
 
       formattedOrders.sort(
