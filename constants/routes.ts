@@ -37,6 +37,7 @@ export const ROUTES = {
   PROVISIONAL_BILL: 'ProvisionalBill',
   PRINT_PREVIEW: 'PrintPreview',
   KITCHEN_SCREEN: 'KitchenScreen',
+  CHANGE_PASSWORD: 'ChangePassword',
 } as const;
 
 export type AuthStackParamList = {
@@ -95,4 +96,5 @@ export type AppStackParamList = {
     items: BillItem[];
   };
   [ROUTES.KITCHEN_SCREEN]: undefined;
+  [ROUTES.CHANGE_PASSWORD]: undefined;
 };

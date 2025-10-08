@@ -81,3 +81,38 @@ export const updateUserPassword = async (password: string) => {
   if (error) throw new Error(error.message || 'Không thể cập nhật mật khẩu.');
   return data.user;
 };
+
+
+export const changeUserPassword = async (currentPassword: string, newPassword: string): Promise<void> => {
+  // Bước 1: Lấy email của người dùng đang đăng nhập từ session hiện tại
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user || !user.email) {
+    throw new Error('Không tìm thấy thông tin người dùng đang đăng nhập.');
+  }
+  const email = user.email;
+
+  // Bước 2: Thử đăng nhập lại với mật khẩu hiện tại để xác thực.
+  // Đây là bước kiểm tra bảo mật quan trọng nhất.
+  const { error: signInError } = await supabase.auth.signInWithPassword({
+    email: email,
+    password: currentPassword,
+  });
+
+  if (signInError) {
+    // Nếu đăng nhập lại thất bại, có nghĩa là mật khẩu hiện tại không đúng.
+    // Supabase thường trả về lỗi "Invalid login credentials".
+    throw new Error('Mật khẩu hiện tại không chính xác.');
+  }
+
+  // Bước 3: Nếu xác thực thành công, tiến hành cập nhật mật khẩu mới.
+  const { error: updateError } = await supabase.auth.updateUser({
+    password: newPassword,
+  });
+
+  if (updateError) {
+    // Nếu có lỗi trong quá trình cập nhật, ném lỗi ra ngoài.
+    throw new Error(updateError.message || 'Không thể cập nhật mật khẩu. Vui lòng thử lại.');
+  }
+
+  // Nếu không có lỗi nào xảy ra, hàm đã thực hiện thành công.
+};

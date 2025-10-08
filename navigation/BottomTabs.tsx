@@ -13,7 +13,7 @@ import OrderScreen from '../screens/Orders/OrderScreen'; // Đảm bảo dòng n
 import ProvisionalBillScreen from '../screens/Orders/ProvisionalBillScreen';
 import ReturnItemsScreen from '../screens/Orders/ReturnItemsScreen';
 import PlaceholderScreen from '../screens/Placeholders/PlaceholderScreen';
-
+import UtilitiesScreen from '../screens/Utilities/UtilitiesScreen';
 const Tab = createBottomTabNavigator<AppTabParamList>();
 
 const BottomTabs = () => {
@@ -75,10 +75,11 @@ const BottomTabs = () => {
       {/* Tab 5: Tiện ích */}
       <Tab.Screen
         name={ROUTES.UTILITIES_TAB}
-        component={PlaceholderScreen}
-        initialParams={{ screenName: 'Tiện ích' }}
+        component={UtilitiesScreen} // <-- THAY THẾ Ở ĐÂY
         options={{
           title: 'Tiện ích',
+          headerShown: true, // <-- Có thể bạn muốn hiện header cho trang này
+          headerTitleAlign: 'center',
         }}
       />
     </Tab.Navigator>
