@@ -38,6 +38,7 @@ export const ROUTES = {
   PRINT_PREVIEW: 'PrintPreview',
   KITCHEN_SCREEN: 'KitchenScreen',
   CHANGE_PASSWORD: 'ChangePassword',
+  BILL_HISTORY: 'BillHistory',
 } as const;
 
 export type AuthStackParamList = {
@@ -97,4 +98,5 @@ export type AppStackParamList = {
   };
   [ROUTES.KITCHEN_SCREEN]: undefined;
   [ROUTES.CHANGE_PASSWORD]: undefined;
+  [ROUTES.BILL_HISTORY]: undefined;
 };

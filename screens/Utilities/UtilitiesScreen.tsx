@@ -52,7 +52,11 @@ export default function UtilitiesScreen() {
         {/* Khu vực Hoạt động & Báo cáo */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Hoạt động & Báo cáo</Text>
-          <UtilityItem icon="receipt-outline" title="Lịch sử hóa đơn" onPress={() => { /* Navigate to OrderHistoryScreen */ }} />
+          <UtilityItem 
+            icon="receipt-outline" 
+            title="Lịch sử hóa đơn" 
+            onPress={() => navigation.navigate(ROUTES.BILL_HISTORY)} // Điều hướng đến màn hình lịch sử
+          />
           <UtilityItem icon="qr-code-outline" title="Thiết lập QR thanh toán" onPress={() => { /* Navigate to QRSetupScreen */ }} />
         </View>
         

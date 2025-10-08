@@ -22,6 +22,7 @@ import { supabase } from '../../services/supabase';
 import { AppTabParamList, AppStackParamList, ROUTES } from '../../constants/routes';
 import Toast from 'react-native-toast-message';
 import { useNetwork } from '../../context/NetworkContext';
+import ConfirmModal from '../../components/ConfirmModal'; 
 // --- [SỬA LỖI] Định nghĩa kiểu dữ liệu rõ ràng ---
 type TableInfo = { id: string; name: string };
 type ActiveOrder = {
@@ -122,53 +123,9 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
     }
   };
 
-  // const handleNavigateToReturnOrBill = async () => {
-  //   setIsToggling(true);
-  //   try {
-  //     // Lấy danh sách các món trong order để truyền sang màn hình trả món
-  //     const { data: orderItems, error } = await supabase
-  //       .from('order_items')
-  //       .select(
-  //         `
-  //               id,
-  //               quantity,
-  //               unit_price,
-  //               menu_items (
-  //                   name,
-  //                   image_url
-  //               )
-  //           `
-  //       )
-  //       .eq('order_id', item.orderId)
-  //       .gt('quantity', 0); // Chỉ lấy những món có số lượng > 0
-
-  //     if (error) throw error;
-
-  //     // Định dạng lại dữ liệu cho đúng với kiểu ItemToReturn
-  //     const formattedItems: ItemToReturn[] = orderItems.map((oi: any) => ({
-  //       id: oi.id,
-  //       name: oi.menu_items?.name || 'Món không xác định',
-  //       quantity: oi.quantity,
-  //       unit_price: oi.unit_price,
-  //       image_url: oi.menu_items?.image_url,
-  //     }));
-
-  //     // Điều hướng đến màn hình chọn món trả, với "source" để phân biệt luồng
-  //     navigation.navigate(ROUTES.RETURN_SELECTION, {
-  //       orderId: item.orderId,
-  //       items: formattedItems,
-  //       source: 'OrderScreen', // Đánh dấu là đi từ màn hình Order
-  //     });
-  //   } catch (error: any) {
-  //     Alert.alert('Lỗi', 'Không thể lấy thông tin món ăn: ' + error.message);
-  //   } finally {
-  //     setIsToggling(false);
-  //   }
-  // };
+  
   return (
-    // [SỬA LỖI] Cấu trúc JSX được thay đổi ở đây
     <View style={styles.cardShadow} className="bg-white rounded-lg mb-4 mx-4">
-      {/* TouchableOpacity này CHỈ bao bọc phần thông tin trên */}
       <TouchableOpacity onPress={handlePressCard}>
         <View
           style={{ backgroundColor: '#3B82F6' }}
@@ -200,9 +157,7 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
           </View>
         </View>
       </TouchableOpacity>
-      {/* TouchableOpacity trên kết thúc tại đây */}
 
-      {/* View chứa các icon nằm ở ngoài, là sibling, không còn bị lồng vào trong */}
       <View className="flex-row justify-around items-center bg-gray-50 border-t border-gray-200 rounded-b-lg">
         <TouchableOpacity
           onPress={() =>
@@ -228,9 +183,8 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
         >
           <Ionicons name="restaurant-outline" size={24} color="gray" />
         </TouchableOpacity>
-        {/* [CẬP NHẬT] Nút này sẽ điều hướng đến màn hình trả món */}
         <TouchableOpacity
-          onPress={handleToggleProvisionalBill} // <--- GỌI HÀM MỚI
+          onPress={handleToggleProvisionalBill}
           disabled={isToggling}
           className="py-3 items-center justify-center flex-1"
         >
@@ -240,7 +194,7 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
             <Ionicons
               name="receipt-outline"
               size={24}
-              color={item.is_provisional ? '#2E8540' : 'gray'} // <-- Màu thay đổi theo trạng thái
+              color={item.is_provisional ? '#2E8540' : 'gray'}
             />
           )}
         </TouchableOpacity>
@@ -266,6 +220,7 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
   const [loading, setLoading] = useState(true);
   const [isMenuVisible, setMenuVisible] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<ActiveOrder | null>(null);
+  const [isCancelModalVisible, setCancelModalVisible] = useState(false);
 
   const fetchActiveOrders = useCallback(async (isInitialLoad = false) => {
     if (isInitialLoad) setLoading(true);
@@ -365,6 +320,34 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
     setMenuVisible(true);
   };
 
+  const handleConfirmCancelOrder = async () => {
+    if (!selectedOrder) return;
+    
+    // 1. Đóng modal
+    setCancelModalVisible(false);
+
+    // 2. Thực thi logic hủy
+    try {
+      const { error } = await supabase.rpc('cancel_order_and_reset_tables', {
+        p_order_id: selectedOrder.orderId
+      });
+      if (error) throw error;
+
+      Toast.show({
+        type: 'success',
+        text1: 'Đã hủy order',
+        text2: `Order cho ${selectedOrder.tables.map(t => t.name).join(', ')} đã được hủy thành công.`
+      });
+    } catch (err: any) {
+      Toast.show({
+        type: 'error',
+        text1: 'Lỗi hủy order',
+        text2: err.message
+      });
+    }
+  };
+
+
   const handleMenuAction = (action: string) => {
     setMenuVisible(false);
     if (!selectedOrder) return;
@@ -435,39 +418,8 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
           });
           break;
         case 'cancel_order':
-          Alert.alert(
-            'Xác nhận Hủy Order', 
-            `Toàn bộ order cho nhóm bàn "${displayTableName}" sẽ bị xóa vĩnh viễn và các bàn sẽ trở về trạng thái 'Trống'. Bạn có chắc chắn không?`, 
-            [
-              { text: 'Không' },
-              { 
-                text: 'Hủy Order', 
-                style: 'destructive',
-                onPress: async () => {
-                  try {
-                    // Gọi hàm RPC trên Supabase để hủy order
-                    const { error } = await supabase.rpc('cancel_order_and_reset_tables', {
-                      p_order_id: selectedOrder.orderId
-                    });
-                    if (error) throw error;
-
-                    Toast.show({
-                      type: 'success',
-                      text1: 'Đã hủy order',
-                      text2: `Order cho ${displayTableName} đã được hủy thành công.`
-                    });
-                    // Real-time sẽ tự động cập nhật lại danh sách, không cần gọi fetch lại
-                  } catch (err: any) {
-                    Toast.show({
-                      type: 'error',
-                      text1: 'Lỗi hủy order',
-                      text2: err.message
-                    });
-                  }
-                }
-              },
-            ]
-          );
+          // --- [THAY THẾ ALERT BẰNG VIỆC MỞ MODAL] ---
+          setCancelModalVisible(true);
           break;
         default:
           break;
@@ -542,6 +494,19 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
         }
       />
       {renderMenuModal()}
+
+      {/* --- [PHẦN BỊ THIẾU ĐÃ ĐƯỢC THÊM LẠI] --- */}
+      {selectedOrder && (
+         <ConfirmModal
+            isVisible={isCancelModalVisible}
+            title="Xác nhận Hủy Order"
+            message={`Toàn bộ order cho bàn "${selectedOrder.tables.map(t => t.name).join(', ')}" sẽ bị xóa vĩnh viễn. Bạn có chắc chắn không?`}
+            confirmText="Hủy Order"
+            cancelText="Không"
+            onClose={() => setCancelModalVisible(false)}
+            onConfirm={handleConfirmCancelOrder}
+        />
+      )}
     </View>
   );
 };

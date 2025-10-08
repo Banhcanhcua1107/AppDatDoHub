@@ -27,6 +27,7 @@ import ReturnedItemsDetailScreen from '../screens/Orders/ReturnedItemsDetailScre
 import ProvisionalBillScreen from '../screens/Orders/ProvisionalBillScreen';
 import PrintPreviewScreen from '../screens/Orders/PrintPreviewScreen';
 import ChangePasswordScreen from '../screens/Profile/ChangePasswordScreen';
+import BillHistoryScreen from '../screens/Utilities/BillHistoryScreen';
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const AppStack = createNativeStackNavigator<AppStackParamList>();
@@ -67,6 +68,7 @@ const MainAppStack = () => (
     <AppStack.Screen name={ROUTES.PROVISIONAL_BILL} component={ProvisionalBillScreen} />
     <AppStack.Screen name={ROUTES.PRINT_PREVIEW} component={PrintPreviewScreen} />
     <AppStack.Screen name={ROUTES.CHANGE_PASSWORD} component={ChangePasswordScreen} />
+    <AppStack.Screen name={ROUTES.BILL_HISTORY} component={BillHistoryScreen} />
   </AppStack.Navigator>
 );
 
