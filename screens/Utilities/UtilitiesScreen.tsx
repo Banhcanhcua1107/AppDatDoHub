@@ -1,54 +1,43 @@
 // screens/Utilities/UtilitiesScreen.tsx
-import React from 'react';
-import { SafeAreaView, ScrollView, View, Text, StyleSheet, Alert  } from 'react-native';
+import React, { useState } from 'react'; // Import useState
+import { SafeAreaView, ScrollView, View, Text, StyleSheet } from 'react-native'; // Đã xóa Alert
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import UtilityItem from '../../components/UtilityItem'; // Đảm bảo đường dẫn này đúng
-import { AppStackParamList, ROUTES } from '../../constants/routes'; // Import routes và types
+
+import UtilityItem from '../../components/UtilityItem';
+import { AppStackParamList, ROUTES } from '../../constants/routes';
 import { useAuth } from '../../context/AuthContext';
-// Định nghĩa kiểu cho navigation prop để TypeScript hiểu được các màn hình có thể điều hướng tới
+import ConfirmModal from '../../components/ConfirmModal'; // Import component Modal tùy chỉnh
+
+// Định nghĩa kiểu cho navigation prop
 type UtilitiesNavigationProp = NativeStackNavigationProp<AppStackParamList>;
 
 export default function UtilitiesScreen() {
-  // Sử dụng hook useNavigation để lấy đối tượng navigation
-    const navigation = useNavigation<UtilitiesNavigationProp>();
-    const { logout } = useAuth();
+  const navigation = useNavigation<UtilitiesNavigationProp>();
+  const { logout } = useAuth();
+  
+  const [isLogoutModalVisible, setLogoutModalVisible] = useState(false);
 
-    const handleLogout = () => {
-        Alert.alert(
-        "Xác nhận đăng xuất", // Tiêu đề
-        "Bạn có chắc chắn muốn đăng xuất không?", // Thông điệp
-        [
-            {
-            text: "Hủy",
-            onPress: () => console.log("Hủy đăng xuất"),
-            style: "cancel"
-            },
-            {
-            text: "Đăng xuất",
-            onPress: () => logout(), // Gọi hàm logout nếu người dùng đồng ý
-            style: "destructive" // Hiển thị màu đỏ trên iOS
-            }
-        ]
-        );
-    };
+  const handleConfirmLogout = () => {
+    setLogoutModalVisible(false);
+    logout(); 
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView>
         {/* Khu vực tài khoản */}
         <View style={styles.section}>
-          {/* Component hiển thị thông tin user (nếu có) */}
           <UtilityItem
             icon="key-outline"
             title="Thay đổi mật khẩu"
-            // Khi nhấn vào, điều hướng tới màn hình CHANGE_PASSWORD
             onPress={() => navigation.navigate(ROUTES.CHANGE_PASSWORD)}
           />
           <UtilityItem
             icon="log-out-outline"
             title="Đăng xuất"
-            onPress={handleLogout} // Gọi hàm xử lý đăng xuất khi nhấn
+            // Khi nhấn, chỉ cần mở modal lên bằng cách set state thành true
+            onPress={() => setLogoutModalVisible(true)} 
           />
         </View>
 
@@ -66,9 +55,21 @@ export default function UtilitiesScreen() {
           <UtilityItem icon="receipt-outline" title="Lịch sử hóa đơn" onPress={() => { /* Navigate to OrderHistoryScreen */ }} />
           <UtilityItem icon="qr-code-outline" title="Thiết lập QR thanh toán" onPress={() => { /* Navigate to QRSetupScreen */ }} />
         </View>
-
+        
         {/* ... các khu vực khác */}
       </ScrollView>
+
+      {/* Render component Modal ở đây */}
+      {/* Nó sẽ chỉ hiển thị khi isLogoutModalVisible là true */}
+      <ConfirmModal
+        isVisible={isLogoutModalVisible}
+        title="Xác nhận đăng xuất"
+        message="Bạn có chắc chắn muốn đăng xuất không?"
+        confirmText="Đăng xuất"
+        cancelText="Hủy"
+        onClose={() => setLogoutModalVisible(false)} // Nếu người dùng nhấn Hủy hoặc nhấn ra ngoài
+        onConfirm={handleConfirmLogout} // Nếu người dùng nhấn nút Đăng xuất
+      />
     </SafeAreaView>
   );
 }
