@@ -36,16 +36,30 @@ export const resendOtpForSignup = async (email: string) => {
 
 // --- Hàm cho luồng Đăng nhập / Đăng xuất ---
 
-export const loginUser = async (email: string, password: string) => {
+export const loginUser = async (email: string, password: string): Promise<string> => { // Thay đổi kiểu trả về thành string
   const { data, error } = await supabase.auth.signInWithPassword({
     email: email,
     password: password,
   });
 
-  if (error) throw new Error(error.message);
-  if (!data.user) throw new Error('Đăng nhập thất bại, vui lòng kiểm tra lại thông tin.');
+  if (error) {
+    // Supabase thường trả về "Invalid login credentials" cho sai mật khẩu/email
+    if (error.message === 'Invalid login credentials') {
+        throw new Error('Email hoặc mật khẩu không chính xác.');
+    }
+    throw new Error(error.message);
+  }
+  
+  // Lấy access_token từ session
+  const token = data?.session?.access_token;
 
-  return data.user;
+  if (!token) {
+    // Trường hợp này hiếm, nhưng cần phòng ngừa
+    throw new Error('Đăng nhập thành công nhưng không nhận được token xác thực.');
+  }
+
+  // Trả về chuỗi token thay vì đối tượng user
+  return token;
 };
 
 export const logoutUser = async () => {

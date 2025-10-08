@@ -1,17 +1,37 @@
 // screens/Utilities/UtilitiesScreen.tsx
 import React from 'react';
-import { SafeAreaView, ScrollView, View, Text, StyleSheet } from 'react-native';
+import { SafeAreaView, ScrollView, View, Text, StyleSheet, Alert  } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import UtilityItem from '../../components/UtilityItem'; // Đảm bảo đường dẫn này đúng
 import { AppStackParamList, ROUTES } from '../../constants/routes'; // Import routes và types
-
+import { useAuth } from '../../context/AuthContext';
 // Định nghĩa kiểu cho navigation prop để TypeScript hiểu được các màn hình có thể điều hướng tới
 type UtilitiesNavigationProp = NativeStackNavigationProp<AppStackParamList>;
 
 export default function UtilitiesScreen() {
   // Sử dụng hook useNavigation để lấy đối tượng navigation
-  const navigation = useNavigation<UtilitiesNavigationProp>();
+    const navigation = useNavigation<UtilitiesNavigationProp>();
+    const { logout } = useAuth();
+
+    const handleLogout = () => {
+        Alert.alert(
+        "Xác nhận đăng xuất", // Tiêu đề
+        "Bạn có chắc chắn muốn đăng xuất không?", // Thông điệp
+        [
+            {
+            text: "Hủy",
+            onPress: () => console.log("Hủy đăng xuất"),
+            style: "cancel"
+            },
+            {
+            text: "Đăng xuất",
+            onPress: () => logout(), // Gọi hàm logout nếu người dùng đồng ý
+            style: "destructive" // Hiển thị màu đỏ trên iOS
+            }
+        ]
+        );
+    };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -25,7 +45,11 @@ export default function UtilitiesScreen() {
             // Khi nhấn vào, điều hướng tới màn hình CHANGE_PASSWORD
             onPress={() => navigation.navigate(ROUTES.CHANGE_PASSWORD)}
           />
-          <UtilityItem icon="log-out-outline" title="Đăng xuất" onPress={() => { /* Xử lý đăng xuất ở đây */ }} />
+          <UtilityItem
+            icon="log-out-outline"
+            title="Đăng xuất"
+            onPress={handleLogout} // Gọi hàm xử lý đăng xuất khi nhấn
+          />
         </View>
 
         {/* Khu vực Thiết bị & Đồng bộ */}

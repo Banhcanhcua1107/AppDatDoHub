@@ -12,7 +12,7 @@ import HomeScreen from '../screens/Tables/HomeScreen';
 import OrderScreen from '../screens/Orders/OrderScreen'; // Đảm bảo dòng này tồn tại
 import ProvisionalBillScreen from '../screens/Orders/ProvisionalBillScreen';
 import ReturnItemsScreen from '../screens/Orders/ReturnItemsScreen';
-import PlaceholderScreen from '../screens/Placeholders/PlaceholderScreen';
+// import PlaceholderScreen from '../screens/Placeholders/PlaceholderScreen';
 import UtilitiesScreen from '../screens/Utilities/UtilitiesScreen';
 const Tab = createBottomTabNavigator<AppTabParamList>();
 

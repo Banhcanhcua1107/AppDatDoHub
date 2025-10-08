@@ -1,6 +1,6 @@
 // components/UtilityItem.tsx
 import React from 'react';
-import { TouchableOpacity, View, Text, StyleSheet } from 'react-native';
+import { TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 type UtilityItemProps = {

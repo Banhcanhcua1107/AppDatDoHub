@@ -53,20 +53,24 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     }
     if (validateForm()) {
       try {
-        await loginUser(email, password);
+        // Bây giờ loginUser sẽ trả về một chuỗi token
+        const token = await loginUser(email, password);
+
+        // token bây giờ là một chuỗi, nên hàm login(token) sẽ chạy đúng
+        login(token); 
+
         Toast.show({
           type: 'success',
           text1: 'Đăng nhập thành công',
           text2: 'Chào mừng trở lại!',
         });
-        login();
+
       } catch (error: any) {
-        // --- THAY THẾ ALERT BẰNG TOAST ---
         Toast.show({
-          type: 'error', // Loại thông báo: 'success', 'error', 'info'
-          text1: 'Đăng nhập thất bại', // Dòng tiêu đề
-          text2: error.message || 'Email hoặc mật khẩu không chính xác.', // Dòng thông điệp
-          position: 'top', // Vị trí hiển thị
+          type: 'error',
+          text1: 'Đăng nhập thất bại',
+          text2: error.message || 'Đã có lỗi xảy ra.',
+          position: 'top',
         });
       }
     }

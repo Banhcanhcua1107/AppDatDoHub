@@ -1,38 +1,75 @@
-import React, { createContext, useState, useContext, ReactNode } from 'react';
+// context/AuthContext.tsx
 
-// Định nghĩa những gì context sẽ cung cấp
+import React, { createContext, useState, useContext, ReactNode, useEffect } from 'react';
+// Dòng này đã được sửa lại cho đúng
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Định nghĩa kiểu dữ liệu cho Context
 interface AuthContextType {
   isAuthenticated: boolean;
-  login: () => void;
-  logout: () => void;
+  isLoading: boolean;
+  login: (token: string) => Promise<void>;
+  logout: () => Promise<void>;
 }
 
-// Tạo Context với một giá trị mặc định
+// Tạo Context
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Tạo Provider component
-// Component này sẽ "bọc" toàn bộ ứng dụng của bạn
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const login = () => {
-    // Trong thực tế, bạn sẽ lưu token vào AsyncStorage ở đây
-    setIsAuthenticated(true);
+  useEffect(() => {
+    const checkAuthStatus = async () => {
+      try {
+        const token = await AsyncStorage.getItem('userToken');
+        if (token) {
+          setIsAuthenticated(true);
+        }
+      } catch (e) {
+        console.error('Lỗi khi lấy token:', e);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkAuthStatus();
+  }, []);
+
+  const login = async (token: string) => {
+    try {
+      await AsyncStorage.setItem('userToken', token);
+      setIsAuthenticated(true);
+    } catch (e) {
+      console.error('Lỗi khi lưu token:', e);
+    }
   };
 
-  const logout = () => {
-    // Xóa token khỏi AsyncStorage
-    setIsAuthenticated(false);
+  const logout = async () => {
+    try {
+      await AsyncStorage.removeItem('userToken');
+      setIsAuthenticated(false);
+    } catch (e) {
+      console.error('Lỗi khi xóa token:', e);
+    }
+  };
+
+  const value = {
+    isAuthenticated,
+    isLoading,
+    login,
+    logout,
   };
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, login, logout }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
 };
 
-// Tạo một custom hook để dễ dàng sử dụng context ở các component khác
+// Custom hook để sử dụng AuthContext
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
