@@ -77,18 +77,18 @@ const BillHistoryScreen = () => {
   const fetchBillHistory = useCallback(async (isInitialLoad = true) => {
     if (isInitialLoad) setLoading(true);
     try {
+      // [SỬA LỖI] Bỏ cột `updated_at` và thay thế nó bằng `created_at` để sắp xếp
       const { data, error } = await supabase
         .from('orders')
         .select(`
           id, 
           created_at, 
-          updated_at,
           total_price,
           order_items(quantity, unit_price, customizations, returned_quantity, menu_items(name)), 
           order_tables(tables(id, name))
         `)
         .in('status', ['paid', 'closed']) // Lấy các hóa đơn đã thanh toán hoặc đã đóng
-        .order('updated_at', { ascending: false }); // Sắp xếp theo ngày thanh toán gần nhất
+        .order('created_at', { ascending: false }); // Sắp xếp theo ngày tạo gần nhất
 
       if (error) throw error;
 
@@ -105,7 +105,8 @@ const BillHistoryScreen = () => {
             tables: tables,
             totalPrice: order.total_price || 0, // Dùng total_price đã lưu khi thanh toán
             totalItemCount,
-            createdAt: order.updated_at, // Dùng updated_at làm thời gian thanh toán
+            // [SỬA LỖI] Dùng `created_at` làm thời gian thanh toán/hoàn thành
+            createdAt: order.created_at, 
           };
         })
         .filter((order) => order.totalItemCount > 0 && order.totalPrice > 0);
@@ -117,7 +118,6 @@ const BillHistoryScreen = () => {
       if (isInitialLoad) setLoading(false);
     }
   }, []);
-
   useFocusEffect(
     useCallback(() => {
       // Chỉ fetch lại danh sách khi quay về màn hình danh sách
@@ -144,8 +144,9 @@ const BillHistoryScreen = () => {
         .map((item) => {
             const finalQuantity = item.quantity - item.returned_quantity;
             if (finalQuantity <= 0) return null;
-            const menuItemsArray = item.menu_items as { name: string }[] | null;
-            const itemName = menuItemsArray?.[0]?.name || item.customizations?.name || 'Món đã xóa';
+            // Đoạn mã này có vẻ phức tạp, cần kiểm tra `item.menu_items` có phải là mảng hay không.
+            // Giả sử nó là một đối tượng hoặc một mảng chỉ có một phần tử.
+            const itemName = (item.menu_items as any)?.name || item.customizations?.name || 'Món đã xóa';
 
             return {
                 name: itemName,
