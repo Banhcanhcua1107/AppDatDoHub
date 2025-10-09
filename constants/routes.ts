@@ -1,9 +1,9 @@
 // constants/routes.ts
 
 import { NavigatorScreenParams } from '@react-navigation/native';
-// Đảm bảo đường dẫn này chính xác tới file TableSelectionScreen.tsx của bạn
 import { TableSelectionParams } from '../screens/Menu/TableSelectionScreen';
 import { ProvisionalOrder, BillItem } from '../screens/Orders/ProvisionalBillScreen';
+
 export const ROUTES = {
   // --- Auth routes ---
   LOGIN: 'Login',
@@ -18,8 +18,9 @@ export const ROUTES = {
   HOME: 'Home',
   MENU: 'Menu',
   ORDER_CONFIRMATION: 'OrderConfirmation',
-  TABLE_SELECTION: 'TableSelection', // <-- [ĐÃ THÊM]
+  TABLE_SELECTION: 'TableSelection',
   RETURN_SELECTION: 'ReturnSelection',
+  
   // --- Bottom Tab routes ---
   HOME_TAB: 'Sơ đồ',
   ORDER_TAB: 'Order',
@@ -29,16 +30,19 @@ export const ROUTES = {
 
   // --- Navigator routes ---
   APP_TABS: 'AppTabs',
-
   SPLIT_ORDER: 'SplitOrder',
-
   SERVE_STATUS: 'ServeStatus',
   RETURNED_ITEMS_DETAIL: 'ReturnedItemsDetail',
   PROVISIONAL_BILL: 'ProvisionalBill',
   PRINT_PREVIEW: 'PrintPreview',
-  KITCHEN_SCREEN: 'KitchenScreen',
   CHANGE_PASSWORD: 'ChangePassword',
   BILL_HISTORY: 'BillHistory',
+
+  // [THÊM MỚI] Route cho màn hình Bếp
+  KITCHEN_TABS: 'KitchenTabs', // Tên cho navigator
+  KITCHEN_ORDERS_TAB: 'Bếp Orders', // Tên cho tab 1
+  KITCHEN_UTILITIES_TAB: 'Bếp Tiện ích', // Tên cho tab 2
+
 } as const;
 
 export type AuthStackParamList = {
@@ -49,6 +53,12 @@ export type AuthStackParamList = {
   [ROUTES.OTP_REGISTER]: { email: string };
   [ROUTES.RESET_PASSWORD]: { email: string };
   [ROUTES.RESET_SUCCESS]: undefined;
+};
+
+// [THÊM MỚI] Định nghĩa ParamList cho Navigator của Bếp
+export type KitchenTabParamList = {
+  [ROUTES.KITCHEN_ORDERS_TAB]: undefined;
+  [ROUTES.KITCHEN_UTILITIES_TAB]: undefined;
 };
 
 export type AppTabParamList = {
@@ -67,16 +77,14 @@ export type AppStackParamList = {
     tableName: string;
     orderId?: string;
   };
-  // <-- [ĐÃ THÊM] Đăng ký màn hình chọn bàn và các tham số của nó
   [ROUTES.TABLE_SELECTION]: TableSelectionParams;
-
   [ROUTES.SPLIT_ORDER]: {
     sourceOrderId: string;
     sourceTableNames: string;
     targetTable: { id: string; name: string };
   };
-
-  ReturnSelection: {
+  // [SỬA LỖI] Đổi tên 'ReturnSelection' thành ROUTES.RETURN_SELECTION để nhất quán
+  [ROUTES.RETURN_SELECTION]: {
     orderId: string;
     items: {
       id: number;
@@ -88,15 +96,15 @@ export type AppStackParamList = {
     source?: string;
   };
   [ROUTES.SERVE_STATUS]: { orderId: string; tableName: string };
-  ReturnedItemsDetail: { orderId: string };
-
-  [ROUTES.PROVISIONAL_BILL]: undefined; // Màn hình này không cần tham số khi điều hướng đến
+  // [SỬA LỖI] Đổi tên 'ReturnedItemsDetail' thành ROUTES.RETURNED_ITEMS_DETAIL
+  [ROUTES.RETURNED_ITEMS_DETAIL]: { orderId: string };
+  [ROUTES.PROVISIONAL_BILL]: undefined;
   [ROUTES.PRINT_PREVIEW]: {
-    // Màn hình này YÊU CẦU tham số
     order: ProvisionalOrder;
     items: BillItem[];
   };
-  [ROUTES.KITCHEN_SCREEN]: undefined;
   [ROUTES.CHANGE_PASSWORD]: undefined;
   [ROUTES.BILL_HISTORY]: undefined;
+  // [XÓA ĐI] Không cần route bếp ở đây nữa vì nó có navigator riêng
+  // [ROUTES.KITCHEN_SCREEN]: undefined; 
 };
