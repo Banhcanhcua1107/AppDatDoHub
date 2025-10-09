@@ -56,6 +56,8 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
             // [THAY ĐỔI LỚN] loginUser bây giờ trả về một object
             const loginData = await loginUser(email, password);
 
+            // console.log("DỮ LIỆU ĐĂNG NHẬP NHẬN ĐƯỢC:", JSON.stringify(loginData, null, 2));
+
             // Truyền toàn bộ object { session, userProfile } vào hàm login của context
             login(loginData); 
 

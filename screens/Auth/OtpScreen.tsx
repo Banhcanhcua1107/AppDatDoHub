@@ -46,7 +46,6 @@ export default function OtpScreen({ route, navigation }: OtpProps) {
 
   const handleConfirm = async () => {
     Keyboard.dismiss();
-    // --- THAY ĐỔI 2: Cập nhật logic kiểm tra OTP ---
     if (otp.length < 6) {
       setError('Vui lòng nhập đủ 6 chữ số OTP.');
       return;
@@ -55,13 +54,16 @@ export default function OtpScreen({ route, navigation }: OtpProps) {
     setIsLoading(true);
     setError(null);
     try {
-      // Logic nghiệp vụ vẫn giữ nguyên
       await verifyPasswordResetOtp(email, otp);
       Toast.show({
           type: 'success',
           text1: 'Xác thực thành công',
           text2: 'Vui lòng tạo mật khẩu mới.',
         });
+      
+      // [ĐÃ SỬA] Truyền tham số email vào đây
+      navigation.navigate(ROUTES.RESET_PASSWORD, { email: email });
+
     } catch (err: any) {
       Toast.show({
         type: 'error',
