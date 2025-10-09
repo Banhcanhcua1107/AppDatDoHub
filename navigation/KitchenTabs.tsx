@@ -2,7 +2,6 @@
 
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-// [SỬA LỖI] Sử dụng import từ @expo/vector-icons giống như BottomTabs
 import { Ionicons } from '@expo/vector-icons'; 
 
 // Import các màn hình của bếp
@@ -22,19 +21,17 @@ const KitchenTabs = () => {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: '#1E3A8A', // Màu xanh đậm cho tab được chọn
+        tabBarActiveTintColor: '#1E3A8A', 
         tabBarInactiveTintColor: 'gray',
-        // [CẬP NHẬT] Áp dụng style tương tự BottomTabs để đẹp hơn
-        tabBarStyle: {
-          height: 60, // Chiều cao
-          paddingBottom: 5, // Padding dưới
-          backgroundColor: 'white',
-          borderTopWidth: 1,
-          borderTopColor: '#E5E7EB',
+        // [CẬP NHẬT] Áp dụng style giống hệt BottomTabs
+        tabBarStyle: { 
+          paddingBottom: 5, 
+          height: 60 
         },
-        tabBarLabelStyle: { fontSize: 12, fontWeight: '600' },
+        tabBarLabelStyle: { 
+          fontSize: 12 
+        },
         tabBarIcon: ({ focused, color, size }) => {
-          // [SỬA LỖI] Dùng đúng kiểu type và component Ionicons từ Expo
           let iconName: React.ComponentProps<typeof Ionicons>['name'] = 'alert-circle-outline';
 
           if (route.name === 'KitchenDisplay') {
@@ -55,7 +52,12 @@ const KitchenTabs = () => {
       <Tab.Screen
         name="KitchenUtilities"
         component={KitchenUtilitiesScreen}
-        options={{ tabBarLabel: 'Tiện ích' }}
+        options={{ 
+          tabBarLabel: 'Tiện ích',
+          headerShown: true, // Hiển thị header cho trang Tiện ích Bếp
+          headerTitle: 'Tiện ích', // Thêm tiêu đề cho header
+          headerTitleAlign: 'center',
+         }}
       />
     </Tab.Navigator>
   );

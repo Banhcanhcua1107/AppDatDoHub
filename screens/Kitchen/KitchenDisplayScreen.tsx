@@ -16,11 +16,12 @@ import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../services/supabase';
 import { Ionicons } from '@expo/vector-icons';
 
-// [QUAN TRỌNG] THAY THẾ CÁC GIÁ TRỊ NÀY BẰNG GIÁ TRỊ ENUM THỰC TẾ TRONG DATABASE CỦA BẠN
+// [QUAN TRỌNG] SỬA LỖI: Quay trở lại các giá trị ENUM mà database của bạn đang sử dụng.
+// Dựa trên bình luận cũ, có vẻ database đang dùng các giá trị này.
 const STATUS = {
-  PENDING: 'pending',        // Sửa 'CHO_DOI' thành 'pending'
-  IN_PROGRESS: 'in_progress',   // Sửa 'DANG_LAM' thành 'in_progress'
-  COMPLETED: 'completed',     // Sửa 'HOAN_THANH' thành 'completed'
+  PENDING: 'CHO_DOI',        // Sửa 'pending' thành 'CHO_DOI'
+  IN_PROGRESS: 'DANG_LAM',   // Sửa 'in_progress' thành 'DANG_LAM'
+  COMPLETED: 'HOAN_THANH',     // Sửa 'completed' thành 'HOAN_THANH'
 };
 
 // Định nghĩa lại kiểu dữ liệu để sử dụng các giá trị từ object STATUS
@@ -47,7 +48,7 @@ const KitchenOrderItem: React.FC<{
   onStatusChange: () => void;
 }> = ({ item, onStatusChange }) => {
 
-  // [SỬA LỖI] Khai báo kiểu tường minh cho tên icon
+  // Khai báo kiểu tường minh cho tên icon
   type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
   const getStatusStyle = (): { containerStyle: any; icon: IconName; color: string } => {
