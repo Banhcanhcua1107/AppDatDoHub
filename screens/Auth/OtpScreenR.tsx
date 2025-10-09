@@ -58,6 +58,7 @@ export default function OtpScreenR({ route, navigation }: OtpScreenRProps) {
         text1: 'Xác thực thành công!',
         text2: 'Tài khoản của bạn đã được kích hoạt.',
       });
+      navigation.navigate(ROUTES.LOGIN);
     } catch (err: any) {
       Toast.show({
         type: 'error',

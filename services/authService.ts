@@ -43,6 +43,7 @@ export const resendOtpForSignup = async (email: string) => {
 // --- Hàm cho luồng Đăng nhập / Đăng xuất ---
 
 export const loginUser = async (email: string, password: string): Promise<{ session: any; userProfile: any }> => {
+  // Bước 1: Đăng nhập để lấy session
   const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
     email: email,
     password: password,
@@ -59,19 +60,18 @@ export const loginUser = async (email: string, password: string): Promise<{ sess
     throw new Error('Đăng nhập không thành công, không có session.');
   }
 
-  // Sau khi đăng nhập thành công, lấy thông tin profile (bao gồm cả role)
+  // Bước 2: Dùng user.id từ session để lấy profile từ bảng "profiles"
   const { data: userProfile, error: profileError } = await supabase
     .from('profiles')
-    .select('*')
+    .select('*') // Lấy tất cả các cột, bao gồm cả 'role'
     .eq('id', authData.user.id)
-    .single();
+    .single(); // .single() để lấy về 1 object duy nhất
 
   if (profileError) {
-    // Nếu không tìm thấy profile, có thể là do trigger chưa chạy hoặc có lỗi
-    throw new Error('Không tìm thấy thông tin hồ sơ người dùng.');
+    throw new Error('Đăng nhập thành công nhưng không tìm thấy hồ sơ người dùng.');
   }
 
-  // Trả về cả session và userProfile
+  // Bước 3: Trả về một object chứa cả session và userProfile
   return { session: authData.session, userProfile };
 };
 

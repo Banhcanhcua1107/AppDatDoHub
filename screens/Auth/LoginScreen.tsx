@@ -47,34 +47,37 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
   };
 
   const handleLogin = async () => {
-    if (!isOnline) {
-        Toast.show({ type: 'error', text1: 'Không có kết nối mạng' });
-        return;
-    }
-    if (validateForm()) {
-      try {
-        // Bây giờ loginUser sẽ trả về một chuỗi token
-        const token = await loginUser(email, password);
+        if (!isOnline) {
+            Toast.show({ type: 'error', text1: 'Không có kết nối mạng' });
+            return;
+        }
+        if (validateForm()) {
+          try {
+            // [THAY ĐỔI LỚN] loginUser bây giờ trả về một object
+            const loginData = await loginUser(email, password);
 
-        // token bây giờ là một chuỗi, nên hàm login(token) sẽ chạy đúng
-        login(token); 
+            // Truyền toàn bộ object { session, userProfile } vào hàm login của context
+            login(loginData); 
 
-        Toast.show({
-          type: 'success',
-          text1: 'Đăng nhập thành công',
-          text2: 'Chào mừng trở lại!',
-        });
+            Toast.show({
+              type: 'success',
+              text1: 'Đăng nhập thành công',
+              text2: 'Chào mừng trở lại!',
+            });
 
-      } catch (error: any) {
-        Toast.show({
-          type: 'error',
-          text1: 'Đăng nhập thất bại',
-          text2: error.message || 'Đã có lỗi xảy ra.',
-          position: 'top',
-        });
-      }
-    }
-  };
+            // Sau khi login thành công, AppNavigator sẽ tự động chuyển màn hình
+            // dựa trên vai trò, bạn không cần gọi navigation.navigate ở đây.
+
+          } catch (error: any) {
+            Toast.show({
+              type: 'error',
+              text1: 'Đăng nhập thất bại',
+              text2: error.message || 'Đã có lỗi xảy ra.',
+              position: 'top',
+            });
+          }
+        }
+      };
 
   return (
     <SafeAreaView className="flex-1 bg-white">

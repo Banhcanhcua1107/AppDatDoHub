@@ -45,6 +45,7 @@ export default function ForgotPasswordScreen({ navigation }: ForgotPasswordProps
         text1: 'Đã gửi yêu cầu',
         text2: `Một mã OTP đã được gửi đến ${email}.`,
       });
+      navigation.navigate(ROUTES.LOGIN);
     } catch (err: any) {
       Toast.show({
         type: 'error',
