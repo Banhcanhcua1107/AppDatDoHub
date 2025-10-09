@@ -19,9 +19,9 @@ import { Ionicons } from '@expo/vector-icons';
 // [QUAN TRỌNG] SỬA LỖI: Quay trở lại các giá trị ENUM mà database của bạn đang sử dụng.
 // Dựa trên bình luận cũ, có vẻ database đang dùng các giá trị này.
 const STATUS = {
-  PENDING: 'CHO_DOI',        // Sửa 'pending' thành 'CHO_DOI'
-  IN_PROGRESS: 'DANG_LAM',   // Sửa 'in_progress' thành 'DANG_LAM'
-  COMPLETED: 'HOAN_THANH',     // Sửa 'completed' thành 'HOAN_THANH'
+  PENDING: 'pending',
+  IN_PROGRESS: 'in_progress',
+  COMPLETED: 'completed',
 };
 
 // Định nghĩa lại kiểu dữ liệu để sử dụng các giá trị từ object STATUS
