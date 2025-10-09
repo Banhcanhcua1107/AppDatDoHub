@@ -16,15 +16,14 @@ import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../services/supabase';
 import { Ionicons } from '@expo/vector-icons';
 
-// [SỬA LỖI DỨT ĐIỂM] Sử dụng chính xác các giá trị từ database mà bạn đã cung cấp
+// Sử dụng các giá trị enum đã xác thực từ database
 const STATUS = {
-  PENDING: 'waiting',        // Sửa thành 'waiting'
-  IN_PROGRESS: 'in_progress',  // Giữ nguyên
-  COMPLETED: 'completed',      // Giữ nguyên
-  SERVED: 'served',          // Thêm 'served' nếu cần dùng sau này
+  PENDING: 'waiting',
+  IN_PROGRESS: 'in_progress',
+  COMPLETED: 'completed',
+  SERVED: 'served'
 };
 
-// Định nghĩa lại kiểu dữ liệu để sử dụng các giá trị từ object STATUS
 type KitchenItemStatus = typeof STATUS[keyof typeof STATUS];
 
 interface KitchenItem {
@@ -40,62 +39,57 @@ interface OrderTicket {
   table_name: string;
   created_at: string;
   items: KitchenItem[];
+  total_items: number;
 }
 
-// ---- COMPONENT CON: HIỂN THỊ MỘT MÓN ĂN ----
+// ---- [CẬP NHẬT] COMPONENT CON: HIỂN THỊ MỘT MÓN ĂN (TRONG CARD) ----
 const KitchenOrderItem: React.FC<{
   item: KitchenItem;
-  onStatusChange: () => void;
+  onStatusChange: (itemId: number, currentStatus: KitchenItemStatus) => void;
 }> = ({ item, onStatusChange }) => {
-
   type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
-  const getStatusStyle = (): { containerStyle: any; icon: IconName; color: string } => {
+  const getStatusStyle = (): { icon: IconName; color: string; textStyle: any } => {
     switch (item.status) {
       case STATUS.IN_PROGRESS:
-        return { containerStyle: styles.itemInProgress, icon: 'flame', color: '#F97316' };
+        return { icon: 'flame-outline', color: '#F97316', textStyle: styles.itemTextInProgress };
       case STATUS.COMPLETED:
-      case STATUS.SERVED: // Có thể coi 'served' cũng là một dạng hoàn thành
-        return { containerStyle: styles.itemCompleted, icon: 'checkmark-done', color: '#10B981' };
-      case STATUS.PENDING: // Đây là 'waiting'
+      case STATUS.SERVED:
+        return { icon: 'checkmark-circle-outline', color: '#10B981', textStyle: styles.itemTextCompleted };
+      case STATUS.PENDING:
       default:
-        return { containerStyle: styles.itemPending, icon: 'ellipse-outline', color: '#6B7280' };
+        return { icon: 'ellipse-outline', color: '#6B7280', textStyle: {} };
     }
   };
 
-  const { containerStyle, icon, color } = getStatusStyle();
+  const { icon, color, textStyle } = getStatusStyle();
   const isCompleted = item.status === STATUS.COMPLETED || item.status === STATUS.SERVED;
 
   return (
     <TouchableOpacity
-      style={styles.itemContainerTouchable}
-      onPress={onStatusChange}
+      style={styles.itemRow}
+      onPress={() => onStatusChange(item.id, item.status)}
       disabled={isCompleted}
     >
-      <View style={[styles.itemContainer, containerStyle]}>
-        <Text style={[styles.itemQuantity, { color: color }]}>{item.quantity}x</Text>
-        <View style={styles.itemDetails}>
-          <Text style={[styles.itemName, isCompleted && styles.itemCompletedText]}>
-            {item.name}
-          </Text>
-          {item.note && (
-            <View style={styles.noteContainer}>
-              <Text style={styles.noteText}>Ghi chú: {item.note}</Text>
-            </View>
-          )}
-        </View>
-        <Ionicons name={icon} size={24} color={color} />
+      <Text style={styles.itemQuantity}>{item.quantity}x</Text>
+      <View style={styles.itemDetails}>
+        <Text style={[styles.itemName, textStyle]}>{item.name}</Text>
+        {item.note && <Text style={styles.itemNote}>Ghi chú: {item.note}</Text>}
       </View>
+      <Ionicons name={icon} size={24} color={color} />
     </TouchableOpacity>
   );
 };
 
-// ---- COMPONENT CON: HIỂN THỊ MỘT PHIẾU ORDER ----
+
+// ---- [THIẾT KẾ LẠI] COMPONENT CHÍNH CỦA MỘT ORDER, GIỐNG ORDERSCREEN ----
 const OrderTicketCard: React.FC<{
   ticket: OrderTicket;
-  onUpdateItemStatus: (itemId: number, newStatus: KitchenItemStatus) => void;
-}> = ({ ticket, onUpdateItemStatus }) => {
+  onUpdateItemStatus: (itemId: number, currentStatus: KitchenItemStatus) => void;
+  onCompleteAll: (items: KitchenItem[]) => void;
+}> = ({ ticket, onUpdateItemStatus, onCompleteAll }) => {
   const [elapsedTime, setElapsedTime] = useState('');
+  const [isLoadingAll, setIsLoadingAll] = useState(false);
 
   useEffect(() => {
     const updateTimer = () => {
@@ -109,41 +103,58 @@ const OrderTicketCard: React.FC<{
     return () => clearInterval(timerInterval);
   }, [ticket.created_at]);
 
-  const handleItemPress = (item: KitchenItem) => {
-    let newStatus: KitchenItemStatus = STATUS.IN_PROGRESS;
-    // Quy trình: waiting -> in_progress -> completed
-    if (item.status === STATUS.PENDING) { // Nếu đang là 'waiting'
-      newStatus = STATUS.IN_PROGRESS;
-    } else if (item.status === STATUS.IN_PROGRESS) {
-      newStatus = STATUS.COMPLETED;
-    }
-    onUpdateItemStatus(item.id, newStatus);
-  };
+  const handleCompleteAll = async () => {
+      setIsLoadingAll(true);
+      await onCompleteAll(ticket.items);
+      setIsLoadingAll(false);
+  }
+
+  // Kiểm tra xem tất cả các món đã hoàn thành chưa để vô hiệu hóa nút
+  const areAllItemsCompleted = ticket.items.every(
+      item => item.status === STATUS.COMPLETED || item.status === STATUS.SERVED
+  );
 
   return (
-    <View style={styles.ticketCard}>
-      <View style={styles.ticketHeader}>
-        <View style={styles.tableNameContainer}>
-          <Ionicons name="receipt-outline" size={28} color="#1E3A8A" />
-          <Text style={styles.tableName}>{ticket.table_name}</Text>
+    <View style={styles.cardShadow}>
+      {/* Header của Card */}
+      <View style={styles.cardHeader}>
+        <View style={styles.cardHeaderInfo}>
+            <Ionicons name="receipt-outline" size={20} color="white" />
+            <Text style={styles.cardTableName}>{ticket.table_name}</Text>
         </View>
-        <View style={styles.timerContainer}>
-          <Ionicons name="time-outline" size={16} color="#1E40AF" />
-          <Text style={styles.timerText}>{elapsedTime}</Text>
-        </View>
+        <Text style={styles.cardItemCount}>{ticket.total_items} món</Text>
       </View>
-      <View style={styles.itemsList}>
+
+      {/* Body của Card - Danh sách các món */}
+      <View style={styles.cardBody}>
         {ticket.items.map((item) => (
-          <KitchenOrderItem
-            key={item.id}
-            item={item}
-            onStatusChange={() => handleItemPress(item)}
-          />
+          <KitchenOrderItem key={item.id} item={item} onStatusChange={onUpdateItemStatus} />
         ))}
+      </View>
+
+      {/* Footer của Card - Các nút hành động */}
+      <View style={styles.cardFooter}>
+        <View style={styles.footerTimer}>
+            <Ionicons name="time-outline" size={16} color="#6B7280" />
+            <Text style={styles.footerTimerText}>{elapsedTime}</Text>
+        </View>
+        <TouchableOpacity 
+            style={[styles.completeAllButton, areAllItemsCompleted && styles.disabledButton]}
+            onPress={handleCompleteAll}
+            disabled={areAllItemsCompleted || isLoadingAll}
+        >
+          {isLoadingAll ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+              <Ionicons name="checkmark-done-outline" size={20} color="white" style={{marginRight: 8}}/>
+          )}
+          <Text style={styles.completeAllButtonText}>Hoàn thành tất cả</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
 };
+
 
 // ---- COMPONENT CHÍNH: MÀN HÌNH KDS ----
 const KitchenDisplayScreen = () => {
@@ -151,7 +162,6 @@ const KitchenDisplayScreen = () => {
   const [orders, setOrders] = useState<OrderTicket[]>([]);
 
   const fetchKitchenOrders = useCallback(async () => {
-    console.log('Fetching kitchen orders with correct status values...');
     try {
       const { data, error } = await supabase
         .from('order_items')
@@ -159,15 +169,14 @@ const KitchenDisplayScreen = () => {
           id, quantity, customizations, status,
           orders ( id, created_at, order_tables ( tables ( name ) ) )
         `)
-        // Câu truy vấn bây giờ sẽ sử dụng ['waiting', 'in_progress']
-        .in('status', [STATUS.PENDING, STATUS.IN_PROGRESS])
+        .in('status', [STATUS.PENDING, STATUS.IN_PROGRESS, STATUS.COMPLETED, STATUS.SERVED])
         .order('created_at', { referencedTable: 'orders', ascending: true });
 
       if (error) throw error;
 
       const groupedOrders = data.reduce((acc, item: any) => {
         const orderId = item.orders?.id;
-        if (!orderId) return acc;
+        if (!orderId || !item.orders) return acc;
 
         if (!acc[orderId]) {
           acc[orderId] = {
@@ -175,8 +184,10 @@ const KitchenDisplayScreen = () => {
             table_name: item.orders.order_tables[0]?.tables?.name || 'Mang về',
             created_at: item.orders.created_at,
             items: [],
+            total_items: 0,
           };
         }
+        
         acc[orderId].items.push({
           id: item.id,
           name: item.customizations.name,
@@ -184,10 +195,21 @@ const KitchenDisplayScreen = () => {
           note: item.customizations.note || null,
           status: item.status as KitchenItemStatus,
         });
+        
         return acc;
       }, {} as Record<string, OrderTicket>);
 
-      setOrders(Object.values(groupedOrders));
+      let finalOrders = Object.values(groupedOrders).map(order => ({
+          ...order,
+          total_items: order.items.reduce((sum, item) => sum + item.quantity, 0)
+      }));
+
+      // Lọc ra các order mà TẤT CẢ các món đều đã được phục vụ (served)
+      finalOrders = finalOrders.filter(order => 
+          !order.items.every(item => item.status === STATUS.SERVED)
+      );
+
+      setOrders(finalOrders);
     } catch (err: any) {
       console.error('Error fetching kitchen orders:', err.message);
       Alert.alert("Lỗi", "Không thể tải danh sách món: " + err.message);
@@ -198,12 +220,12 @@ const KitchenDisplayScreen = () => {
 
   useFocusEffect(
     useCallback(() => {
+      setLoading(true);
       fetchKitchenOrders();
       const channel = supabase
-        .channel('public:order_items:kitchen')
+        .channel('public:order_items:kitchen_v2')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' },
           (payload) => {
-            console.log('Change received!', payload);
             fetchKitchenOrders();
           }
         )
@@ -214,18 +236,43 @@ const KitchenDisplayScreen = () => {
     }, [fetchKitchenOrders])
   );
   
-  const handleUpdateItemStatus = async (itemId: number, newStatus: KitchenItemStatus) => {
+  const handleUpdateItemStatus = async (itemId: number, currentStatus: KitchenItemStatus) => {
+    let newStatus: KitchenItemStatus = STATUS.IN_PROGRESS;
+    if (currentStatus === STATUS.PENDING) {
+      newStatus = STATUS.IN_PROGRESS;
+    } else if (currentStatus === STATUS.IN_PROGRESS) {
+      newStatus = STATUS.COMPLETED;
+    } else {
+        return; // Không làm gì nếu món đã hoàn thành
+    }
+
     try {
-      const { error } = await supabase
-        .from('order_items')
-        .update({ status: newStatus })
-        .eq('id', itemId);
+      const { error } = await supabase.from('order_items').update({ status: newStatus }).eq('id', itemId);
       if (error) throw error;
     } catch (err: any) {
       console.error("Error updating item status:", err.message);
       Alert.alert("Lỗi", "Không thể cập nhật trạng thái món: " + err.message);
     }
   };
+
+  const handleCompleteAllItems = async (items: KitchenItem[]) => {
+      const itemsToUpdate = items
+          .filter(item => item.status === STATUS.PENDING || item.status === STATUS.IN_PROGRESS)
+          .map(item => item.id);
+      
+      if(itemsToUpdate.length === 0) return;
+
+      try {
+          const { error } = await supabase
+              .from('order_items')
+              .update({ status: STATUS.COMPLETED })
+              .in('id', itemsToUpdate);
+          if (error) throw error;
+      } catch (err: any) {
+          console.error("Error completing all items:", err.message);
+          Alert.alert("Lỗi", "Không thể hoàn thành tất cả món: " + err.message);
+      }
+  }
 
   if (loading) {
     return (
@@ -247,7 +294,11 @@ const KitchenDisplayScreen = () => {
         data={orders}
         keyExtractor={(item) => item.order_id}
         renderItem={({ item }) => (
-            <OrderTicketCard ticket={item} onUpdateItemStatus={handleUpdateItemStatus}/>
+            <OrderTicketCard 
+                ticket={item} 
+                onUpdateItemStatus={handleUpdateItemStatus}
+                onCompleteAll={handleCompleteAllItems}
+            />
         )}
         contentContainerStyle={styles.listContainer}
         ListEmptyComponent={
@@ -261,6 +312,7 @@ const KitchenDisplayScreen = () => {
   );
 };
 
+// --- [CẬP NHẬT TOÀN BỘ] STYLESHEET ---
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F3F4F6' },
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
@@ -268,25 +320,117 @@ const styles = StyleSheet.create({
   emptyText: { marginTop: 16, fontSize: 18, color: '#6B7280', fontWeight: '500' },
   header: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1E3A8A', paddingHorizontal: 16, paddingVertical: 12 },
   headerTitle: { color: 'white', fontSize: 20, fontWeight: 'bold', marginLeft: 12 },
-  listContainer: { padding: 8 },
-  ticketCard: { backgroundColor: 'white', borderRadius: 12, margin: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 },
-  ticketHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
-  tableNameContainer: { flexDirection: 'row', alignItems: 'center' },
-  tableName: { fontSize: 22, fontWeight: 'bold', color: '#111827', marginLeft: 8 },
-  timerContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#E0E7FF', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 999 },
-  timerText: { fontSize: 14, fontWeight: '600', color: '#3730A3', marginLeft: 6 },
-  itemsList: { padding: 8 },
-  itemContainerTouchable: { marginVertical: 4 },
-  itemContainer: { flexDirection: 'row', alignItems: 'flex-start', padding: 12, borderRadius: 8 },
-  itemPending: { backgroundColor: 'white' },
-  itemInProgress: { backgroundColor: '#FFEDD5' },
-  itemCompleted: { backgroundColor: '#D1FAE5' },
-  itemQuantity: { fontSize: 20, fontWeight: 'bold', marginRight: 12 },
-  itemDetails: { flex: 1 },
-  itemName: { fontSize: 18, fontWeight: '600', color: '#1F2937', flexWrap: 'wrap' },
-  itemCompletedText: { textDecorationLine: 'line-through', color: '#6B7280' },
-  noteContainer: { backgroundColor: '#FEF3C7', padding: 8, borderRadius: 6, marginTop: 4 },
-  noteText: { color: '#92400E', fontStyle: 'italic' },
+  listContainer: { paddingHorizontal: 16, paddingVertical: 8 },
+  
+  // Styles cho Card - Lấy cảm hứng từ OrderScreen
+  cardShadow: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  cardHeader: {
+    backgroundColor: '#1E3A8A',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+  },
+  cardHeaderInfo: {
+      flexDirection: 'row',
+      alignItems: 'center'
+  },
+  cardTableName: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginLeft: 8
+  },
+  cardItemCount: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  cardBody: {
+    padding: 8,
+  },
+  cardFooter: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderTopWidth: 1,
+      borderTopColor: '#F3F4F6'
+  },
+  footerTimer: {
+      flexDirection: 'row',
+      alignItems: 'center'
+  },
+  footerTimerText: {
+      marginLeft: 6,
+      color: '#6B7280'
+  },
+  completeAllButton: {
+      backgroundColor: '#2E8540',
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 20
+  },
+  disabledButton: {
+      backgroundColor: '#9CA3AF'
+  },
+  completeAllButtonText: {
+      color: 'white',
+      fontWeight: 'bold',
+      fontSize: 14,
+  },
+
+  // Styles cho từng món ăn trong Card
+  itemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  itemQuantity: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginRight: 12,
+    width: 30, // Căn lề số lượng
+  },
+  itemDetails: {
+    flex: 1,
+  },
+  itemName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  itemTextInProgress: {
+    color: '#F97316'
+  },
+  itemTextCompleted: {
+    color: '#10B981',
+    textDecorationLine: 'line-through',
+  },
+  itemNote: {
+    fontSize: 13,
+    color: '#6B7280',
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
 });
 
 export default KitchenDisplayScreen;
