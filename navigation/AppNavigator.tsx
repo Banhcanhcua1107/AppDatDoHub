@@ -1,15 +1,13 @@
+// navigation/AppNavigator.tsx
+
 import React from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs'; // [SỬA LỖI] Đã thêm dòng này
 import { useAuth } from '../context/AuthContext';
-import { Ionicons } from '@expo/vector-icons'; // [SỬA LỖI] Đã thêm dòng này
 
-// [SỬA LỖI] Import đúng tên 'KitchenTabParamList'
-import { ROUTES, AuthStackParamList, AppStackParamList, KitchenTabParamList } from '../constants/routes'; 
-
-// --- Import Màn hình ---
+// Import các hằng số và màn hình...
+import { ROUTES, AuthStackParamList, AppStackParamList } from '../constants/routes';
 import LoginScreen from '../screens/Auth/LoginScreen';
 import RegisterScreen from '../screens/Auth/RegisterScreen';
 import ForgotPasswordScreen from '../screens/Auth/ForgotPasswordScreen';
@@ -29,14 +27,14 @@ import ProvisionalBillScreen from '../screens/Orders/ProvisionalBillScreen';
 import PrintPreviewScreen from '../screens/Orders/PrintPreviewScreen';
 import ChangePasswordScreen from '../screens/Profile/ChangePasswordScreen';
 import BillHistoryScreen from '../screens/Utilities/BillHistoryScreen';
-// --- Import màn hình Bếp ---
-import KitchenDisplayScreen from '../screens/Kitchen/KitchenDisplayScreen';
-import KitchenUtilitiesScreen from '../screens/Kitchen/KitchenUtilitiesScreen';
+// --- [SỬA LỖI] Import KitchenTabs và xóa import KitchenDisplayScreen không cần thiết ---
+import KitchenTabs from './KitchenTabs';
 
-// --- Khai báo các Navigator ---
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const AppStack = createNativeStackNavigator<AppStackParamList>();
-const KitchenTab = createBottomTabNavigator<KitchenTabParamList>();
+// --- [SỬA LỖI] Khai báo KitchenStack ở đây, MỘT LẦN DUY NHẤT ---
+const KitchenStack = createNativeStackNavigator();
+
 
 // --- Navigator cho luồng Xác thực (Giữ nguyên) ---
 const AuthNavigator = () => (
@@ -69,44 +67,17 @@ const MainAppStack = () => (
     </AppStack.Navigator>
 );
 
-// [XÓA ĐI] Không cần component tạm thời này nữa
-// const KitchenHomeScreen = () => ( ... );
 
-// --- Navigator cho luồng Bếp (Đã cập nhật) ---
+// --- [SỬA LỖI] Xóa bỏ hoàn toàn KitchenNavigator và các component tạm thời cũ ---
+// --- Navigator mới cho luồng Bếp ---
 const KitchenNavigator = () => (
-  <KitchenTab.Navigator
-    screenOptions={({ route }) => ({
-      headerShown: false,
-      tabBarActiveTintColor: '#1E3A8A', // Màu xanh navy đậm
-      tabBarInactiveTintColor: 'gray',
-      tabBarStyle: { paddingBottom: 5, height: 60, backgroundColor: '#FFFFFF' },
-      tabBarLabelStyle: { fontSize: 12 },
-      tabBarIcon: ({ focused, color, size }) => {
-        let iconName: React.ComponentProps<typeof Ionicons>['name'] = 'alert-circle-outline';
-        if (route.name === ROUTES.KITCHEN_ORDERS_TAB) {
-          iconName = focused ? 'restaurant' : 'restaurant-outline';
-        } else if (route.name === ROUTES.KITCHEN_UTILITIES_TAB) {
-          iconName = focused ? 'apps' : 'apps-outline';
-        }
-        return <Ionicons name={iconName} size={size} color={color} />;
-      },
-    })}
-  >
-    <KitchenTab.Screen
-      name={ROUTES.KITCHEN_ORDERS_TAB}
-      component={KitchenDisplayScreen}
-      options={{ title: 'Danh sách món' }}
-    />
-    <KitchenTab.Screen
-      name={ROUTES.KITCHEN_UTILITIES_TAB}
-      component={KitchenUtilitiesScreen}
-      options={{ title: 'Tiện ích' }}
-    />
-  </KitchenTab.Navigator>
+  <KitchenStack.Navigator screenOptions={{ headerShown: false }}>
+    <KitchenStack.Screen name="KitchenRoot" component={KitchenTabs} />
+  </KitchenStack.Navigator>
 );
 
 
-// --- Component Navigator Chính (Giữ nguyên) ---
+// --- Component Navigator Chính (Đã được cập nhật) ---
 export default function AppNavigator() {
   const { isAuthenticated, isLoading, userProfile } = useAuth();
 
