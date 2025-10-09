@@ -10,18 +10,18 @@ import {
   ActivityIndicator,
   SafeAreaView,
   StatusBar,
-  Alert, // Thêm Alert để báo lỗi
+  Alert,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../services/supabase';
 import { Ionicons } from '@expo/vector-icons';
 
-// [QUAN TRỌNG] SỬA LỖI: Quay trở lại các giá trị ENUM mà database của bạn đang sử dụng.
-// Dựa trên bình luận cũ, có vẻ database đang dùng các giá trị này.
+// [SỬA LỖI DỨT ĐIỂM] Sử dụng chính xác các giá trị từ database mà bạn đã cung cấp
 const STATUS = {
-  PENDING: 'pending',
-  IN_PROGRESS: 'in_progress',
-  COMPLETED: 'completed',
+  PENDING: 'waiting',        // Sửa thành 'waiting'
+  IN_PROGRESS: 'in_progress',  // Giữ nguyên
+  COMPLETED: 'completed',      // Giữ nguyên
+  SERVED: 'served',          // Thêm 'served' nếu cần dùng sau này
 };
 
 // Định nghĩa lại kiểu dữ liệu để sử dụng các giá trị từ object STATUS
@@ -48,7 +48,6 @@ const KitchenOrderItem: React.FC<{
   onStatusChange: () => void;
 }> = ({ item, onStatusChange }) => {
 
-  // Khai báo kiểu tường minh cho tên icon
   type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
   const getStatusStyle = (): { containerStyle: any; icon: IconName; color: string } => {
@@ -56,15 +55,16 @@ const KitchenOrderItem: React.FC<{
       case STATUS.IN_PROGRESS:
         return { containerStyle: styles.itemInProgress, icon: 'flame', color: '#F97316' };
       case STATUS.COMPLETED:
+      case STATUS.SERVED: // Có thể coi 'served' cũng là một dạng hoàn thành
         return { containerStyle: styles.itemCompleted, icon: 'checkmark-done', color: '#10B981' };
-      case STATUS.PENDING:
+      case STATUS.PENDING: // Đây là 'waiting'
       default:
         return { containerStyle: styles.itemPending, icon: 'ellipse-outline', color: '#6B7280' };
     }
   };
 
   const { containerStyle, icon, color } = getStatusStyle();
-  const isCompleted = item.status === STATUS.COMPLETED;
+  const isCompleted = item.status === STATUS.COMPLETED || item.status === STATUS.SERVED;
 
   return (
     <TouchableOpacity
@@ -111,7 +111,8 @@ const OrderTicketCard: React.FC<{
 
   const handleItemPress = (item: KitchenItem) => {
     let newStatus: KitchenItemStatus = STATUS.IN_PROGRESS;
-    if (item.status === STATUS.PENDING) {
+    // Quy trình: waiting -> in_progress -> completed
+    if (item.status === STATUS.PENDING) { // Nếu đang là 'waiting'
       newStatus = STATUS.IN_PROGRESS;
     } else if (item.status === STATUS.IN_PROGRESS) {
       newStatus = STATUS.COMPLETED;
@@ -150,7 +151,7 @@ const KitchenDisplayScreen = () => {
   const [orders, setOrders] = useState<OrderTicket[]>([]);
 
   const fetchKitchenOrders = useCallback(async () => {
-    console.log('Fetching kitchen orders...');
+    console.log('Fetching kitchen orders with correct status values...');
     try {
       const { data, error } = await supabase
         .from('order_items')
@@ -158,7 +159,7 @@ const KitchenDisplayScreen = () => {
           id, quantity, customizations, status,
           orders ( id, created_at, order_tables ( tables ( name ) ) )
         `)
-        // [SỬA LỖI Ở ĐÂY] Sử dụng các giá trị trạng thái đã định nghĩa
+        // Câu truy vấn bây giờ sẽ sử dụng ['waiting', 'in_progress']
         .in('status', [STATUS.PENDING, STATUS.IN_PROGRESS])
         .order('created_at', { referencedTable: 'orders', ascending: true });
 
@@ -189,7 +190,7 @@ const KitchenDisplayScreen = () => {
       setOrders(Object.values(groupedOrders));
     } catch (err: any) {
       console.error('Error fetching kitchen orders:', err.message);
-      Alert.alert("Lỗi", "Không thể tải danh sách món: " + err.message); // Hiển thị lỗi cho người dùng
+      Alert.alert("Lỗi", "Không thể tải danh sách món: " + err.message);
     } finally {
       setLoading(false);
     }
@@ -260,7 +261,6 @@ const KitchenDisplayScreen = () => {
   );
 };
 
-// --- [CẬP NHẬT] Tách style ra để dễ quản lý hơn ---
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F3F4F6' },
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
@@ -279,8 +279,8 @@ const styles = StyleSheet.create({
   itemContainerTouchable: { marginVertical: 4 },
   itemContainer: { flexDirection: 'row', alignItems: 'flex-start', padding: 12, borderRadius: 8 },
   itemPending: { backgroundColor: 'white' },
-  itemInProgress: { backgroundColor: '#FFEDD5' }, // bg-orange-100
-  itemCompleted: { backgroundColor: '#D1FAE5' }, // bg-green-100
+  itemInProgress: { backgroundColor: '#FFEDD5' },
+  itemCompleted: { backgroundColor: '#D1FAE5' },
   itemQuantity: { fontSize: 20, fontWeight: 'bold', marginRight: 12 },
   itemDetails: { flex: 1 },
   itemName: { fontSize: 18, fontWeight: '600', color: '#1F2937', flexWrap: 'wrap' },
