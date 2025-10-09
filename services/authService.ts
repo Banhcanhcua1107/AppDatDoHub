@@ -3,10 +3,16 @@ import { supabase } from './supabase';
 
 // --- Hàm cho luồng Đăng ký ---
 
-export const registerUser = async (email: string, password: string) => {
+export const registerUser = async (email: string, password: string, role: string = 'nhan_vien') => {
   const { data, error } = await supabase.auth.signUp({
     email: email,
     password: password,
+    options: {
+      // Truyền vai trò vào metadata, trigger ở DB sẽ bắt lấy giá trị này
+      data: {
+        role: role,
+      }
+    }
   });
 
   if (error) throw new Error(error.message);
@@ -36,30 +42,37 @@ export const resendOtpForSignup = async (email: string) => {
 
 // --- Hàm cho luồng Đăng nhập / Đăng xuất ---
 
-export const loginUser = async (email: string, password: string): Promise<string> => { // Thay đổi kiểu trả về thành string
-  const { data, error } = await supabase.auth.signInWithPassword({
+export const loginUser = async (email: string, password: string): Promise<{ session: any; userProfile: any }> => {
+  const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
     email: email,
     password: password,
   });
 
-  if (error) {
-    // Supabase thường trả về "Invalid login credentials" cho sai mật khẩu/email
-    if (error.message === 'Invalid login credentials') {
+  if (authError) {
+    if (authError.message === 'Invalid login credentials') {
         throw new Error('Email hoặc mật khẩu không chính xác.');
     }
-    throw new Error(error.message);
-  }
-  
-  // Lấy access_token từ session
-  const token = data?.session?.access_token;
-
-  if (!token) {
-    // Trường hợp này hiếm, nhưng cần phòng ngừa
-    throw new Error('Đăng nhập thành công nhưng không nhận được token xác thực.');
+    throw new Error(authError.message);
   }
 
-  // Trả về chuỗi token thay vì đối tượng user
-  return token;
+  if (!authData.session || !authData.user) {
+    throw new Error('Đăng nhập không thành công, không có session.');
+  }
+
+  // Sau khi đăng nhập thành công, lấy thông tin profile (bao gồm cả role)
+  const { data: userProfile, error: profileError } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', authData.user.id)
+    .single();
+
+  if (profileError) {
+    // Nếu không tìm thấy profile, có thể là do trigger chưa chạy hoặc có lỗi
+    throw new Error('Không tìm thấy thông tin hồ sơ người dùng.');
+  }
+
+  // Trả về cả session và userProfile
+  return { session: authData.session, userProfile };
 };
 
 export const logoutUser = async () => {

@@ -55,8 +55,17 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
   const handleRegister = async () => {
     if (validateForm()) {
       try {
-        await registerUser(email, password);
-        // --- THAY THẾ ALERT BẰNG TOAST ---
+        // [CHỈNH SỬA] Logic gán vai trò dựa trên email
+        let userRole = 'nhan_vien'; // Mặc định là nhân viên
+        if (email.toLowerCase() === 'banhcanhcuah2l@gmail.com') {
+          userRole = 'bep'; // Nếu là email của bếp, gán vai trò 'bep'
+        } else if (email.toLowerCase() === 'admin@example.com') { // Ví dụ cho admin
+          userRole = 'admin';
+        }
+
+        // Truyền vai trò vào hàm registerUser
+        await registerUser(email, password, userRole);
+        
         Toast.show({
           type: 'success',
           text1: 'Đăng ký thành công!',
@@ -64,7 +73,6 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
         });
         navigation.navigate(ROUTES.OTP_REGISTER, { email: email });
       } catch (error: any) {
-        // --- THAY THẾ ALERT BẰNG TOAST ---
         Toast.show({
           type: 'error',
           text1: 'Đăng ký thất bại',
