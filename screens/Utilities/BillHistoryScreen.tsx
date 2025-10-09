@@ -25,7 +25,7 @@ import { BillItem, ProvisionalOrder } from '../Orders/ProvisionalBillScreen'; //
 // Định nghĩa kiểu cho navigation
 type BillHistoryNavigationProp = NativeStackNavigationProp<AppStackParamList>;
 
-// Component Card hiển thị Bill (tương tự OrderCard nhưng có chỉnh sửa)
+// Component Card hiển thị Bill
 const BillCard: React.FC<{ item: ProvisionalOrder; onPress: () => void }> = ({
   item,
   onPress,
@@ -77,7 +77,6 @@ const BillHistoryScreen = () => {
   const fetchBillHistory = useCallback(async (isInitialLoad = true) => {
     if (isInitialLoad) setLoading(true);
     try {
-      // [SỬA LỖI] Bỏ cột `updated_at` và thay thế nó bằng `created_at` để sắp xếp
       const { data, error } = await supabase
         .from('orders')
         .select(`
@@ -87,8 +86,8 @@ const BillHistoryScreen = () => {
           order_items(quantity, unit_price, customizations, returned_quantity, menu_items(name)), 
           order_tables(tables(id, name))
         `)
-        .in('status', ['paid', 'closed']) // Lấy các hóa đơn đã thanh toán hoặc đã đóng
-        .order('created_at', { ascending: false }); // Sắp xếp theo ngày tạo gần nhất
+        .in('status', ['paid', 'closed'])
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
 
@@ -103,9 +102,8 @@ const BillHistoryScreen = () => {
           return {
             orderId: order.id,
             tables: tables,
-            totalPrice: order.total_price || 0, // Dùng total_price đã lưu khi thanh toán
+            totalPrice: order.total_price || 0,
             totalItemCount,
-            // [SỬA LỖI] Dùng `created_at` làm thời gian thanh toán/hoàn thành
             createdAt: order.created_at, 
           };
         })
@@ -118,9 +116,9 @@ const BillHistoryScreen = () => {
       if (isInitialLoad) setLoading(false);
     }
   }, []);
+
   useFocusEffect(
     useCallback(() => {
-      // Chỉ fetch lại danh sách khi quay về màn hình danh sách
       if (!selectedBill) {
         fetchBillHistory();
       }
@@ -131,29 +129,29 @@ const BillHistoryScreen = () => {
     setLoading(true);
     setSelectedBill(bill);
     try {
-      // --- [SỬA ĐỔI CÂU TRUY VẤN] ---
-      // Lấy trực tiếp `name` từ `menu_items` để làm phẳng cấu trúc
       const { data, error } = await supabase
         .from('order_items')
-        .select('quantity, unit_price, customizations, returned_quantity, menu_items ( name )') // Sửa đổi tại đây
+        .select('quantity, unit_price, customizations, returned_quantity, menu_items(name)')
         .eq('order_id', bill.orderId);
 
       if (error) throw error;
 
       const items: BillItem[] = (data || [])
         .map((item) => {
-            const finalQuantity = item.quantity - item.returned_quantity;
-            if (finalQuantity <= 0) return null;
-            // Đoạn mã này có vẻ phức tạp, cần kiểm tra `item.menu_items` có phải là mảng hay không.
-            // Giả sử nó là một đối tượng hoặc một mảng chỉ có một phần tử.
-            const itemName = (item.menu_items as any)?.name || item.customizations?.name || 'Món đã xóa';
+          const finalQuantity = item.quantity - item.returned_quantity;
+          if (finalQuantity <= 0) return null;
 
-            return {
-                name: itemName,
-                quantity: finalQuantity,
-                unit_price: item.unit_price,
-                totalPrice: finalQuantity * item.unit_price,
-            };
+          // `item.menu_items` là một object, không phải array.
+          // Truy cập trực tiếp vào thuộc tính `name`.
+          const menuItemsArray = item.menu_items as { name: string }[] | null;
+          const itemName = menuItemsArray?.[0]?.name || item.customizations?.name || 'Món đã xóa';
+
+          return {
+            name: itemName,
+            quantity: finalQuantity,
+            unit_price: item.unit_price,
+            totalPrice: finalQuantity * item.unit_price,
+          };
         })
         .filter((item): item is BillItem => item !== null);
 
@@ -232,10 +230,16 @@ const BillHistoryScreen = () => {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#F8F9FA' }}>
+     <View style={{ flex: 1, backgroundColor: '#F8F9FA' }}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-      <View style={{ paddingTop: insets.top + 20 }} className="px-4 pb-3">
-        <Text className="text-3xl font-bold text-gray-800">Lịch sử hóa đơn</Text>
+      <View 
+        style={{ paddingTop: insets.top + 20, paddingBottom: 12, paddingHorizontal: 16 }} 
+        className="flex-row items-center"
+      >
+        <TouchableOpacity onPress={() => navigation.goBack()} className="p-2 -ml-2">
+            <Icon name="arrow-back-outline" size={28} color="#1F2937" />
+        </TouchableOpacity>
+        <Text className="text-3xl font-bold text-gray-800 ml-3">Lịch sử hóa đơn</Text>
       </View>
       {selectedBill ? <BillDetails /> : <BillSelection />}
     </View>
