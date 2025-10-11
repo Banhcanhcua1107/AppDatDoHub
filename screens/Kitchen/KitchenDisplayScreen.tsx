@@ -12,9 +12,15 @@ import {
   StatusBar,
   Alert,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { supabase } from '../../services/supabase';
 import { Ionicons } from '@expo/vector-icons';
+// [SỬA LỖI 1] Import các kiểu cần thiết
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { KitchenStackParamList } from '../../navigation/AppNavigator'; // Đường dẫn có thể cần điều chỉnh
+
+// [SỬA LỖI 2] Định nghĩa kiểu cho navigation prop
+type KitchenDisplayNavigationProp = NativeStackNavigationProp<KitchenStackParamList>;
 
 // Sử dụng các giá trị enum đã xác thực từ database
 const STATUS = {
@@ -42,7 +48,7 @@ interface OrderTicket {
   total_items: number;
 }
 
-// ---- [CẬP NHẬT] COMPONENT CON: HIỂN THỊ MỘT MÓN ĂN (TRONG CARD) ----
+// ---- COMPONENT CON (Giữ nguyên) ----
 const KitchenOrderItem: React.FC<{
   item: KitchenItem;
   onStatusChange: (itemId: number, currentStatus: KitchenItemStatus) => void;
@@ -82,12 +88,13 @@ const KitchenOrderItem: React.FC<{
 };
 
 
-// ---- [THIẾT KẾ LẠI] COMPONENT CHÍNH CỦA MỘT ORDER, GIỐNG ORDERSCREEN ----
+// ---- COMPONENT ORDER TICKET (Giữ nguyên) ----
 const OrderTicketCard: React.FC<{
   ticket: OrderTicket;
   onUpdateItemStatus: (itemId: number, currentStatus: KitchenItemStatus) => void;
   onCompleteAll: (items: KitchenItem[]) => void;
-}> = ({ ticket, onUpdateItemStatus, onCompleteAll }) => {
+  onNavigate: () => void;
+}> = ({ ticket, onUpdateItemStatus, onCompleteAll, onNavigate }) => {
   const [elapsedTime, setElapsedTime] = useState('');
   const [isLoadingAll, setIsLoadingAll] = useState(false);
 
@@ -104,54 +111,50 @@ const OrderTicketCard: React.FC<{
   }, [ticket.created_at]);
 
   const handleCompleteAll = async () => {
-      setIsLoadingAll(true);
-      await onCompleteAll(ticket.items);
-      setIsLoadingAll(false);
+    setIsLoadingAll(true);
+    await onCompleteAll(ticket.items);
+    setIsLoadingAll(false);
   }
 
-  // Kiểm tra xem tất cả các món đã hoàn thành chưa để vô hiệu hóa nút
   const areAllItemsCompleted = ticket.items.every(
-      item => item.status === STATUS.COMPLETED || item.status === STATUS.SERVED
+    item => item.status === STATUS.COMPLETED || item.status === STATUS.SERVED
   );
 
   return (
-    <View style={styles.cardShadow}>
-      {/* Header của Card */}
-      <View style={styles.cardHeader}>
-        <View style={styles.cardHeaderInfo}>
+    <TouchableOpacity onPress={onNavigate} activeOpacity={0.8}>
+      <View style={styles.cardShadow}>
+        <View style={styles.cardHeader}>
+          <View style={styles.cardHeaderInfo}>
             <Ionicons name="receipt-outline" size={20} color="white" />
             <Text style={styles.cardTableName}>{ticket.table_name}</Text>
+          </View>
+          <Text style={styles.cardItemCount}>{ticket.total_items} món</Text>
         </View>
-        <Text style={styles.cardItemCount}>{ticket.total_items} món</Text>
-      </View>
-
-      {/* Body của Card - Danh sách các món */}
-      <View style={styles.cardBody}>
-        {ticket.items.map((item) => (
-          <KitchenOrderItem key={item.id} item={item} onStatusChange={onUpdateItemStatus} />
-        ))}
-      </View>
-
-      {/* Footer của Card - Các nút hành động */}
-      <View style={styles.cardFooter}>
-        <View style={styles.footerTimer}>
+        <View style={styles.cardBody}>
+          {ticket.items.map((item) => (
+            <KitchenOrderItem key={item.id} item={item} onStatusChange={onUpdateItemStatus} />
+          ))}
+        </View>
+        <View style={styles.cardFooter}>
+          <View style={styles.footerTimer}>
             <Ionicons name="time-outline" size={16} color="#6B7280" />
             <Text style={styles.footerTimerText}>{elapsedTime}</Text>
-        </View>
-        <TouchableOpacity 
+          </View>
+          <TouchableOpacity
             style={[styles.completeAllButton, areAllItemsCompleted && styles.disabledButton]}
             onPress={handleCompleteAll}
             disabled={areAllItemsCompleted || isLoadingAll}
-        >
-          {isLoadingAll ? (
+          >
+            {isLoadingAll ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
-          ) : (
-              <Ionicons name="checkmark-done-outline" size={20} color="white" style={{marginRight: 8}}/>
-          )}
-          <Text style={styles.completeAllButtonText}>Hoàn thành tất cả</Text>
-        </TouchableOpacity>
+            ) : (
+              <Ionicons name="checkmark-done-outline" size={20} color="white" style={{ marginRight: 8 }} />
+            )}
+            <Text style={styles.completeAllButtonText}>Hoàn thành tất cả</Text>
+          </TouchableOpacity>
+        </View>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 };
 
@@ -160,6 +163,8 @@ const OrderTicketCard: React.FC<{
 const KitchenDisplayScreen = () => {
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<OrderTicket[]>([]);
+  // [SỬA LỖI 3] Áp dụng kiểu đã định nghĩa cho useNavigation
+  const navigation = useNavigation<KitchenDisplayNavigationProp>();
 
   const fetchKitchenOrders = useCallback(async () => {
     try {
@@ -187,7 +192,7 @@ const KitchenDisplayScreen = () => {
             total_items: 0,
           };
         }
-        
+
         acc[orderId].items.push({
           id: item.id,
           name: item.customizations.name,
@@ -195,18 +200,17 @@ const KitchenDisplayScreen = () => {
           note: item.customizations.note || null,
           status: item.status as KitchenItemStatus,
         });
-        
+
         return acc;
       }, {} as Record<string, OrderTicket>);
 
       let finalOrders = Object.values(groupedOrders).map(order => ({
-          ...order,
-          total_items: order.items.reduce((sum, item) => sum + item.quantity, 0)
+        ...order,
+        total_items: order.items.reduce((sum, item) => sum + item.quantity, 0)
       }));
 
-      // Lọc ra các order mà TẤT CẢ các món đều đã được phục vụ (served)
-      finalOrders = finalOrders.filter(order => 
-          !order.items.every(item => item.status === STATUS.SERVED)
+      finalOrders = finalOrders.filter(order =>
+        !order.items.every(item => item.status === STATUS.SERVED)
       );
 
       setOrders(finalOrders);
@@ -235,7 +239,7 @@ const KitchenDisplayScreen = () => {
       };
     }, [fetchKitchenOrders])
   );
-  
+
   const handleUpdateItemStatus = async (itemId: number, currentStatus: KitchenItemStatus) => {
     let newStatus: KitchenItemStatus = STATUS.IN_PROGRESS;
     if (currentStatus === STATUS.PENDING) {
@@ -243,7 +247,7 @@ const KitchenDisplayScreen = () => {
     } else if (currentStatus === STATUS.IN_PROGRESS) {
       newStatus = STATUS.COMPLETED;
     } else {
-        return; // Không làm gì nếu món đã hoàn thành
+      return;
     }
 
     try {
@@ -256,22 +260,22 @@ const KitchenDisplayScreen = () => {
   };
 
   const handleCompleteAllItems = async (items: KitchenItem[]) => {
-      const itemsToUpdate = items
-          .filter(item => item.status === STATUS.PENDING || item.status === STATUS.IN_PROGRESS)
-          .map(item => item.id);
-      
-      if(itemsToUpdate.length === 0) return;
+    const itemsToUpdate = items
+      .filter(item => item.status === STATUS.PENDING || item.status === STATUS.IN_PROGRESS)
+      .map(item => item.id);
 
-      try {
-          const { error } = await supabase
-              .from('order_items')
-              .update({ status: STATUS.COMPLETED })
-              .in('id', itemsToUpdate);
-          if (error) throw error;
-      } catch (err: any) {
-          console.error("Error completing all items:", err.message);
-          Alert.alert("Lỗi", "Không thể hoàn thành tất cả món: " + err.message);
-      }
+    if (itemsToUpdate.length === 0) return;
+
+    try {
+      const { error } = await supabase
+        .from('order_items')
+        .update({ status: STATUS.COMPLETED })
+        .in('id', itemsToUpdate);
+      if (error) throw error;
+    } catch (err: any) {
+      console.error("Error completing all items:", err.message);
+      Alert.alert("Lỗi", "Không thể hoàn thành tất cả món: " + err.message);
+    }
   }
 
   if (loading) {
@@ -294,11 +298,16 @@ const KitchenDisplayScreen = () => {
         data={orders}
         keyExtractor={(item) => item.order_id}
         renderItem={({ item }) => (
-            <OrderTicketCard 
-                ticket={item} 
-                onUpdateItemStatus={handleUpdateItemStatus}
-                onCompleteAll={handleCompleteAllItems}
-            />
+          <OrderTicketCard
+            ticket={item}
+            onUpdateItemStatus={handleUpdateItemStatus}
+            onCompleteAll={handleCompleteAllItems}
+            // [SỬA LỖI 4] Xóa bỏ các ép kiểu `as never`
+            onNavigate={() => navigation.navigate('KitchenDetail', {
+              orderId: item.order_id,
+              tableName: item.table_name
+            })}
+          />
         )}
         contentContainerStyle={styles.listContainer}
         ListEmptyComponent={
@@ -312,7 +321,7 @@ const KitchenDisplayScreen = () => {
   );
 };
 
-// --- [CẬP NHẬT TOÀN BỘ] STYLESHEET ---
+// --- STYLESHEET (Giữ nguyên) ---
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F3F4F6' },
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
@@ -322,7 +331,6 @@ const styles = StyleSheet.create({
   headerTitle: { color: 'white', fontSize: 20, fontWeight: 'bold', marginLeft: 12 },
   listContainer: { paddingHorizontal: 16, paddingVertical: 8 },
   
-  // Styles cho Card - Lấy cảm hứng từ OrderScreen
   cardShadow: {
     backgroundColor: 'white',
     borderRadius: 12,
@@ -395,7 +403,6 @@ const styles = StyleSheet.create({
       fontSize: 14,
   },
 
-  // Styles cho từng món ăn trong Card
   itemRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -408,7 +415,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#1F2937',
     marginRight: 12,
-    width: 30, // Căn lề số lượng
+    width: 30,
   },
   itemDetails: {
     flex: 1,

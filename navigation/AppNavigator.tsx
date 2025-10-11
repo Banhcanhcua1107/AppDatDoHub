@@ -29,11 +29,17 @@ import ChangePasswordScreen from '../screens/Profile/ChangePasswordScreen';
 import BillHistoryScreen from '../screens/Utilities/BillHistoryScreen';
 // --- [SỬA LỖI] Import KitchenTabs và xóa import KitchenDisplayScreen không cần thiết ---
 import KitchenTabs from './KitchenTabs';
+import KitchenDetailScreen from '../screens/Kitchen/KitchenDetailScreen';
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const AppStack = createNativeStackNavigator<AppStackParamList>();
 // --- [SỬA LỖI] Khai báo KitchenStack ở đây, MỘT LẦN DUY NHẤT ---
-const KitchenStack = createNativeStackNavigator();
+export type KitchenStackParamList = {
+  KitchenRoot: undefined; // Màn hình chứa các tab
+  KitchenDetail: { orderId: string; tableName: string }; // Màn hình chi tiết
+};
+
+const KitchenStack = createNativeStackNavigator<KitchenStackParamList>();
 
 
 // --- Navigator cho luồng Xác thực (Giữ nguyên) ---
@@ -73,6 +79,7 @@ const MainAppStack = () => (
 const KitchenNavigator = () => (
   <KitchenStack.Navigator screenOptions={{ headerShown: false }}>
     <KitchenStack.Screen name="KitchenRoot" component={KitchenTabs} />
+    <KitchenStack.Screen name="KitchenDetail" component={KitchenDetailScreen} />
   </KitchenStack.Navigator>
 );
 
