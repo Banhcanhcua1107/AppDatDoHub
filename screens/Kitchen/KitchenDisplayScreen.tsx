@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, SafeAreaView, StatusBar, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, SafeAreaView, StatusBar } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { supabase } from '../../services/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { KitchenStackParamList } from '../../navigation/AppNavigator';
+import ConfirmModal from '../../components/ConfirmModal';
 
 type KitchenDisplayNavigationProp = NativeStackNavigationProp<KitchenStackParamList>;
 
@@ -113,6 +114,8 @@ const OrderTicketCard: React.FC<{
 const KitchenDisplayScreen = () => {
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<OrderTicket[]>([]);
+  const [selectedTicket, setSelectedTicket] = useState<OrderTicket | null>(null);
+  const [isReturnModalVisible, setReturnModalVisible] = useState(false);
   const navigation = useNavigation<KitchenDisplayNavigationProp>();
 
   const fetchKitchenOrders = useCallback(async () => {
@@ -161,7 +164,6 @@ const KitchenDisplayScreen = () => {
       setOrders(finalOrders);
     } catch (err: any) {
       console.error('Error fetching kitchen orders:', err.message);
-      Alert.alert("Lỗi", "Không thể tải danh sách món: " + err.message);
     } finally {
       setLoading(false);
     }
@@ -188,44 +190,40 @@ const KitchenDisplayScreen = () => {
       if (error) throw error;
     } catch (err: any) {
       console.error("Error processing all items:", err.message);
-      Alert.alert("Lỗi", "Không thể chế biến tất cả món: " + err.message);
     }
   };
 
-  const handleReturnOrder = async (ticket: OrderTicket) => {
-    Alert.alert(
-      "Xác nhận trả món",
-      `Bạn có chắc chắn muốn trả món cho ${ticket.table_name}?`,
-      [
-        { text: "Hủy", style: "cancel" },
-        {
-          text: "Xác nhận",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              // Lấy danh sách tên món
-              const itemNames = ticket.items.map(item => `${item.name} (x${item.quantity})`);
-              
-              // Tạo thông báo trả món
-              const { error } = await supabase
-                .from('return_notifications')
-                .insert({
-                  order_id: ticket.order_id,
-                  table_name: ticket.table_name,
-                  item_names: itemNames,
-                  status: 'pending'
-                });
+  const handleReturnOrder = (ticket: OrderTicket) => {
+    setSelectedTicket(ticket);
+    setReturnModalVisible(true);
+  };
 
-              if (error) throw error;
-              Alert.alert("Thành công", "Đã gửi thông báo trả món đến nhân viên");
-            } catch (err: any) {
-              console.error("Error creating return notification:", err.message);
-              Alert.alert("Lỗi", "Không thể gửi thông báo trả món: " + err.message);
-            }
-          }
-        }
-      ]
-    );
+  const handleConfirmReturnOrder = async () => {
+    if (!selectedTicket) return;
+    
+    setReturnModalVisible(false);
+    
+    try {
+      // Lấy danh sách tên món
+      const itemNames = selectedTicket.items.map(item => `${item.name} (x${item.quantity})`);
+      
+      // Tạo thông báo trả món
+      const { error } = await supabase
+        .from('return_notifications')
+        .insert({
+          order_id: selectedTicket.order_id,
+          table_name: selectedTicket.table_name,
+          item_names: itemNames,
+          status: 'pending'
+        });
+
+      if (error) throw error;
+      
+      // Cập nhật danh sách để ẩn order này
+      setOrders(prevOrders => prevOrders.filter(order => order.order_id !== selectedTicket.order_id));
+    } catch (err: any) {
+      console.error("Error creating return notification:", err.message);
+    }
   };
 
   if (loading) {
@@ -262,6 +260,17 @@ const KitchenDisplayScreen = () => {
             <Text style={styles.emptyText}>Tuyệt vời! Không có món nào đang chờ.</Text>
           </View>
         }
+      />
+
+      {/* Modal xác nhận trả món */}
+      <ConfirmModal
+        isVisible={isReturnModalVisible}
+        title="Xác nhận trả món"
+        message={selectedTicket ? `Bạn có chắc chắn muốn trả món cho ${selectedTicket.table_name}?` : ''}
+        confirmText="Xác nhận"
+        cancelText="Hủy"
+        onClose={() => setReturnModalVisible(false)}
+        onConfirm={handleConfirmReturnOrder}
       />
     </SafeAreaView>
   );

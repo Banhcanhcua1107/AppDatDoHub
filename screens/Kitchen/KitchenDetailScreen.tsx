@@ -10,13 +10,13 @@ import {
   ActivityIndicator,
   SafeAreaView,
   StatusBar,
-  Alert,
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { supabase } from '../../services/supabase';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { KitchenStackParamList } from '../../navigation/AppNavigator'; // Đảm bảo đường dẫn này đúng
+import { KitchenStackParamList } from '../../navigation/AppNavigator';
+import ConfirmModal from '../../components/ConfirmModal';
 
 type KitchenDetailScreenNavigationProp = NativeStackNavigationProp<KitchenStackParamList, 'KitchenDetail'>;
 type KitchenDetailScreenRouteProp = RouteProp<KitchenStackParamList, 'KitchenDetail'>;
@@ -128,6 +128,7 @@ const KitchenDetailScreen = () => {
 
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<KitchenDetailItem[]>([]);
+  const [isReturnModalVisible, setReturnModalVisible] = useState(false);
 
   const fetchOrderDetails = useCallback(async () => {
     try {
@@ -145,7 +146,7 @@ const KitchenDetailScreen = () => {
       }));
       setItems(mappedItems);
     } catch (err: any) {
-      Alert.alert('Lỗi', 'Không thể tải chi tiết order: ' + err.message);
+      console.error('Lỗi tải chi tiết order:', err.message);
     } finally {
       setLoading(false);
     }
@@ -176,7 +177,7 @@ const KitchenDetailScreen = () => {
     try {
       await supabase.from('order_items').update({ status: STATUS.IN_PROGRESS }).eq('id', itemId).throwOnError();
     } catch (err: any) {
-      Alert.alert('Lỗi', 'Không thể cập nhật trạng thái: ' + err.message);
+      console.error('Lỗi cập nhật trạng thái:', err.message);
       setItems(currentItems =>
         currentItems.map(item =>
           item.id === itemId ? { ...item, status: STATUS.PENDING } : item
@@ -194,7 +195,7 @@ const KitchenDetailScreen = () => {
     try {
       await supabase.from('order_items').update({ status: STATUS.COMPLETED }).eq('id', itemId).throwOnError();
     } catch (err: any) {
-      Alert.alert('Lỗi', 'Không thể hoàn thành món: ' + err.message);
+      console.error('Lỗi hoàn thành món:', err.message);
       setItems(currentItems =>
         currentItems.map(item =>
           item.id === itemId ? { ...item, status: STATUS.IN_PROGRESS } : item
@@ -206,19 +207,24 @@ const KitchenDetailScreen = () => {
   const handleProcessAll = async () => {
     const itemsToProcess = items.filter(item => item.status === STATUS.PENDING);
     if (itemsToProcess.length === 0) {
-      Alert.alert('Thông báo', 'Không có món mới nào để chế biến.');
-      return;
+      return; // Không có món nào để chế biến
     }
     const itemIdsToProcess = itemsToProcess.map(item => item.id);
+    
+    // Cập nhật UI ngay lập tức
     setItems(currentItems =>
       currentItems.map(item =>
         itemIdsToProcess.includes(item.id) ? { ...item, status: STATUS.IN_PROGRESS } : item
       )
     );
+    
     try {
       await supabase.from('order_items').update({ status: STATUS.IN_PROGRESS }).in('id', itemIdsToProcess).throwOnError();
+      // Refresh data để đảm bảo đồng bộ
+      await fetchOrderDetails();
     } catch (err: any) {
-      Alert.alert('Lỗi', 'Không thể chế biến tất cả món: ' + err.message);
+      console.error('Lỗi chế biến tất cả món:', err.message);
+      // Rollback nếu lỗi
       setItems(currentItems =>
         currentItems.map(item =>
           itemIdsToProcess.includes(item.id) ? { ...item, status: STATUS.PENDING } : item
@@ -227,40 +233,31 @@ const KitchenDetailScreen = () => {
     }
   };
   
-  const handleReturnItems = async () => {
-    Alert.alert(
-      "Xác nhận trả món",
-      "Bạn có chắc chắn muốn trả lại các món trong đơn này không?",
-      [
-        { text: "Hủy", style: "cancel" },
-        {
-          text: "Xác nhận",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              // Lấy danh sách tên món
-              const itemNames = items.map(item => `${item.customizations.name} (x${item.quantity})`);
+  const handleConfirmReturnItems = async () => {
+    setReturnModalVisible(false);
+    
+    try {
+      // Lấy danh sách tên món
+      const itemNames = items.map(item => `${item.customizations.name} (x${item.quantity})`);
 
-              // Tạo thông báo trả món
-              const { error } = await supabase
-                .from('return_notifications')
-                .insert({
-                  order_id: orderId,
-                  table_name: tableName,
-                  item_names: itemNames,
-                  status: 'pending'
-                });
+      // Tạo thông báo trả món
+      const { error } = await supabase
+        .from('return_notifications')
+        .insert({
+          order_id: orderId,
+          table_name: tableName,
+          item_names: itemNames,
+          status: 'pending'
+        });
 
-              if (error) throw error;
-              Alert.alert("Thành công", "Đã gửi thông báo trả món đến nhân viên");
-            } catch (err: any) {
-              console.error("Error creating return notification:", err.message);
-              Alert.alert("Lỗi", "Không thể gửi thông báo trả món: " + err.message);
-            }
-          }
-        }
-      ]
-    );
+      if (error) throw error;
+      
+      // Trả món thành công, quay về màn hình trước
+      navigation.goBack();
+    } catch (err: any) {
+      console.error("Error creating return notification:", err.message);
+      // Hiển thị toast hoặc thông báo lỗi đơn giản
+    }
   };
 
   if (loading) {
@@ -305,11 +302,22 @@ const KitchenDetailScreen = () => {
           <FooterActionButton
               icon="notifications-outline"
               label="Báo xong hết"
-              onPress={handleReturnItems}
+              onPress={() => setReturnModalVisible(true)}
               color="#10B981"
               backgroundColor="#ECFDF5"
           />
       </View>
+
+      {/* Modal xác nhận trả món */}
+      <ConfirmModal
+        isVisible={isReturnModalVisible}
+        title="Xác nhận trả món"
+        message={`Bạn có chắc chắn muốn trả món cho ${tableName}?`}
+        confirmText="Xác nhận"
+        cancelText="Hủy"
+        onClose={() => setReturnModalVisible(false)}
+        onConfirm={handleConfirmReturnItems}
+      />
     </SafeAreaView>
   );
 };
