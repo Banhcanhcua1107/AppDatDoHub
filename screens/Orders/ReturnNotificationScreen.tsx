@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   StatusBar,
   Vibration,
+  Animated,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -23,6 +24,20 @@ interface ReturnNotification {
   status: 'pending' | 'acknowledged';
   created_at: string;
 }
+
+// Status colors for different states
+const StatusColors = {
+  pending: {
+    indicator: '#FB923C',
+    background: '#FFF7ED',
+    icon: '#FB923C',
+  },
+  acknowledged: {
+    indicator: '#10B981',
+    background: '#ECFDF5',
+    icon: '#10B981',
+  },
+} as const;
 
 const ReturnNotificationScreen = () => {
   const navigation = useNavigation();
@@ -151,59 +166,70 @@ const ReturnNotificationScreen = () => {
     const isPending = item.status === 'pending';
 
     return (
-      <View style={[styles.notificationCard, isPending && styles.pendingCard]}>
+      <View style={[styles.card, isPending && styles.cardPending]}>
+        {/* Status indicator */}
+        <View style={[styles.statusIndicator, { backgroundColor: isPending ? '#F97316' : '#10B981' }]} />
+        
+        {/* Header với icon và thông tin */}
         <View style={styles.cardHeader}>
           <View style={styles.headerLeft}>
-            <Ionicons
-              name={isPending ? 'alert-circle' : 'checkmark-circle'}
-              size={24}
-              color={isPending ? '#EF4444' : '#10B981'}
-            />
-            <Text style={styles.tableName}>{item.table_name}</Text>
+            <View style={[styles.iconContainer, { backgroundColor: isPending ? '#FFF7ED' : '#ECFDF5' }]}>
+              <Ionicons
+                name={isPending ? 'notifications' : 'checkmark-circle'}
+                size={20}
+                color={isPending ? '#F97316' : '#10B981'}
+              />
+            </View>
+            <View style={styles.headerInfo}>
+              <Text style={styles.tableName}>{item.table_name}</Text>
+              <Text style={styles.timeText}>{getTimeAgo(item.created_at)}</Text>
+            </View>
           </View>
-          <Text style={styles.timeText}>{getTimeAgo(item.created_at)}</Text>
-        </View>
-
-        <View style={styles.cardBody}>
-          <Text style={styles.itemsLabel}>Món cần trả:</Text>
-          {item.item_names.map((itemName, index) => (
-            <Text key={index} style={styles.itemText}>
-              • {itemName}
-            </Text>
-          ))}
-        </View>
-
-        <View style={styles.cardFooter}>
-          {isPending ? (
-            <>
-              <TouchableOpacity
-                style={[styles.actionButton, styles.acknowledgeButton]}
-                onPress={() => handleAcknowledge(item)}
-              >
-                <Ionicons name="checkmark-outline" size={18} color="white" />
-                <Text style={styles.actionButtonText}>Đã xử lý</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.actionButton, styles.deleteButton]}
-                onPress={() => handleDelete(item.id)}
-              >
-                <Ionicons name="trash-outline" size={18} color="white" />
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              <View style={styles.acknowledgedBadge}>
-                <Ionicons name="checkmark-done-outline" size={16} color="#10B981" />
-                <Text style={styles.acknowledgedText}>Đã xử lý</Text>
-              </View>
-              <TouchableOpacity
-                style={[styles.actionButton, styles.deleteButton]}
-                onPress={() => handleDelete(item.id)}
-              >
-                <Ionicons name="trash-outline" size={18} color="white" />
-              </TouchableOpacity>
-            </>
+          
+          {isPending && (
+            <View style={styles.newBadge}>
+              <Text style={styles.newBadgeText}>MỚI</Text>
+            </View>
           )}
+        </View>
+
+        {/* Items list - compact design */}
+        <View style={styles.itemsContainer}>
+          <Text style={styles.itemsLabel}>Các món cần trả:</Text>
+          <View style={styles.itemsList}>
+            {item.item_names.map((itemName, index) => (
+              <View key={index} style={styles.itemChip}>
+                <Text style={styles.itemChipText}>{itemName}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        {/* Action buttons */}
+        <View style={styles.cardActions}>
+          {isPending ? (
+            <TouchableOpacity
+              style={styles.primaryAction}
+              onPress={() => handleAcknowledge(item)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="checkmark-circle" size={18} color="white" />
+              <Text style={styles.primaryActionText}>Đã trả món</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.completedAction}>
+              <Ionicons name="checkmark-done" size={16} color="#10B981" />
+              <Text style={styles.completedActionText}>Đã xử lý</Text>
+            </View>
+          )}
+          
+          <TouchableOpacity
+            style={styles.secondaryAction}
+            onPress={() => handleDelete(item.id)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="trash-outline" size={16} color="#6B7280" />
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -263,7 +289,7 @@ const ReturnNotificationScreen = () => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#F8FAFC',
   },
   centerContainer: {
     flex: 1,
@@ -273,17 +299,17 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 12,
     fontSize: 16,
-    color: '#6B7280',
+    color: '#64748B',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     paddingBottom: 16,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: '#E2E8F0',
   },
   backButton: {
     width: 40,
@@ -298,24 +324,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#111827',
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1E293B',
   },
   headerBadge: {
     marginLeft: 8,
     backgroundColor: '#EF4444',
-    borderRadius: 12,
-    minWidth: 24,
-    height: 24,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 6,
   },
   headerBadgeText: {
     color: 'white',
-    fontSize: 12,
-    fontWeight: 'bold',
+    fontSize: 11,
+    fontWeight: '600',
   },
   refreshButton: {
     width: 40,
@@ -323,124 +349,171 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'flex-end',
   },
-  badge: {
-    backgroundColor: '#EF4444',
-    borderRadius: 12,
-    minWidth: 24,
-    height: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-  },
-  badgeText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
   listContainer: {
     padding: 16,
   },
-  notificationCard: {
+  
+  // Card styles - Modern design
+  card: {
     backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 16,
     marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+    overflow: 'hidden',
   },
-  pendingCard: {
-    borderLeftWidth: 4,
-    borderLeftColor: '#EF4444',
+  cardPending: {
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+  },
+  statusIndicator: {
+    height: 4,
+    width: '100%',
   },
   cardHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    justifyContent: 'space-between',
+    padding: 16,
+    paddingBottom: 12,
   },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    flex: 1,
+  },
+  iconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  headerInfo: {
+    flex: 1,
   },
   tableName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#111827',
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1E293B',
+    marginBottom: 2,
   },
   timeText: {
-    fontSize: 12,
-    color: '#6B7280',
+    fontSize: 13,
+    color: '#64748B',
   },
-  cardBody: {
-    marginBottom: 12,
+  newBadge: {
+    backgroundColor: '#F97316',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  newBadgeText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+  },
+  
+  // Items section
+  itemsContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 12,
   },
   itemsLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#4B5563',
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#475569',
     marginBottom: 8,
   },
-  itemText: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginLeft: 8,
-    marginBottom: 4,
-  },
-  cardFooter: {
+  itemsList: {
     flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
   },
-  actionButton: {
+  itemChip: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  itemChipText: {
+    fontSize: 12,
+    color: '#475569',
+    fontWeight: '500',
+  },
+  
+  // Actions
+  cardActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  primaryAction: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
+    backgroundColor: '#10B981',
+    paddingVertical: 10,
+    borderRadius: 12,
+    marginRight: 8,
     gap: 6,
   },
-  acknowledgeButton: {
-    flex: 1,
-    backgroundColor: '#10B981',
-  },
-  deleteButton: {
-    backgroundColor: '#EF4444',
-    paddingHorizontal: 12,
-  },
-  actionButtonText: {
+  primaryActionText: {
     color: 'white',
     fontSize: 14,
     fontWeight: '600',
   },
-  acknowledgedBadge: {
+  completedAction: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: '#ECFDF5',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
+    paddingVertical: 10,
+    borderRadius: 12,
+    marginRight: 8,
     gap: 6,
   },
-  acknowledgedText: {
+  completedActionText: {
     color: '#10B981',
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '500',
   },
+  secondaryAction: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  
+  // Empty state
   emptyContainer: {
     alignItems: 'center',
-    marginTop: 100,
+    marginTop: 80,
+    paddingHorizontal: 32,
   },
   emptyText: {
     marginTop: 16,
-    fontSize: 18,
-    color: '#6B7280',
+    fontSize: 16,
+    color: '#64748B',
     fontWeight: '500',
+    textAlign: 'center',
   },
 });
 
