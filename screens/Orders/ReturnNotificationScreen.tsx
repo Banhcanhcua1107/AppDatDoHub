@@ -163,74 +163,40 @@ const ReturnNotificationScreen = () => {
   };
 
   const renderNotification = ({ item }: { item: ReturnNotification }) => {
-    const isPending = item.status === 'pending';
+    const timeAgo = getTimeAgo(item.created_at);
 
     return (
-      <View style={[styles.card, isPending && styles.cardPending]}>
-        {/* Status indicator */}
-        <View style={[styles.statusIndicator, { backgroundColor: isPending ? '#F97316' : '#10B981' }]} />
-        
-        {/* Header với icon và thông tin */}
+      <View style={styles.card}>
         <View style={styles.cardHeader}>
           <View style={styles.headerLeft}>
-            <View style={[styles.iconContainer, { backgroundColor: isPending ? '#FFF7ED' : '#ECFDF5' }]}>
-              <Ionicons
-                name={isPending ? 'notifications' : 'checkmark-circle'}
-                size={20}
-                color={isPending ? '#F97316' : '#10B981'}
-              />
-            </View>
-            <View style={styles.headerInfo}>
-              <Text style={styles.tableName}>{item.table_name}</Text>
-              <Text style={styles.timeText}>{getTimeAgo(item.created_at)}</Text>
-            </View>
+            <Text style={styles.tableName}>{item.table_name}</Text>
+            <Text style={styles.timeText}>{timeAgo}</Text>
           </View>
-          
-          {isPending && (
-            <View style={styles.newBadge}>
-              <Text style={styles.newBadgeText}>MỚI</Text>
-            </View>
+          {item.status === 'acknowledged' && (
+            <Ionicons name="checkmark-circle" size={16} color="#10B981" />
           )}
         </View>
 
-        {/* Items list - compact design */}
-        <View style={styles.itemsContainer}>
-          <Text style={styles.itemsLabel}>Các món cần trả:</Text>
-          <View style={styles.itemsList}>
-            {item.item_names.map((itemName, index) => (
-              <View key={index} style={styles.itemChip}>
-                <Text style={styles.itemChipText}>{itemName}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
+        <Text style={styles.itemsText}>
+          {item.item_names.join(', ')}
+        </Text>
 
-        {/* Action buttons */}
-        <View style={styles.cardActions}>
-          {isPending ? (
+        {item.status === 'pending' && (
+          <View style={styles.actions}>
             <TouchableOpacity
-              style={styles.primaryAction}
+              style={styles.acknowledgeButton}
               onPress={() => handleAcknowledge(item)}
-              activeOpacity={0.8}
             >
-              <Ionicons name="checkmark-circle" size={18} color="white" />
-              <Text style={styles.primaryActionText}>Đã trả món</Text>
+              <Text style={styles.acknowledgeText}>Xác nhận</Text>
             </TouchableOpacity>
-          ) : (
-            <View style={styles.completedAction}>
-              <Ionicons name="checkmark-done" size={16} color="#10B981" />
-              <Text style={styles.completedActionText}>Đã xử lý</Text>
-            </View>
-          )}
-          
-          <TouchableOpacity
-            style={styles.secondaryAction}
-            onPress={() => handleDelete(item.id)}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="trash-outline" size={16} color="#6B7280" />
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity
+              style={styles.deleteButton}
+              onPress={() => handleDelete(item.id)}
+            >
+              <Ionicons name="close" size={16} color="#666" />
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     );
   };
@@ -289,7 +255,7 @@ const ReturnNotificationScreen = () => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: '#f5f5f5',
   },
   centerContainer: {
     flex: 1,
@@ -299,17 +265,17 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 12,
     fontSize: 16,
-    color: '#64748B',
+    color: '#666',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingBottom: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: 'white',
     borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
+    borderBottomColor: '#e0e0e0',
   },
   backButton: {
     width: 40,
@@ -326,11 +292,11 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#1E293B',
+    color: '#333',
   },
   headerBadge: {
     marginLeft: 8,
-    backgroundColor: '#EF4444',
+    backgroundColor: '#ff4444',
     borderRadius: 10,
     minWidth: 20,
     height: 20,
@@ -353,153 +319,68 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   
-  // Card styles - Modern design
+  // Basic card design
   card: {
     backgroundColor: 'white',
-    borderRadius: 16,
+    borderRadius: 8,
+    padding: 16,
     marginBottom: 12,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
     elevation: 2,
-    overflow: 'hidden',
-  },
-  cardPending: {
-    borderWidth: 1,
-    borderColor: '#FED7AA',
-  },
-  statusIndicator: {
-    height: 4,
-    width: '100%',
   },
   cardHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
-    paddingBottom: 12,
+    alignItems: 'center',
+    marginBottom: 8,
   },
   headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  iconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  headerInfo: {
     flex: 1,
   },
   tableName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1E293B',
-    marginBottom: 2,
+    color: '#333',
   },
   timeText: {
-    fontSize: 13,
-    color: '#64748B',
-  },
-  newBadge: {
-    backgroundColor: '#F97316',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  newBadgeText: {
-    color: 'white',
-    fontSize: 10,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-  },
-  
-  // Items section
-  itemsContainer: {
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-  },
-  itemsLabel: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#475569',
-    marginBottom: 8,
-  },
-  itemsList: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  itemChip: {
-    backgroundColor: '#F1F5F9',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  itemChipText: {
     fontSize: 12,
-    color: '#475569',
-    fontWeight: '500',
+    color: '#666',
+    marginTop: 2,
   },
-  
-  // Actions
-  cardActions: {
+  itemsText: {
+    fontSize: 14,
+    color: '#555',
+    marginBottom: 12,
+  },
+  actions: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#F1F5F9',
-  },
-  primaryAction: {
-    flex: 1,
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#10B981',
-    paddingVertical: 10,
-    borderRadius: 12,
-    marginRight: 8,
-    gap: 6,
   },
-  primaryActionText: {
+  acknowledgeButton: {
+    flex: 1,
+    backgroundColor: '#3B82F6',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    marginRight: 8,
+  },
+  acknowledgeText: {
     color: 'white',
     fontSize: 14,
-    fontWeight: '600',
-  },
-  completedAction: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#ECFDF5',
-    paddingVertical: 10,
-    borderRadius: 12,
-    marginRight: 8,
-    gap: 6,
-  },
-  completedActionText: {
-    color: '#10B981',
-    fontSize: 14,
     fontWeight: '500',
+    textAlign: 'center',
   },
-  secondaryAction: {
-    width: 40,
-    height: 40,
+  deleteButton: {
+    width: 36,
+    height: 36,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
+    backgroundColor: '#f0f0f0',
+    borderRadius: 6,
   },
   
   // Empty state
@@ -511,8 +392,7 @@ const styles = StyleSheet.create({
   emptyText: {
     marginTop: 16,
     fontSize: 16,
-    color: '#64748B',
-    fontWeight: '500',
+    color: '#666',
     textAlign: 'center',
   },
 });
