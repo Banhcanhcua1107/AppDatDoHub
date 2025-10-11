@@ -46,76 +46,104 @@ interface OrderTicket {
 }
 
 
-// ---- [CẬP NHẬT] COMPONENT ORDER TICKET ĐÃ ĐƯỢC RÚT GỌN ----
+// ---- [CẬP NHẬT] COMPONENT ORDER TICKET THEO DESIGN MỚI ----
 const OrderTicketCard: React.FC<{
   ticket: OrderTicket;
-  onProcessAll: (items: KitchenItem[]) => void;
   onNavigate: () => void;
-}> = ({ ticket, onProcessAll, onNavigate }) => {
+  onProcessAll: () => void;
+}> = ({ ticket, onNavigate, onProcessAll }) => {
   const [elapsedTime, setElapsedTime] = useState('');
-  const [isLoadingAll, setIsLoadingAll] = useState(false);
 
   useEffect(() => {
     const updateTimer = () => {
       const now = new Date();
       const createTime = new Date(ticket.created_at);
       const diffMinutes = Math.floor((now.getTime() - createTime.getTime()) / 60000);
-      setElapsedTime(`${diffMinutes} phút`);
+      setElapsedTime(`${diffMinutes}'`);
     };
     updateTimer();
     const timerInterval = setInterval(updateTimer, 30000);
     return () => clearInterval(timerInterval);
   }, [ticket.created_at]);
 
-  const handleProcessAll = async () => {
-    setIsLoadingAll(true);
-    await onProcessAll(ticket.items);
-    setIsLoadingAll(false);
-  }
-
-  // Logic để vô hiệu hóa nút: true nếu KHÔNG có món nào đang chờ
-  const hasNoPendingItems = !ticket.items.some(
-    item => item.status === STATUS.PENDING
-  );
+  const hasPendingItems = ticket.items.some(item => item.status === STATUS.PENDING);
 
   return (
-    <TouchableOpacity onPress={onNavigate} activeOpacity={0.8}>
-      <View style={styles.cardShadow}>
-        {/* Phần Header chứa Tên bàn và Số lượng món */}
-        <View style={styles.cardHeader}>
-          <View style={styles.cardHeaderInfo}>
-            <Ionicons name="receipt-outline" size={20} color="white" />
-            <Text style={styles.cardTableName}>{ticket.table_name}</Text>
-          </View>
-          <Text style={styles.cardItemCount}>{ticket.total_items} món</Text>
+    <View style={styles.card}>
+      {/* Header Card */}
+      <View style={styles.cardHeader}>
+        <View style={styles.headerLeft}>
+          <Ionicons name="restaurant-outline" size={24} color="#059669" />
+          <Text style={styles.tableNameLarge}>{ticket.table_name}</Text>
         </View>
+        <TouchableOpacity 
+          style={[styles.processAllButton, !hasPendingItems && styles.processAllButtonDisabled]}
+          onPress={onProcessAll}
+          disabled={!hasPendingItems}
+        >
+          <Text style={styles.processAllButtonText}>CHẾ BIẾN HẾT</Text>
+        </TouchableOpacity>
+      </View>
 
-        {/* [ĐÃ XÓA] Phần body hiển thị danh sách món ăn đã được loại bỏ */}
-
-        {/* Phần Footer chứa Thời gian và Nút Chế biến */}
-        <View style={styles.cardFooter}>
-          <View style={styles.footerTimer}>
-            <Ionicons name="time-outline" size={16} color="#6B7280" />
-            <Text style={styles.footerTimerText}>{elapsedTime}</Text>
+      {/* Order Info Row */}
+      <View style={styles.orderInfoRow}>
+        <Text style={styles.orderIdText}>Order: {ticket.order_id.substring(0, 8)}</Text>
+        <View style={styles.orderMetaGroup}>
+          <View style={styles.orderMeta}>
+            <Ionicons name="person-outline" size={16} color="#6B7280" />
+            <Text style={styles.orderMetaText}>0</Text>
           </View>
-          <TouchableOpacity
-            style={[styles.actionButton, hasNoPendingItems && styles.disabledButton]}
-            onPress={(e) => {
-                e.stopPropagation(); // Ngăn sự kiện click lan ra ngoài thẻ
-                handleProcessAll();
-            }}
-            disabled={hasNoPendingItems || isLoadingAll}
-          >
-            {isLoadingAll ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <Ionicons name="flame-outline" size={20} color="white" style={{ marginRight: 8 }} />
-            )}
-            <Text style={styles.actionButtonText}>Chế biến hết</Text>
-          </TouchableOpacity>
+          <View style={styles.orderMeta}>
+            <Ionicons name="time-outline" size={16} color="#10B981" />
+            <Text style={[styles.orderMetaText, { color: '#10B981' }]}>{elapsedTime}</Text>
+          </View>
         </View>
       </View>
-    </TouchableOpacity>
+
+      {/* Items List */}
+      <View style={styles.itemsList}>
+        {ticket.items.map((item, index) => (
+          <View key={item.id} style={styles.itemRow}>
+            <View style={styles.itemLeft}>
+              <Text style={styles.itemIndex}>{index + 1}</Text>
+              <Text style={styles.itemName} numberOfLines={1}>
+                {item.quantity > 1 ? `(Đĩa) ` : ''}{item.name}
+              </Text>
+            </View>
+            <View style={styles.itemActions}>
+              <TouchableOpacity 
+                style={[
+                  styles.itemActionButton,
+                  styles.itemActionOrange,
+                  item.status !== STATUS.PENDING && styles.itemActionDisabled
+                ]}
+                disabled={item.status !== STATUS.PENDING}
+              >
+                <Ionicons 
+                  name="flame" 
+                  size={18} 
+                  color={item.status === STATUS.PENDING ? "white" : "#D1D5DB"} 
+                />
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[
+                  styles.itemActionButton,
+                  styles.itemActionGreen,
+                  item.status !== STATUS.IN_PROGRESS && styles.itemActionDisabled
+                ]}
+                disabled={item.status !== STATUS.IN_PROGRESS}
+              >
+                <Ionicons 
+                  name="notifications" 
+                  size={18} 
+                  color={item.status === STATUS.IN_PROGRESS ? "white" : "#D1D5DB"} 
+                />
+              </TouchableOpacity>
+            </View>
+          </View>
+        ))}
+      </View>
+    </View>
   );
 };
 
@@ -200,28 +228,6 @@ const KitchenDisplayScreen = () => {
       };
     }, [fetchKitchenOrders])
   );
-  
-  // [ĐÃ XÓA] Hàm handleUpdateItemStatus không còn cần thiết ở màn hình này
-
-  // Hàm chế biến tất cả món đang chờ
-  const handleProcessAllItems = async (items: KitchenItem[]) => {
-    const itemsToUpdate = items
-      .filter(item => item.status === STATUS.PENDING)
-      .map(item => item.id);
-
-    if (itemsToUpdate.length === 0) return;
-
-    try {
-      const { error } = await supabase
-        .from('order_items')
-        .update({ status: STATUS.IN_PROGRESS })
-        .in('id', itemsToUpdate);
-      if (error) throw error;
-    } catch (err: any) {
-      console.error("Error processing all items:", err.message);
-      Alert.alert("Lỗi", "Không thể chế biến tất cả món: " + err.message);
-    }
-  }
 
   if (loading) {
     return (
@@ -232,11 +238,30 @@ const KitchenDisplayScreen = () => {
     );
   }
 
+  const handleProcessAllOrder = async (ticket: OrderTicket) => {
+    const itemsToProcess = ticket.items
+      .filter(item => item.status === STATUS.PENDING)
+      .map(item => item.id);
+
+    if (itemsToProcess.length === 0) return;
+
+    try {
+      const { error } = await supabase
+        .from('order_items')
+        .update({ status: STATUS.IN_PROGRESS })
+        .in('id', itemsToProcess);
+      if (error) throw error;
+    } catch (err: any) {
+      console.error("Error processing all items:", err.message);
+      Alert.alert("Lỗi", "Không thể chế biến tất cả món: " + err.message);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor="#1E3A8A" />
       <View style={styles.header}>
-        <Ionicons name="restaurant" size={24} color="white" />
+        <Ionicons name="close" size={28} color="white" />
         <Text style={styles.headerTitle}>Bếp & Bar</Text>
       </View>
       <FlatList
@@ -245,11 +270,11 @@ const KitchenDisplayScreen = () => {
         renderItem={({ item }) => (
           <OrderTicketCard
             ticket={item}
-            onProcessAll={handleProcessAllItems} // Chỉ truyền hàm này
             onNavigate={() => navigation.navigate('KitchenDetail', {
               orderId: item.order_id,
               tableName: item.table_name
             })}
+            onProcessAll={() => handleProcessAllOrder(item)}
           />
         )}
         contentContainerStyle={styles.listContainer}
@@ -264,86 +289,181 @@ const KitchenDisplayScreen = () => {
   );
 };
 
-// --- STYLESHEET (CẬP NHẬT ĐỂ PHÙ HỢP GIAO DIỆN MỚI) ---
+// --- STYLESHEET - DESIGN MỚI THEO HÌNH MẪU ---
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#F3F4F6' },
-  centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
-  loadingText: { marginTop: 10, fontSize: 16, color: '#4B5563' },
-  emptyText: { marginTop: 16, fontSize: 18, color: '#6B7280', fontWeight: '500' },
-  header: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1E3A8A', paddingHorizontal: 16, paddingVertical: 12 ,paddingTop: 20},
-  headerTitle: { color: 'white', fontSize: 20, fontWeight: 'bold', marginLeft: 12 },
-  listContainer: { paddingHorizontal: 16, paddingVertical: 8 },
+  safeArea: { 
+    flex: 1, 
+    backgroundColor: '#F3F4F6' 
+  },
+  centerContainer: { 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    padding: 20 
+  },
+  loadingText: { 
+    marginTop: 10, 
+    fontSize: 16, 
+    color: '#4B5563' 
+  },
+  emptyText: { 
+    marginTop: 16, 
+    fontSize: 18, 
+    color: '#6B7280', 
+    fontWeight: '500', 
+    textAlign: 'center' 
+  },
+  header: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: '#1E3A8A', 
+    paddingHorizontal: 16, 
+    paddingVertical: 14,
+    paddingTop: 20 
+  },
+  headerTitle: { 
+    color: 'white', 
+    fontSize: 20, 
+    fontWeight: 'bold', 
+    marginLeft: 12 
+  },
+  listContainer: { 
+    paddingHorizontal: 12, 
+    paddingVertical: 12 
+  },
   
-  cardShadow: {
+  // Card - Thiết kế mới
+  card: {
     backgroundColor: 'white',
     borderRadius: 12,
+    padding: 0,
     marginBottom: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowRadius: 6,
+    elevation: 4,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
   },
+  
+  // Card Header - Tên bàn + Nút chế biến hết
   cardHeader: {
-    backgroundColor: '#1E3A8A',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#F9FAFB',
+    borderTopLeftRadius: 10,
+    borderTopRightRadius: 10,
+    borderBottomWidth: 2,
+    borderBottomColor: '#E5E7EB',
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  tableNameLarge: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#111827',
+  },
+  processAllButton: {
+    backgroundColor: '#F97316',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+  },
+  processAllButtonDisabled: {
+    backgroundColor: '#D1D5DB',
+  },
+  processAllButtonText: {
+    color: 'white',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+  
+  // Order Info Row
+  orderInfoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
+    backgroundColor: 'white',
   },
-  cardHeaderInfo: {
-      flexDirection: 'row',
-      alignItems: 'center'
-  },
-  cardTableName: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginLeft: 8
-  },
-  cardItemCount: {
-    color: 'white',
+  orderIdText: {
     fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  orderMetaGroup: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  orderMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  orderMetaText: {
+    fontSize: 14,
+    color: '#6B7280',
     fontWeight: '600',
   },
-  cardFooter: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingHorizontal: 16,
-      paddingVertical: 12, 
-      backgroundColor: 'white',
-      borderBottomLeftRadius: 12,
-      borderBottomRightRadius: 12,
+  
+  // Items List
+  itemsList: {
+    paddingHorizontal: 16,
+    paddingBottom: 12,
   },
-  footerTimer: {
-      flexDirection: 'row',
-      alignItems: 'center'
+  itemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
   },
-  footerTimerText: {
-      marginLeft: 6,
-      color: '#6B7280'
+  itemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 12,
   },
-  actionButton: {
-      backgroundColor: '#F97316', // <-- THAY ĐỔI TẠI ĐÂY: MÀU CAM
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: 16,
-      paddingVertical: 8,
-      borderRadius: 20
+  itemIndex: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1E3A8A',
+    width: 20,
   },
-  disabledButton: {
-      backgroundColor: '#9CA3AF' // <-- MÀU XÁM KHI BỊ VÔ HIỆU HÓA
+  itemName: {
+    fontSize: 15,
+    color: '#374151',
+    flex: 1,
   },
-  actionButtonText: {
-      color: 'white',
-      fontWeight: 'bold',
-      fontSize: 14,
+  itemActions: {
+    flexDirection: 'row',
+    gap: 8,
   },
-
+  itemActionButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  itemActionOrange: {
+    backgroundColor: '#F97316',
+  },
+  itemActionGreen: {
+    backgroundColor: '#10B981',
+  },
+  itemActionDisabled: {
+    backgroundColor: '#F3F4F6',
+  },
 });
 
 export default KitchenDisplayScreen;

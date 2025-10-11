@@ -454,7 +454,7 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   totalBadge: {
-    backgroundColor: '#3B82F6',
+    backgroundColor: '#1E3A8A',
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
