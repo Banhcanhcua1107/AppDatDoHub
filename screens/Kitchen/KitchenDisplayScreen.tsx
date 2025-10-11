@@ -283,7 +283,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 5,
-    // Thẻ bây giờ không có body nên toàn bộ thẻ là một khối
   },
   cardHeader: {
     backgroundColor: '#1E3A8A',
@@ -310,15 +309,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  // [CẬP NHẬT] cardFooter bây giờ là phần dưới cùng của thẻ
   cardFooter: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
       paddingHorizontal: 16,
-      paddingVertical: 12, // Tăng padding cho cân đối
+      paddingVertical: 12, 
       backgroundColor: 'white',
-      borderBottomLeftRadius: 12, // Bo góc dưới
+      borderBottomLeftRadius: 12,
       borderBottomRightRadius: 12,
   },
   footerTimer: {
@@ -330,7 +328,7 @@ const styles = StyleSheet.create({
       color: '#6B7280'
   },
   actionButton: {
-      backgroundColor: '#3B82F6', 
+      backgroundColor: '#F97316', // <-- THAY ĐỔI TẠI ĐÂY: MÀU CAM
       flexDirection: 'row',
       alignItems: 'center',
       paddingHorizontal: 16,
@@ -338,7 +336,7 @@ const styles = StyleSheet.create({
       borderRadius: 20
   },
   disabledButton: {
-      backgroundColor: '#9CA3AF'
+      backgroundColor: '#9CA3AF' // <-- MÀU XÁM KHI BỊ VÔ HIỆU HÓA
   },
   actionButtonText: {
       color: 'white',

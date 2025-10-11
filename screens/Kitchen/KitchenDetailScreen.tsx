@@ -69,7 +69,7 @@ const KitchenDetailItemCard: React.FC<{
           <FontAwesome5 
             name="utensils" 
             size={22} 
-            color={status === STATUS.PENDING ? '#6B7280' : '#D1D5DB'} 
+            color={status === STATUS.PENDING ? '#F97316' : '#D1D5DB'} 
           />
         </TouchableOpacity>
         
@@ -276,23 +276,22 @@ const KitchenDetailScreen = () => {
         contentContainerStyle={styles.listContainer}
         ListEmptyComponent={<View style={styles.centerContainer}><Text style={{color: '#6B7280'}}>Order này không có món nào.</Text></View>}
       />
-      {/* [CẬP NHẬT] Giao diện footer */}
+      {/* Footer với các nút hành động */}
       <View style={styles.footer}>
           <FooterActionButton
               icon="flame-outline"
               label="Chế biến tất cả"
               onPress={handleProcessAll}
-              color="#3B82F6"
-              backgroundColor="#EFF6FF"
+              color="#F97316"
+              backgroundColor="#FFF7ED"
               disabled={!hasPendingItems}
           />
           <FooterActionButton
-              // [CẬP NHẬT] Đổi icon thành cái chuông
               icon="notifications-outline"
-              label="Trả món"
+              label="Báo xong hết"
               onPress={handleReturnItems}
-              color="#F97316"
-              backgroundColor="#FFF7ED"
+              color="#10B981"
+              backgroundColor="#ECFDF5"
           />
       </View>
     </SafeAreaView>
