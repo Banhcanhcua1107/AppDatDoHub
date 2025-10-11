@@ -146,7 +146,7 @@ const KitchenSummaryScreen = () => {
             Alert.alert("Thông báo", `Chức năng ưu tiên cho món: ${item.name}.`);
           }}
         >
-          <FontAwesome5 name="concierge-bell" size={20} color="#6B7280" />
+          <FontAwesome5 name="concierge-bell" size={20} color="#F97316" />
         </TouchableOpacity>
         <TouchableOpacity 
           style={styles.actionButton}
@@ -155,7 +155,7 @@ const KitchenSummaryScreen = () => {
             Alert.alert("Thông báo", `Chức năng báo hết món: ${item.name}.`);
           }}
         >
-          <Ionicons name="notifications-outline" size={24} color="#F97316" />
+          <Ionicons name="notifications-outline" size={24} color="#10B981" />
         </TouchableOpacity>
       </View>
     </TouchableOpacity>

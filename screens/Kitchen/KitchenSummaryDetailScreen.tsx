@@ -54,7 +54,7 @@ const DetailItemCard: React.FC<{
       case STATUS.IN_PROGRESS:
         return { text: 'Đang làm', color: '#F97316', icon: 'flame-outline' };
       case STATUS.PENDING:
-        return { text: 'Chờ bếp', color: '#6B7280', icon: 'time-outline' };
+        return { text: 'Chờ bếp', color: '#F97316', icon: 'time-outline' };
       default:
         return { text: 'Hoàn thành', color: '#10B981', icon: 'checkmark-circle-outline' };
     }
@@ -80,7 +80,7 @@ const DetailItemCard: React.FC<{
           <FontAwesome5 
             name="utensils" 
             size={22} 
-            color={status === STATUS.PENDING ? '#6B7280' : '#D1D5DB'} 
+            color={status === STATUS.PENDING ? '#F97316' : '#D1D5DB'} 
           />
         </TouchableOpacity>
         
@@ -92,7 +92,7 @@ const DetailItemCard: React.FC<{
           <Ionicons 
             name="notifications-outline" 
             size={24} 
-            color={status === STATUS.IN_PROGRESS ? '#10B981' : '#D1D5DB'}
+            color="#10B981"
           />
         </TouchableOpacity>
       </View>
@@ -291,8 +291,8 @@ const KitchenSummaryDetailScreen = () => {
               icon="flame-outline"
               label="Chế biến hết"
               onPress={handleProcessAllPending}
-              color="#3B82F6"
-              backgroundColor="#EFF6FF"
+              color="#F97316"
+              backgroundColor="#FFF7ED"
               disabled={!hasPendingItems}
               loading={isProcessing}
           />
@@ -301,7 +301,7 @@ const KitchenSummaryDetailScreen = () => {
               label="Báo xong hết"
               onPress={handleCompleteAllInProgress}
               color="#10B981"
-              backgroundColor="#D1FAE5"
+              backgroundColor="#ECFDF5"
               disabled={!hasInProgressItems}
               loading={isCompleting}
           />

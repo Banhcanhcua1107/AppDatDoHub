@@ -81,7 +81,7 @@ const KitchenDetailItemCard: React.FC<{
           <Ionicons 
             name="notifications-outline" 
             size={24} 
-            color={status === STATUS.IN_PROGRESS ? '#10B981' : '#D1D5DB'}
+            color="#10B981"
           />
         </TouchableOpacity>
       </View>
