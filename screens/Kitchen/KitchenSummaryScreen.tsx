@@ -39,7 +39,7 @@ interface SummarizedItem {
   oldest_time: string | null;
 }
 
-type SortOption = 'quantity_desc' | 'name_asc' | 'name_desc';
+type SortOption = 'quantity_desc' | 'name_asc' | 'name_desc' | 'time_asc';
 
 type KitchenSummaryScreenProps = CompositeScreenProps<
   BottomTabScreenProps<KitchenTabParamList, 'KitchenSummary'>,
@@ -166,6 +166,14 @@ const KitchenSummaryScreen = () => {
       case 'name_desc':
         filteredItems.sort((a, b) => b.name.localeCompare(a.name));
         break;
+      case 'time_asc':
+        // Sắp xếp theo thời gian chờ lâu nhất (oldest_time cũ nhất lên đầu)
+        filteredItems.sort((a, b) => {
+          if (!a.oldest_time) return 1; // Không có thời gian thì xuống cuối
+          if (!b.oldest_time) return -1;
+          return new Date(a.oldest_time).getTime() - new Date(b.oldest_time).getTime();
+        });
+        break;
       case 'quantity_desc':
       default:
         filteredItems.sort((a, b) => b.total_quantity - a.total_quantity);
@@ -274,9 +282,13 @@ const KitchenSummaryScreen = () => {
                 <Text style={styles.sortOptionText}>Sắp xếp theo số lượng</Text>
                 {sortOption === 'quantity_desc' && <Ionicons name="checkmark" size={24} color="#3B82F6" />}
               </TouchableOpacity>
-              <View style={styles.sortOptionDisabled}>
-                 <Text style={styles.sortOptionDisabledText}>Sắp xếp theo thời gian (đang phát triển)</Text>
-              </View>
+              <TouchableOpacity
+                style={styles.sortOption}
+                onPress={() => { setSortOption('time_asc'); setSortMenuVisible(false); }}
+              >
+                <Text style={styles.sortOptionText}>Sắp xếp theo thời gian chờ</Text>
+                {sortOption === 'time_asc' && <Ionicons name="checkmark" size={24} color="#3B82F6" />}
+              </TouchableOpacity>
             </View>
           </TouchableWithoutFeedback>
         </View>

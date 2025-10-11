@@ -53,37 +53,34 @@ const KitchenDetailItemCard: React.FC<{
   const renderFooterContent = () => {
     if (status === STATUS.COMPLETED || status === STATUS.SERVED) {
       return (
-        <View style={styles.footerActionsContainer}>
-          <Ionicons name="checkmark-circle" size={28} color="#10B981" />
+        <View style={styles.completedBadge}>
+          <Ionicons name="checkmark-circle" size={18} color="#10B981" />
+          <Text style={styles.completedText}>Hoàn thành</Text>
         </View>
       );
     }
     
     return (
       <View style={styles.footerActionsContainer}>
-        <TouchableOpacity
-          style={styles.footerActionButton}
-          onPress={() => onProcess(item.id)}
-          disabled={status !== STATUS.PENDING}
-        >
-          <FontAwesome5 
-            name="utensils" 
-            size={22} 
-            color={status === STATUS.PENDING ? '#F97316' : '#D1D5DB'} 
-          />
-        </TouchableOpacity>
+        {status === STATUS.PENDING && (
+          <TouchableOpacity
+            style={styles.processButton}
+            onPress={() => onProcess(item.id)}
+          >
+            <FontAwesome5 name="utensils" size={16} color="white" />
+            <Text style={styles.buttonText}>Chế biến</Text>
+          </TouchableOpacity>
+        )}
         
-        <TouchableOpacity
-          style={styles.footerActionButton}
-          onPress={() => onComplete(item.id)}
-          disabled={status !== STATUS.IN_PROGRESS}
-        >
-          <Ionicons 
-            name="notifications-outline" 
-            size={24} 
-            color="#10B981"
-          />
-        </TouchableOpacity>
+        {status === STATUS.IN_PROGRESS && (
+          <TouchableOpacity
+            style={styles.completeButton}
+            onPress={() => onComplete(item.id)}
+          >
+            <Ionicons name="checkmark-circle-outline" size={18} color="white" />
+            <Text style={styles.buttonText}>Xong</Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
   };
@@ -370,10 +367,50 @@ const styles = StyleSheet.create({
   footerActionsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
   },
   footerActionButton: {
     padding: 6,
     marginLeft: 12,
+  },
+  
+  // Action buttons with text
+  processButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F97316',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 6,
+  },
+  completeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#10B981',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    gap: 6,
+  },
+  buttonText: {
+    color: 'white',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  completedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 4,
+  },
+  completedText: {
+    color: '#10B981',
+    fontSize: 13,
+    fontWeight: '600',
   },
   
   // [CẬP NHẬT] Styles cho footer
