@@ -270,7 +270,7 @@ const styles = StyleSheet.create({
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   loadingText: { marginTop: 10, fontSize: 16, color: '#4B5563' },
   emptyText: { marginTop: 16, fontSize: 18, color: '#6B7280', fontWeight: '500' },
-  header: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1E3A8A', paddingHorizontal: 16, paddingVertical: 12 },
+  header: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1E3A8A', paddingHorizontal: 16, paddingVertical: 12 ,paddingTop: 20},
   headerTitle: { color: 'white', fontSize: 20, fontWeight: 'bold', marginLeft: 12 },
   listContainer: { paddingHorizontal: 16, paddingVertical: 8 },
   
