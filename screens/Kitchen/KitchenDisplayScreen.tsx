@@ -45,54 +45,13 @@ interface OrderTicket {
   total_items: number;
 }
 
-// ---- COMPONENT CON (CẬP NHẬT LOGIC NHẤN) ----
-const KitchenOrderItem: React.FC<{
-  item: KitchenItem;
-  onStatusChange: (itemId: number, currentStatus: KitchenItemStatus) => void;
-}> = ({ item, onStatusChange }) => {
-  type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
-  const getStatusStyle = (): { icon: IconName; color: string; textStyle: any } => {
-    switch (item.status) {
-      case STATUS.IN_PROGRESS:
-        return { icon: 'flame-outline', color: '#F97316', textStyle: styles.itemTextInProgress };
-      case STATUS.COMPLETED:
-      case STATUS.SERVED:
-        return { icon: 'checkmark-circle-outline', color: '#10B981', textStyle: styles.itemTextCompleted };
-      case STATUS.PENDING:
-      default:
-        return { icon: 'ellipse-outline', color: '#6B7280', textStyle: {} };
-    }
-  };
-
-  const { icon, color, textStyle } = getStatusStyle();
-  // [CẬP NHẬT] Chỉ vô hiệu hóa nút khi không phải trạng thái PENDING
-  const isDisabled = item.status !== STATUS.PENDING;
-
-  return (
-    <TouchableOpacity
-      style={styles.itemRow}
-      onPress={() => onStatusChange(item.id, item.status)}
-      disabled={isDisabled}
-    >
-      <Text style={styles.itemQuantity}>{item.quantity}x</Text>
-      <View style={styles.itemDetails}>
-        <Text style={[styles.itemName, textStyle]}>{item.name}</Text>
-        {item.note && <Text style={styles.itemNote}>Ghi chú: {item.note}</Text>}
-      </View>
-      <Ionicons name={icon} size={24} color={color} />
-    </TouchableOpacity>
-  );
-};
-
-
-// ---- COMPONENT ORDER TICKET (CẬP NHẬT NÚT BẤM) ----
+// ---- [CẬP NHẬT] COMPONENT ORDER TICKET ĐÃ ĐƯỢC RÚT GỌN ----
 const OrderTicketCard: React.FC<{
   ticket: OrderTicket;
-  onUpdateItemStatus: (itemId: number, currentStatus: KitchenItemStatus) => void;
-  onProcessAll: (items: KitchenItem[]) => void; // Đổi tên prop
+  onProcessAll: (items: KitchenItem[]) => void;
   onNavigate: () => void;
-}> = ({ ticket, onUpdateItemStatus, onProcessAll, onNavigate }) => {
+}> = ({ ticket, onProcessAll, onNavigate }) => {
   const [elapsedTime, setElapsedTime] = useState('');
   const [isLoadingAll, setIsLoadingAll] = useState(false);
 
@@ -114,7 +73,7 @@ const OrderTicketCard: React.FC<{
     setIsLoadingAll(false);
   }
 
-  // [CẬP NHẬT] Logic để vô hiệu hóa nút: true nếu KHÔNG có món nào đang chờ
+  // Logic để vô hiệu hóa nút: true nếu KHÔNG có món nào đang chờ
   const hasNoPendingItems = !ticket.items.some(
     item => item.status === STATUS.PENDING
   );
@@ -122,6 +81,7 @@ const OrderTicketCard: React.FC<{
   return (
     <TouchableOpacity onPress={onNavigate} activeOpacity={0.8}>
       <View style={styles.cardShadow}>
+        {/* Phần Header chứa Tên bàn và Số lượng món */}
         <View style={styles.cardHeader}>
           <View style={styles.cardHeaderInfo}>
             <Ionicons name="receipt-outline" size={20} color="white" />
@@ -129,21 +89,19 @@ const OrderTicketCard: React.FC<{
           </View>
           <Text style={styles.cardItemCount}>{ticket.total_items} món</Text>
         </View>
-        <View style={styles.cardBody}>
-          {ticket.items.map((item) => (
-            <KitchenOrderItem key={item.id} item={item} onStatusChange={onUpdateItemStatus} />
-          ))}
-        </View>
+
+        {/* [ĐÃ XÓA] Phần body hiển thị danh sách món ăn đã được loại bỏ */}
+
+        {/* Phần Footer chứa Thời gian và Nút Chế biến */}
         <View style={styles.cardFooter}>
           <View style={styles.footerTimer}>
             <Ionicons name="time-outline" size={16} color="#6B7280" />
             <Text style={styles.footerTimerText}>{elapsedTime}</Text>
           </View>
           <TouchableOpacity
-            // [CẬP NHẬT] Đổi style và logic disabled
             style={[styles.actionButton, hasNoPendingItems && styles.disabledButton]}
             onPress={(e) => {
-                e.stopPropagation();
+                e.stopPropagation(); // Ngăn sự kiện click lan ra ngoài thẻ
                 handleProcessAll();
             }}
             disabled={hasNoPendingItems || isLoadingAll}
@@ -151,10 +109,8 @@ const OrderTicketCard: React.FC<{
             {isLoadingAll ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
-              // [CẬP NHẬT] Đổi icon
               <Ionicons name="flame-outline" size={20} color="white" style={{ marginRight: 8 }} />
             )}
-            {/* [CẬP NHẬT] Đổi text */}
             <Text style={styles.actionButtonText}>Chế biến hết</Text>
           </TouchableOpacity>
         </View>
@@ -164,12 +120,13 @@ const OrderTicketCard: React.FC<{
 };
 
 
-// ---- COMPONENT CHÍNH: MÀN HÌNH KDS (CẬP NHẬT LOGIC HANDLER) ----
+// ---- COMPONENT CHÍNH: MÀN HÌNH KDS (CẬP NHẬT LOGIC TRUYỀN XUỐNG) ----
 const KitchenDisplayScreen = () => {
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<OrderTicket[]>([]);
   const navigation = useNavigation<KitchenDisplayNavigationProp>();
 
+  // Logic fetch data giữ nguyên vì vẫn cần để tính tổng số món và trạng thái
   const fetchKitchenOrders = useCallback(async () => {
     try {
       const { data, error } = await supabase
@@ -243,27 +200,13 @@ const KitchenDisplayScreen = () => {
       };
     }, [fetchKitchenOrders])
   );
+  
+  // [ĐÃ XÓA] Hàm handleUpdateItemStatus không còn cần thiết ở màn hình này
 
-  // [CẬP NHẬT] Logic chỉ chuyển từ PENDING -> IN_PROGRESS
-  const handleUpdateItemStatus = async (itemId: number, currentStatus: KitchenItemStatus) => {
-    if (currentStatus !== STATUS.PENDING) {
-      return; // Nếu không phải đang chờ thì không làm gì cả
-    }
-    const newStatus: KitchenItemStatus = STATUS.IN_PROGRESS;
-
-    try {
-      const { error } = await supabase.from('order_items').update({ status: newStatus }).eq('id', itemId);
-      if (error) throw error;
-    } catch (err: any) {
-      console.error("Error updating item status:", err.message);
-      Alert.alert("Lỗi", "Không thể cập nhật trạng thái món: " + err.message);
-    }
-  };
-
-  // [CẬP NHẬT] Đổi tên và logic hàm: chỉ chế biến các món PENDING
+  // Hàm chế biến tất cả món đang chờ
   const handleProcessAllItems = async (items: KitchenItem[]) => {
     const itemsToUpdate = items
-      .filter(item => item.status === STATUS.PENDING) // Chỉ lọc món đang chờ
+      .filter(item => item.status === STATUS.PENDING)
       .map(item => item.id);
 
     if (itemsToUpdate.length === 0) return;
@@ -271,7 +214,7 @@ const KitchenDisplayScreen = () => {
     try {
       const { error } = await supabase
         .from('order_items')
-        .update({ status: STATUS.IN_PROGRESS }) // Cập nhật sang đang chế biến
+        .update({ status: STATUS.IN_PROGRESS })
         .in('id', itemsToUpdate);
       if (error) throw error;
     } catch (err: any) {
@@ -302,8 +245,7 @@ const KitchenDisplayScreen = () => {
         renderItem={({ item }) => (
           <OrderTicketCard
             ticket={item}
-            onUpdateItemStatus={handleUpdateItemStatus}
-            onProcessAll={handleProcessAllItems} // Cập nhật tên prop
+            onProcessAll={handleProcessAllItems} // Chỉ truyền hàm này
             onNavigate={() => navigation.navigate('KitchenDetail', {
               orderId: item.order_id,
               tableName: item.table_name
@@ -322,7 +264,7 @@ const KitchenDisplayScreen = () => {
   );
 };
 
-// --- STYLESHEET (CẬP NHẬT STYLE NÚT) ---
+// --- STYLESHEET (CẬP NHẬT ĐỂ PHÙ HỢP GIAO DIỆN MỚI) ---
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F3F4F6' },
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
@@ -341,6 +283,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 5,
+    // Thẻ bây giờ không có body nên toàn bộ thẻ là một khối
   },
   cardHeader: {
     backgroundColor: '#1E3A8A',
@@ -367,17 +310,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  cardBody: {
-    padding: 8,
-  },
+  // [CẬP NHẬT] cardFooter bây giờ là phần dưới cùng của thẻ
   cardFooter: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
       paddingHorizontal: 16,
-      paddingVertical: 8,
-      borderTopWidth: 1,
-      borderTopColor: '#F3F4F6'
+      paddingVertical: 12, // Tăng padding cho cân đối
+      backgroundColor: 'white',
+      borderBottomLeftRadius: 12, // Bo góc dưới
+      borderBottomRightRadius: 12,
   },
   footerTimer: {
       flexDirection: 'row',
@@ -387,9 +329,8 @@ const styles = StyleSheet.create({
       marginLeft: 6,
       color: '#6B7280'
   },
-  // [CẬP NHẬT] Đổi tên và màu nút
   actionButton: {
-      backgroundColor: '#F97316', // Màu cam
+      backgroundColor: '#F97316',
       flexDirection: 'row',
       alignItems: 'center',
       paddingHorizontal: 16,
@@ -397,49 +338,14 @@ const styles = StyleSheet.create({
       borderRadius: 20
   },
   disabledButton: {
-      backgroundColor: '#9CA3AF' // Màu xám
+      backgroundColor: '#9CA3AF'
   },
   actionButtonText: {
       color: 'white',
       fontWeight: 'bold',
       fontSize: 14,
   },
-
-  itemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  itemQuantity: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    marginRight: 12,
-    width: 30,
-  },
-  itemDetails: {
-    flex: 1,
-  },
-  itemName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  itemTextInProgress: {
-    color: '#F97316'
-  },
-  itemTextCompleted: {
-    color: '#10B981',
-    textDecorationLine: 'line-through',
-  },
-  itemNote: {
-    fontSize: 13,
-    color: '#6B7280',
-    fontStyle: 'italic',
-    marginTop: 2,
-  },
+  // [ĐÃ XÓA] Các style cho item con không còn cần thiết
 });
 
 export default KitchenDisplayScreen;

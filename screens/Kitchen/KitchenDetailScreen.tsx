@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { supabase } from '../../services/supabase';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { KitchenStackParamList } from '../../navigation/AppNavigator'; // Đảm bảo đường dẫn này đúng
 
@@ -38,7 +38,7 @@ interface KitchenDetailItem {
   customizations: any;
 }
 
-// ---- COMPONENT CON (Giữ nguyên) ----
+// ---- COMPONENT CON (Không thay đổi) ----
 const KitchenDetailItemCard: React.FC<{
   item: KitchenDetailItem;
   onProcess: (itemId: number) => void;
@@ -66,9 +66,9 @@ const KitchenDetailItemCard: React.FC<{
           onPress={() => onProcess(item.id)}
           disabled={status !== STATUS.PENDING}
         >
-          <Ionicons 
-            name="restaurant" 
-            size={26} 
+          <FontAwesome5 
+            name="utensils" 
+            size={22} 
             color={status === STATUS.PENDING ? '#6B7280' : '#D1D5DB'} 
           />
         </TouchableOpacity>
@@ -79,8 +79,8 @@ const KitchenDetailItemCard: React.FC<{
           disabled={status !== STATUS.IN_PROGRESS}
         >
           <Ionicons 
-            name="notifications" 
-            size={26} 
+            name="notifications-outline" 
+            size={24} 
             color={status === STATUS.IN_PROGRESS ? '#10B981' : '#D1D5DB'}
           />
         </TouchableOpacity>
@@ -105,8 +105,25 @@ const KitchenDetailItemCard: React.FC<{
   );
 };
 
+// ---- COMPONENT NÚT HÀNH ĐỘNG Ở FOOTER (Không thay đổi) ----
+const FooterActionButton: React.FC<{
+  onPress: () => void;
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  label: string;
+  color: string;
+  backgroundColor: string;
+  disabled?: boolean;
+}> = ({ onPress, icon, label, color, backgroundColor, disabled = false }) => (
+  <TouchableOpacity onPress={onPress} disabled={disabled} style={[styles.actionButtonContainer, disabled && styles.disabledButton]}>
+    <View style={[styles.actionButtonCircle, { backgroundColor }]}>
+      <Ionicons name={icon} size={24} color={color} />
+    </View>
+    <Text style={[styles.actionButtonLabel, { color }]}>{label}</Text>
+  </TouchableOpacity>
+);
 
-// ---- COMPONENT CHÍNH: MÀN HÌNH CHI TIẾT BẾP (Giữ nguyên logic, cập nhật UI) ----
+
+// ---- COMPONENT CHÍNH: MÀN HÌNH CHI TIẾT BẾP ----
 const KitchenDetailScreen = () => {
   const navigation = useNavigation<KitchenDetailScreenNavigationProp>();
   const route = useRoute<KitchenDetailScreenRouteProp>();
@@ -124,7 +141,6 @@ const KitchenDetailScreen = () => {
         .order('created_at', { ascending: true });
 
       if (error) throw error;
-
       const mappedItems = data.map((item: any) => ({
         ...item,
         name: item.customizations.name || 'Món không tên',
@@ -155,32 +171,80 @@ const KitchenDetailScreen = () => {
   );
 
   const handleProcessItem = async (itemId: number) => {
+    setItems(currentItems =>
+      currentItems.map(item =>
+        item.id === itemId ? { ...item, status: STATUS.IN_PROGRESS } : item
+      )
+    );
     try {
       await supabase.from('order_items').update({ status: STATUS.IN_PROGRESS }).eq('id', itemId).throwOnError();
     } catch (err: any) {
       Alert.alert('Lỗi', 'Không thể cập nhật trạng thái: ' + err.message);
+      setItems(currentItems =>
+        currentItems.map(item =>
+          item.id === itemId ? { ...item, status: STATUS.PENDING } : item
+        )
+      );
     }
   };
 
   const handleCompleteItem = async (itemId: number) => {
+    setItems(currentItems =>
+      currentItems.map(item =>
+        item.id === itemId ? { ...item, status: STATUS.COMPLETED } : item
+      )
+    );
     try {
       await supabase.from('order_items').update({ status: STATUS.COMPLETED }).eq('id', itemId).throwOnError();
     } catch (err: any) {
       Alert.alert('Lỗi', 'Không thể hoàn thành món: ' + err.message);
+      setItems(currentItems =>
+        currentItems.map(item =>
+          item.id === itemId ? { ...item, status: STATUS.IN_PROGRESS } : item
+        )
+      );
     }
   };
 
   const handleProcessAll = async () => {
-    const itemsToProcess = items.filter(item => item.status === STATUS.PENDING).map(item => item.id);
+    const itemsToProcess = items.filter(item => item.status === STATUS.PENDING);
     if (itemsToProcess.length === 0) {
       Alert.alert('Thông báo', 'Không có món mới nào để chế biến.');
       return;
     }
+    const itemIdsToProcess = itemsToProcess.map(item => item.id);
+    setItems(currentItems =>
+      currentItems.map(item =>
+        itemIdsToProcess.includes(item.id) ? { ...item, status: STATUS.IN_PROGRESS } : item
+      )
+    );
     try {
-      await supabase.from('order_items').update({ status: STATUS.IN_PROGRESS }).in('id', itemsToProcess).throwOnError();
+      await supabase.from('order_items').update({ status: STATUS.IN_PROGRESS }).in('id', itemIdsToProcess).throwOnError();
     } catch (err: any) {
       Alert.alert('Lỗi', 'Không thể chế biến tất cả món: ' + err.message);
+      setItems(currentItems =>
+        currentItems.map(item =>
+          itemIdsToProcess.includes(item.id) ? { ...item, status: STATUS.PENDING } : item
+        )
+      );
     }
+  };
+  
+  const handleReturnItems = () => {
+      Alert.alert(
+          "Xác nhận trả món",
+          "Bạn có chắc chắn muốn trả lại các món trong đơn này không?",
+          [
+              { text: "Hủy", style: "cancel" },
+              { 
+                  text: "Xác nhận", 
+                  onPress: () => {
+                      Alert.alert("Thông báo", "Chức năng đang được phát triển.");
+                  },
+                  style: "destructive"
+              }
+          ]
+      );
   };
 
   if (loading) {
@@ -210,30 +274,32 @@ const KitchenDetailScreen = () => {
           />
         )}
         contentContainerStyle={styles.listContainer}
-        ListEmptyComponent={
-          <View style={styles.centerContainer}>
-            <Text style={{color: '#6B7280'}}>Order này không có món nào.</Text>
-          </View>
-        }
+        ListEmptyComponent={<View style={styles.centerContainer}><Text style={{color: '#6B7280'}}>Order này không có món nào.</Text></View>}
       />
+      {/* [CẬP NHẬT] Giao diện footer */}
       <View style={styles.footer}>
-        <TouchableOpacity
-            // [CẬP NHẬT] Đổi style nút
-            style={[styles.processAllButton, !hasPendingItems && styles.disabledButton]}
-            onPress={handleProcessAll}
-            disabled={!hasPendingItems}
-        >
-          {/* [CẬP NHẬT] Đổi icon */}
-          <Ionicons name="flame-outline" size={22} color="white" style={{ marginRight: 8 }} />
-          {/* [CẬP NHẬT] Đổi text */}
-          <Text style={styles.processAllButtonText}>Chế biến tất cả</Text>
-        </TouchableOpacity>
+          <FooterActionButton
+              icon="flame-outline"
+              label="Chế biến tất cả"
+              onPress={handleProcessAll}
+              color="#3B82F6"
+              backgroundColor="#EFF6FF"
+              disabled={!hasPendingItems}
+          />
+          <FooterActionButton
+              // [CẬP NHẬT] Đổi icon thành cái chuông
+              icon="notifications-outline"
+              label="Trả món"
+              onPress={handleReturnItems}
+              color="#F97316"
+              backgroundColor="#FFF7ED"
+          />
       </View>
     </SafeAreaView>
   );
 };
 
-// ---- STYLESHEET (CẬP NHẬT STYLE NÚT) ----
+// ---- STYLESHEET (CẬP NHẬT) ----
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F3F4F6' },
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
@@ -253,30 +319,30 @@ const styles = StyleSheet.create({
   
   cardShadow: {
     backgroundColor: 'white',
-    borderRadius: 16,
-    marginBottom: 16,
+    borderRadius: 12,
+    marginBottom: 12,
     paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
+    paddingTop: 12,
+    paddingBottom: 8,
     shadowColor: '#475569',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 15,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 3,
   },
   itemName: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: 'bold',
     color: '#111827',
     marginBottom: 4,
   },
   itemCustomization: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#6B7280',
-    lineHeight: 20,
+    lineHeight: 18,
   },
   itemNote: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#D97706',
     fontStyle: 'italic',
     marginTop: 6,
@@ -289,16 +355,16 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     backgroundColor: '#F3F4F6',
-    marginVertical: 12,
+    marginVertical: 8,
   },
   itemFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    minHeight: 36,
+    minHeight: 32,
   },
   itemQuantityText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '500',
     color: '#4B5563',
   },
@@ -308,31 +374,41 @@ const styles = StyleSheet.create({
   },
   footerActionButton: {
     padding: 6,
-    marginLeft: 8,
+    marginLeft: 12,
   },
   
+  // [CẬP NHẬT] Styles cho footer
   footer: {
-    padding: 16,
+    paddingTop: 12,
+    paddingBottom: 24,
+    paddingHorizontal: 16,
     backgroundColor: 'white',
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
-  },
-  // [CẬP NHẬT] Đổi màu nút
-  processAllButton: {
-    backgroundColor: '#F97316', // Màu cam
     flexDirection: 'row',
+    // [CẬP NHẬT] Đẩy các nút sang bên phải
+    justifyContent: 'flex-end', 
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 12,
   },
-  processAllButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
+  actionButtonContainer: {
+    alignItems: 'center',
+    marginLeft: 10, 
+    marginRight: 20, 
+  },
+  actionButtonCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  actionButtonLabel: {
+    fontSize: 13,
+    fontWeight: '500',
   },
   disabledButton: {
-    backgroundColor: '#9CA3AF',
+    opacity: 0.5,
   },
 });
 
