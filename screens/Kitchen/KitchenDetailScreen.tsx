@@ -16,17 +16,12 @@ import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navig
 import { supabase } from '../../services/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-
-// Giả sử bạn có một KitchenStackParamList được định nghĩa ở đâu đó
-type KitchenStackParamList = {
-  KitchenRoot: undefined;
-  KitchenDetail: { orderId: string; tableName: string };
-};
+import { KitchenStackParamList } from '../../navigation/AppNavigator'; // Đảm bảo đường dẫn này đúng
 
 type KitchenDetailScreenNavigationProp = NativeStackNavigationProp<KitchenStackParamList, 'KitchenDetail'>;
 type KitchenDetailScreenRouteProp = RouteProp<KitchenStackParamList, 'KitchenDetail'>;
 
-// Sử dụng lại các hằng số trạng thái
+// Hằng số trạng thái
 const STATUS = {
   PENDING: 'waiting',
   IN_PROGRESS: 'in_progress',
@@ -48,57 +43,85 @@ interface KitchenDetailItem {
 const KitchenDetailItemCard: React.FC<{
   item: KitchenDetailItem;
   onProcess: (itemId: number) => void;
-  onReturn: (itemId: number, itemName: string) => void;
-}> = ({ item, onProcess, onReturn }) => {
+  onComplete: (itemId: number) => void;
+}> = ({ item, onProcess, onComplete }) => {
   const { customizations, status } = item;
-  const isActionable = status === STATUS.PENDING || status === STATUS.IN_PROGRESS;
-  const sizeText = customizations.size?.name || 'N/A';
-  const sugarText = customizations.sugar?.name || 'N/A';
+  const sizeText = customizations.size?.name || 'Mặc định';
+  const sugarText = customizations.sugar?.name || 'Mặc định';
   const toppingsText = (customizations.toppings?.map((t: any) => t.name) || []).join(', ') || 'Không có';
   const noteText = customizations.note;
 
-  const getStatusIcon = (): { icon: React.ComponentProps<typeof Ionicons>['name']; color: string } => {
-    switch (status) {
-      case STATUS.IN_PROGRESS: return { icon: 'flame-outline', color: '#F97316' };
-      case STATUS.COMPLETED:
-      case STATUS.SERVED: return { icon: 'checkmark-circle-outline', color: '#10B981' };
-      case STATUS.PENDING:
-      default: return { icon: 'ellipse-outline', color: '#6B7280' };
+  // HÀM QUAN TRỌNG: QUYẾT ĐỊNH HIỂN THỊ ICON NÀO
+  const renderFooterContent = () => {
+    // ---- TRƯỜNG HỢP 1: Món đã xong (completed) hoặc đã phục vụ (served) ----
+    // Chỉ hiển thị MỘT icon dấu tick duy nhất. Đây là trường hợp trong ảnh của bạn.
+    if (status === STATUS.COMPLETED || status === STATUS.SERVED) {
+      return (
+        <View style={styles.footerActionsContainer}>
+          <Ionicons name="checkmark-circle" size={28} color="#10B981" />
+        </View>
+      );
     }
+    
+    // ---- TRƯỜNG HỢP 2: Món đang chờ (pending) hoặc đang làm (in_progress) ----
+    // Sẽ hiển thị HAI icon (cái nồi và cái chuông)
+    return (
+      <View style={styles.footerActionsContainer}>
+        {/* Icon "Vào bếp" (cái nồi) */}
+        <TouchableOpacity
+          style={styles.footerActionButton}
+          onPress={() => onProcess(item.id)}
+          // Nút này chỉ có thể bấm khi trạng thái là "chờ" (pending)
+          disabled={status !== STATUS.PENDING}
+        >
+          <Ionicons 
+            name="restaurant" // Tên icon cái nồi
+            size={26} 
+            // Nếu là "chờ" thì icon màu xám, ngược lại thì màu rất nhạt (bị vô hiệu hóa)
+            color={status === STATUS.PENDING ? '#6B7280' : '#D1D5DB'} 
+          />
+        </TouchableOpacity>
+        
+        {/* Icon "Báo đã xong" (cái chuông) */}
+        <TouchableOpacity
+          style={styles.footerActionButton}
+          onPress={() => onComplete(item.id)}
+          // Nút này chỉ có thể bấm khi trạng thái là "đang làm" (in_progress)
+          disabled={status !== STATUS.IN_PROGRESS}
+        >
+          <Ionicons 
+            name="notifications" // Tên icon cái chuông
+            size={26} 
+            // Nếu là "đang làm" thì icon màu xanh, ngược lại thì màu rất nhạt (bị vô hiệu hóa)
+            color={status === STATUS.IN_PROGRESS ? '#10B981' : '#D1D5DB'}
+          />
+        </TouchableOpacity>
+      </View>
+    );
   };
-  const statusInfo = getStatusIcon();
+
 
   return (
     <View style={styles.cardShadow}>
-      <View style={styles.itemMainInfo}>
-        <View style={styles.itemDetails}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-            <Ionicons name={statusInfo.icon} size={22} color={statusInfo.color} style={{ marginRight: 8 }} />
-            <Text style={styles.itemName}>{item.name}</Text>
-          </View>
-          <Text style={styles.itemCustomization}>{`Size: ${sizeText}, Đường: ${sugarText}`}</Text>
-          <Text style={styles.itemCustomization}>{`Topping: ${toppingsText}`}</Text>
-          {noteText && <Text style={styles.itemNote}>Ghi chú: {noteText}</Text>}
-        </View>
-        <Text style={styles.itemQuantity}>{item.quantity}x</Text>
+      <View>
+        <Text style={styles.itemName}>{item.name}</Text>
+        <Text style={styles.itemCustomization}>{`Size: ${sizeText}, Đường: ${sugarText}`}</Text>
+        <Text style={styles.itemCustomization}>{`Topping: ${toppingsText}`}</Text>
+        {noteText && <Text style={styles.itemNote}>Ghi chú: {noteText}</Text>}
       </View>
-      {isActionable && (
-        <View style={styles.itemActions}>
-          <TouchableOpacity style={[styles.actionButton, styles.returnButton]} onPress={() => onReturn(item.id, item.name)}>
-            <Ionicons name="arrow-undo-outline" size={20} color="#F97316" />
-            <Text style={[styles.actionButtonText, styles.returnButtonText]}>Trả món</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.actionButton, styles.processButton]} onPress={() => onProcess(item.id)}>
-            <Ionicons name="flame-outline" size={20} color="white" />
-            <Text style={[styles.actionButtonText, styles.processButtonText]}>Chế biến</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+
+      <View style={styles.divider} />
+
+      <View style={styles.itemFooter}>
+        <Text style={styles.itemQuantityText}>Số lượng: {item.quantity}</Text>
+        {renderFooterContent()}
+      </View>
     </View>
   );
 };
 
-// ---- COMPONENT CHÍNH: MÀN HÌNH CHI TIẾT BẾP ----
+
+// ---- COMPONENT CHÍNH: MÀN HÌNH CHI TIẾT BẾP (Logic giữ nguyên) ----
 const KitchenDetailScreen = () => {
   const navigation = useNavigation<KitchenDetailScreenNavigationProp>();
   const route = useRoute<KitchenDetailScreenRouteProp>();
@@ -154,25 +177,12 @@ const KitchenDetailScreen = () => {
     }
   };
 
-  const handleReturnItem = (itemId: number, itemName: string) => {
-    Alert.alert(
-      'Xác nhận Trả Món',
-      `Bạn có chắc chắn muốn trả lại món "${itemName}" không? Món này sẽ bị xóa khỏi order.`,
-      [
-        { text: 'Hủy', style: 'cancel' },
-        {
-          text: 'Đồng ý',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await supabase.from('order_items').delete().eq('id', itemId).throwOnError();
-            } catch (err: any) {
-              Alert.alert('Lỗi', 'Không thể trả món: ' + err.message);
-            }
-          },
-        },
-      ]
-    );
+  const handleCompleteItem = async (itemId: number) => {
+    try {
+      await supabase.from('order_items').update({ status: STATUS.COMPLETED }).eq('id', itemId).throwOnError();
+    } catch (err: any) {
+      Alert.alert('Lỗi', 'Không thể hoàn thành món: ' + err.message);
+    }
   };
 
   const handleProcessAll = async () => {
@@ -189,11 +199,7 @@ const KitchenDetailScreen = () => {
   };
 
   if (loading) {
-    return (
-      <View style={styles.centerContainer}>
-        <ActivityIndicator size="large" color="#1E3A8A" />
-      </View>
-    );
+    return <View style={styles.centerContainer}><ActivityIndicator size="large" color="#1E3A8A" /></View>;
   }
 
   const hasPendingItems = items.some(item => item.status === STATUS.PENDING);
@@ -215,30 +221,31 @@ const KitchenDetailScreen = () => {
           <KitchenDetailItemCard
             item={item}
             onProcess={handleProcessItem}
-            onReturn={handleReturnItem}
+            onComplete={handleCompleteItem}
           />
         )}
         contentContainerStyle={styles.listContainer}
         ListEmptyComponent={
           <View style={styles.centerContainer}>
-            <Text>Order này không có món nào.</Text>
+            <Text style={{color: '#6B7280'}}>Order này không có món nào.</Text>
           </View>
         }
       />
       <View style={styles.footer}>
-        <TouchableOpacity 
+        <TouchableOpacity
             style={[styles.processAllButton, !hasPendingItems && styles.disabledButton]}
             onPress={handleProcessAll}
             disabled={!hasPendingItems}
         >
-          <Ionicons name="flame" size={22} color="white" style={{ marginRight: 8 }} />
-          <Text style={styles.processAllButtonText}>Chế biến hết các món mới</Text>
+          <Ionicons name="restaurant" size={22} color="white" style={{ marginRight: 8 }} />
+          <Text style={styles.processAllButtonText}>Vào bếp tất cả món mới</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
 };
 
+// ---- STYLESHEET (Không thay đổi) ----
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F3F4F6' },
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
@@ -252,53 +259,70 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
   },
-  backButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: -10,
-  },
+  backButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center', marginLeft: -10 },
   headerTitle: { fontSize: 20, fontWeight: 'bold' },
   listContainer: { padding: 16 },
+  
   cardShadow: {
     backgroundColor: 'white',
-    borderRadius: 12,
+    borderRadius: 16,
     marginBottom: 16,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 3,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+    shadowColor: '#475569',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 15,
+    elevation: 5,
   },
-  itemMainInfo: { flexDirection: 'row', justifyContent: 'space-between' },
-  itemDetails: { flex: 1 },
-  itemName: { fontSize: 18, fontWeight: 'bold', color: '#111827' },
-  itemCustomization: { fontSize: 14, color: '#6B7280', marginTop: 2 },
-  itemNote: { fontSize: 14, color: '#D97706', fontStyle: 'italic', marginTop: 4 },
-  itemQuantity: { fontSize: 24, fontWeight: 'bold', color: '#1E3A8A', marginLeft: 16 },
-  itemActions: {
+  itemName: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  itemCustomization: {
+    fontSize: 14,
+    color: '#6B7280',
+    lineHeight: 20,
+  },
+  itemNote: {
+    fontSize: 14,
+    color: '#D97706',
+    fontStyle: 'italic',
+    marginTop: 6,
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#F3F4F6',
+    marginVertical: 12,
+  },
+  itemFooter: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: 16,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#F3F4F6',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    minHeight: 36,
   },
-  actionButton: {
+  itemQuantityText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#4B5563',
+  },
+  footerActionsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    marginLeft: 10,
   },
-  returnButton: { backgroundColor: '#FEF3C7' },
-  processButton: { backgroundColor: '#1E3A8A' },
-  actionButtonText: { fontSize: 14, fontWeight: '600', marginLeft: 6 },
-  returnButtonText: { color: '#D97706' },
-  processButtonText: { color: 'white' },
+  footerActionButton: {
+    padding: 6,
+    marginLeft: 8,
+  },
+  
   footer: {
     padding: 16,
     backgroundColor: 'white',
@@ -306,15 +330,21 @@ const styles = StyleSheet.create({
     borderTopColor: '#E5E7EB',
   },
   processAllButton: {
-    backgroundColor: '#2E8540',
+    backgroundColor: '#1E3A8A',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 14,
     borderRadius: 12,
   },
-  processAllButtonText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
-  disabledButton: { backgroundColor: '#9CA3AF' },
+  processAllButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  disabledButton: {
+    backgroundColor: '#9CA3AF',
+  },
 });
 
 export default KitchenDetailScreen;

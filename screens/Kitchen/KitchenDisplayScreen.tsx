@@ -15,11 +15,9 @@ import {
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { supabase } from '../../services/supabase';
 import { Ionicons } from '@expo/vector-icons';
-// [SỬA LỖI 1] Import các kiểu cần thiết
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { KitchenStackParamList } from '../../navigation/AppNavigator'; // Đường dẫn có thể cần điều chỉnh
 
-// [SỬA LỖI 2] Định nghĩa kiểu cho navigation prop
 type KitchenDisplayNavigationProp = NativeStackNavigationProp<KitchenStackParamList>;
 
 // Sử dụng các giá trị enum đã xác thực từ database
@@ -88,7 +86,7 @@ const KitchenOrderItem: React.FC<{
 };
 
 
-// ---- COMPONENT ORDER TICKET (Giữ nguyên) ----
+// ---- [CẬP NHẬT] COMPONENT ORDER TICKET ----
 const OrderTicketCard: React.FC<{
   ticket: OrderTicket;
   onUpdateItemStatus: (itemId: number, currentStatus: KitchenItemStatus) => void;
@@ -121,6 +119,7 @@ const OrderTicketCard: React.FC<{
   );
 
   return (
+    // TouchableOpacity này bao bọc toàn bộ thẻ để điều hướng
     <TouchableOpacity onPress={onNavigate} activeOpacity={0.8}>
       <View style={styles.cardShadow}>
         <View style={styles.cardHeader}>
@@ -140,9 +139,15 @@ const OrderTicketCard: React.FC<{
             <Ionicons name="time-outline" size={16} color="#6B7280" />
             <Text style={styles.footerTimerText}>{elapsedTime}</Text>
           </View>
+          {/* [ĐÂY LÀ THAY ĐỔI] */}
+          {/* Bọc nút "Hoàn thành" trong một View và thêm hàm inline vào onPress */}
+          {/* để ngăn sự kiện click lan ra ngoài, tránh việc điều hướng ngoài ý muốn. */}
           <TouchableOpacity
             style={[styles.completeAllButton, areAllItemsCompleted && styles.disabledButton]}
-            onPress={handleCompleteAll}
+            onPress={(e) => {
+              e.stopPropagation(); // Dừng sự kiện tại đây
+              handleCompleteAll();
+            }}
             disabled={areAllItemsCompleted || isLoadingAll}
           >
             {isLoadingAll ? (
@@ -159,11 +164,10 @@ const OrderTicketCard: React.FC<{
 };
 
 
-// ---- COMPONENT CHÍNH: MÀN HÌNH KDS ----
+// ---- COMPONENT CHÍNH: MÀN HÌNH KDS (Giữ nguyên)----
 const KitchenDisplayScreen = () => {
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<OrderTicket[]>([]);
-  // [SỬA LỖI 3] Áp dụng kiểu đã định nghĩa cho useNavigation
   const navigation = useNavigation<KitchenDisplayNavigationProp>();
 
   const fetchKitchenOrders = useCallback(async () => {
@@ -302,7 +306,6 @@ const KitchenDisplayScreen = () => {
             ticket={item}
             onUpdateItemStatus={handleUpdateItemStatus}
             onCompleteAll={handleCompleteAllItems}
-            // [SỬA LỖI 4] Xóa bỏ các ép kiểu `as never`
             onNavigate={() => navigation.navigate('KitchenDetail', {
               orderId: item.order_id,
               tableName: item.table_name
