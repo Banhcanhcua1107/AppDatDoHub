@@ -5,15 +5,15 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
   StatusBar,
   Vibration,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
-import Icon from 'react-native-vector-icons/Ionicons';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../services/supabase';
+import Toast from 'react-native-toast-message';
 
 interface ReturnNotification {
   id: number;
@@ -25,6 +25,8 @@ interface ReturnNotification {
 }
 
 const ReturnNotificationScreen = () => {
+  const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState<ReturnNotification[]>([]);
   const previousCountRef = useRef(0);
@@ -56,7 +58,6 @@ const ReturnNotificationScreen = () => {
       setNotifications(data || []);
     } catch (err: any) {
       console.error('Error fetching return notifications:', err.message);
-      Alert.alert('Lỗi', 'Không thể tải thông báo trả món');
     } finally {
       setLoading(false);
     }
@@ -85,41 +86,51 @@ const ReturnNotificationScreen = () => {
     }, [fetchNotifications])
   );
 
-  const handleAcknowledge = async (notificationId: number) => {
+  const handleAcknowledge = async (notification: ReturnNotification) => {
     try {
       const { error } = await supabase
         .from('return_notifications')
         .update({ status: 'acknowledged', acknowledged_at: new Date().toISOString() })
-        .eq('id', notificationId);
+        .eq('id', notification.id);
 
       if (error) throw error;
+      
+      Toast.show({
+        type: 'success',
+        text1: 'Đã xác nhận',
+        text2: `Đã xác nhận trả món cho ${notification.table_name}`,
+      });
     } catch (err: any) {
       console.error('Error acknowledging notification:', err.message);
-      Alert.alert('Lỗi', 'Không thể xác nhận thông báo');
+      Toast.show({
+        type: 'error',
+        text1: 'Lỗi',
+        text2: 'Không thể xác nhận thông báo',
+      });
     }
   };
 
   const handleDelete = async (notificationId: number) => {
-    Alert.alert('Xác nhận xóa', 'Bạn có chắc chắn muốn xóa thông báo này?', [
-      { text: 'Hủy', style: 'cancel' },
-      {
-        text: 'Xóa',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            const { error } = await supabase
-              .from('return_notifications')
-              .delete()
-              .eq('id', notificationId);
+    try {
+      const { error } = await supabase
+        .from('return_notifications')
+        .delete()
+        .eq('id', notificationId);
 
-            if (error) throw error;
-          } catch (err: any) {
-            console.error('Error deleting notification:', err.message);
-            Alert.alert('Lỗi', 'Không thể xóa thông báo');
-          }
-        },
-      },
-    ]);
+      if (error) throw error;
+      
+      Toast.show({
+        type: 'info',
+        text1: 'Đã xóa thông báo',
+      });
+    } catch (err: any) {
+      console.error('Error deleting notification:', err.message);
+      Toast.show({
+        type: 'error',
+        text1: 'Lỗi',
+        text2: 'Không thể xóa thông báo',
+      });
+    }
   };
 
   const getTimeAgo = (createdAt: string) => {
@@ -143,7 +154,7 @@ const ReturnNotificationScreen = () => {
       <View style={[styles.notificationCard, isPending && styles.pendingCard]}>
         <View style={styles.cardHeader}>
           <View style={styles.headerLeft}>
-            <Icon
+            <Ionicons
               name={isPending ? 'alert-circle' : 'checkmark-circle'}
               size={24}
               color={isPending ? '#EF4444' : '#10B981'}
@@ -167,29 +178,29 @@ const ReturnNotificationScreen = () => {
             <>
               <TouchableOpacity
                 style={[styles.actionButton, styles.acknowledgeButton]}
-                onPress={() => handleAcknowledge(item.id)}
+                onPress={() => handleAcknowledge(item)}
               >
-                <Icon name="checkmark-outline" size={18} color="white" />
+                <Ionicons name="checkmark-outline" size={18} color="white" />
                 <Text style={styles.actionButtonText}>Đã xử lý</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.actionButton, styles.deleteButton]}
                 onPress={() => handleDelete(item.id)}
               >
-                <Icon name="trash-outline" size={18} color="white" />
+                <Ionicons name="trash-outline" size={18} color="white" />
               </TouchableOpacity>
             </>
           ) : (
             <>
               <View style={styles.acknowledgedBadge}>
-                <Icon name="checkmark-done-outline" size={16} color="#10B981" />
+                <Ionicons name="checkmark-done-outline" size={16} color="#10B981" />
                 <Text style={styles.acknowledgedText}>Đã xử lý</Text>
               </View>
               <TouchableOpacity
                 style={[styles.actionButton, styles.deleteButton]}
                 onPress={() => handleDelete(item.id)}
               >
-                <Icon name="trash-outline" size={18} color="white" />
+                <Ionicons name="trash-outline" size={18} color="white" />
               </TouchableOpacity>
             </>
           )}
@@ -212,16 +223,25 @@ const ReturnNotificationScreen = () => {
   const pendingCount = notifications.filter(n => n.status === 'pending').length;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor="#3B82F6" />
-      <View style={styles.header}>
-        <Icon name="notifications" size={28} color="white" />
-        <Text style={styles.headerTitle}>Thông báo trả món</Text>
-        {pendingCount > 0 && (
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>{pendingCount}</Text>
-          </View>
-        )}
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <View style={[styles.header, { paddingTop: insets.top }]}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color="#111827" />
+        </TouchableOpacity>
+        
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>Thông báo trả món</Text>
+          {pendingCount > 0 && (
+            <View style={styles.headerBadge}>
+              <Text style={styles.headerBadgeText}>{pendingCount}</Text>
+            </View>
+          )}
+        </View>
+        
+        <TouchableOpacity onPress={fetchNotifications} style={styles.refreshButton}>
+          <Ionicons name="refresh" size={24} color="#111827" />
+        </TouchableOpacity>
       </View>
 
       <FlatList
@@ -231,7 +251,7 @@ const ReturnNotificationScreen = () => {
         contentContainerStyle={styles.listContainer}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Icon name="notifications-off-outline" size={80} color="#D1D5DB" />
+            <Ionicons name="notifications-off-outline" size={80} color="#D1D5DB" />
             <Text style={styles.emptyText}>Không có thông báo nào</Text>
           </View>
         }
@@ -258,16 +278,50 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#3B82F6',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingBottom: 16,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+  },
+  headerCenter: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: {
-    color: 'white',
     fontSize: 20,
     fontWeight: 'bold',
-    marginLeft: 12,
-    flex: 1,
+    color: '#111827',
+  },
+  headerBadge: {
+    marginLeft: 8,
+    backgroundColor: '#EF4444',
+    borderRadius: 12,
+    minWidth: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+  },
+  headerBadgeText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  refreshButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'flex-end',
   },
   badge: {
     backgroundColor: '#EF4444',

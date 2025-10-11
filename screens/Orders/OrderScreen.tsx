@@ -221,6 +221,7 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
   const [isMenuVisible, setMenuVisible] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<ActiveOrder | null>(null);
   const [isCancelModalVisible, setCancelModalVisible] = useState(false);
+  const [notificationCount, setNotificationCount] = useState(0);
 
   const fetchActiveOrders = useCallback(async (isInitialLoad = false) => {
     if (isInitialLoad) setLoading(true);
@@ -278,10 +279,25 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
     }
   }, []);
 
+  const fetchNotificationCount = useCallback(async () => {
+    try {
+      const { count, error } = await supabase
+        .from('return_notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'pending');
+      
+      if (error) throw error;
+      setNotificationCount(count || 0);
+    } catch (error: any) {
+      console.error('Lỗi fetch notification count:', error.message);
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       fetchActiveOrders(true);
-    }, [fetchActiveOrders])
+      fetchNotificationCount();
+    }, [fetchActiveOrders, fetchNotificationCount])
   );
 
   useEffect(() => {
@@ -291,10 +307,19 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
         fetchActiveOrders(false);
       })
       .subscribe();
+    
+    const notificationChannel = supabase
+      .channel('public:return_notifications')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'return_notifications' }, () => {
+        fetchNotificationCount();
+      })
+      .subscribe();
+
     return () => {
       supabase.removeChannel(channel);
+      supabase.removeChannel(notificationChannel);
     };
-  }, [fetchActiveOrders]);
+  }, [fetchActiveOrders, fetchNotificationCount]);
 
   const menuActions: MenuItemProps[] = [
     { icon: 'notifications-outline', text: 'Kiểm tra lên món', action: 'check_served_status' },
@@ -469,13 +494,30 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
               <Ionicons name="caret-down" size={16} color="#6B7280" className="ml-1" />
             </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            onPress={() => fetchActiveOrders(true)}
-            className="w-12 h-12 bg-white rounded-full items-center justify-center"
-            style={styles.menuButtonShadow}
-          >
-            <Ionicons name="refresh" size={24} color="#111827" />
-          </TouchableOpacity>
+          <View className="flex-row items-center" style={{ gap: 12 }}>
+            {/* Icon thông báo với badge */}
+            <TouchableOpacity
+              onPress={() => navigation.navigate(ROUTES.RETURN_NOTIFICATIONS)}
+              className="relative"
+              style={styles.notificationButton}
+            >
+              <Ionicons name="notifications-outline" size={26} color="#111827" />
+              {notificationCount > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{notificationCount > 99 ? '99+' : notificationCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            
+            {/* Nút refresh */}
+            <TouchableOpacity
+              onPress={() => fetchActiveOrders(true)}
+              className="w-12 h-12 bg-white rounded-full items-center justify-center"
+              style={styles.menuButtonShadow}
+            >
+              <Ionicons name="refresh" size={24} color="#111827" />
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
@@ -524,6 +566,32 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 12,
     elevation: 5,
+  },
+  notificationButton: {
+    width: 48,
+    height: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  badge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    backgroundColor: '#EF4444',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 5,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+  },
+  badgeText: {
+    color: 'white',
+    fontSize: 11,
+    fontWeight: 'bold',
   },
   menuOverlay: {
     flex: 1,
