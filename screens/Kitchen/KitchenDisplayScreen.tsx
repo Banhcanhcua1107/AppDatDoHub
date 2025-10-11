@@ -42,8 +42,12 @@ const OrderTicketCard: React.FC<{
 
   useEffect(() => {
     const updateTimer = () => {
-      const diffMinutes = Math.floor((Date.now() - new Date(ticket.created_at).getTime()) / 60000);
-      setElapsedTime(`${diffMinutes}'`);
+      const now = new Date();
+      const createTime = new Date(ticket.created_at);
+      const diffMs = now.getTime() - createTime.getTime();
+      const hours = Math.floor(diffMs / 3600000);
+      const minutes = Math.floor((diffMs % 3600000) / 60000);
+      setElapsedTime(hours > 0 ? `${hours}h ${minutes}'` : `${minutes}'`);
     };
     updateTimer();
     const timer = setInterval(updateTimer, 30000);
@@ -51,35 +55,48 @@ const OrderTicketCard: React.FC<{
   }, [ticket.created_at]);
 
   const hasPendingItems = ticket.items.some(item => item.status === STATUS.PENDING);
+  const completedCount = ticket.items.filter(item => item.status === STATUS.COMPLETED || item.status === STATUS.SERVED).length;
 
   return (
     <TouchableOpacity style={styles.card} onPress={onNavigate} activeOpacity={0.8}>
-      <View style={styles.cardHeader}>
-        <View style={styles.headerLeft}>
-          <Ionicons name="restaurant-outline" size={24} color="#059669" />
-          <Text style={styles.tableNameLarge}>{ticket.table_name}</Text>
+      {/* Header xanh navy */}
+      <View style={styles.cardHeaderBlue}>
+        <Text style={styles.tableName}>{ticket.table_name}</Text>
+        <View style={styles.timeRow}>
+          <Ionicons name="time-outline" size={16} color="white" />
+          <Text style={[styles.timeText, { color: 'white' }]}>{elapsedTime}</Text>
         </View>
+      </View>
+
+      {/* Body - Thông tin order */}
+      <View style={styles.cardBody}>
+        <View style={styles.centerSection}>
+          <Text style={styles.orderText}>Bàn {ticket.table_name} Order</Text>
+        </View>
+        
+        <View style={styles.verticalDivider} />
+        
+        <View style={styles.rightSection}>
+          <Text style={styles.completedNumber}>{completedCount}</Text>
+          <Ionicons name="checkmark-circle" size={24} color="#10B981" />
+        </View>
+      </View>
+
+      {/* Action buttons row - 2 nút */}
+      <View style={styles.actionRow}>
         <TouchableOpacity 
-          style={[styles.processAllButton, !hasPendingItems && styles.processAllButtonDisabled]}
+          style={[styles.actionButton, styles.processButton, !hasPendingItems && styles.buttonDisabled]}
           onPress={(e) => { e.stopPropagation(); onProcessAll(); }}
           disabled={!hasPendingItems}
         >
-          <Text style={styles.processAllButtonText}>CHẾ BIẾN HẾT</Text>
+          <Ionicons name="restaurant-outline" size={20} color="white" />
+          <Text style={styles.buttonText}>CHẾ BIẾN HẾT</Text>
         </TouchableOpacity>
-      </View>
-
-      <View style={styles.orderInfoRow}>
-        <Text style={styles.orderIdText}>Order: {ticket.order_id.substring(0, 8)}</Text>
-        <View style={styles.orderMetaGroup}>
-          <View style={styles.orderMeta}>
-            <Ionicons name="person-outline" size={16} color="#6B7280" />
-            <Text style={styles.orderMetaText}>0</Text>
-          </View>
-          <View style={styles.orderMeta}>
-            <Ionicons name="time-outline" size={16} color="#10B981" />
-            <Text style={[styles.orderMetaText, { color: '#10B981' }]}>{elapsedTime}</Text>
-          </View>
-        </View>
+        
+        <TouchableOpacity style={[styles.actionButton, styles.serveButton]}>
+          <Ionicons name="notifications-outline" size={20} color="white" />
+          <Text style={styles.buttonText}>TRẢ MÓN</Text>
+        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
@@ -209,18 +226,21 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1E3A8A', paddingHorizontal: 16, paddingVertical: 14, paddingTop: 20 },
   headerTitle: { color: 'white', fontSize: 20, fontWeight: 'bold', marginLeft: 12 },
   listContainer: { paddingHorizontal: 12, paddingVertical: 12 },
-  card: { backgroundColor: 'white', borderRadius: 12, padding: 0, marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.1, shadowRadius: 6, elevation: 4, borderWidth: 2, borderColor: '#E5E7EB' },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#F9FAFB', borderTopLeftRadius: 10, borderTopRightRadius: 10, borderBottomWidth: 2, borderBottomColor: '#E5E7EB' },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  tableNameLarge: { fontSize: 20, fontWeight: 'bold', color: '#111827' },
-  processAllButton: { backgroundColor: '#F97316', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 6 },
-  processAllButtonDisabled: { backgroundColor: '#D1D5DB' },
-  processAllButtonText: { color: 'white', fontSize: 13, fontWeight: 'bold' },
-  orderInfoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: 'white' },
-  orderIdText: { fontSize: 14, color: '#6B7280', fontWeight: '500' },
-  orderMetaGroup: { flexDirection: 'row', gap: 12 },
-  orderMeta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  orderMetaText: { fontSize: 14, color: '#6B7280', fontWeight: '600' },
+  card: { backgroundColor: 'white', borderRadius: 12, marginBottom: 16, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 },
+  cardHeaderBlue: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#2563EB', paddingHorizontal: 16, paddingVertical: 14 },
+  tableName: { fontSize: 18, fontWeight: 'bold', color: 'white' },
+  peopleBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.25)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, gap: 4 },
+  peopleBadgeText: { color: 'white', fontSize: 14, fontWeight: 'bold' },
+  cardBody: { flexDirection: 'row', paddingVertical: 20, paddingHorizontal: 16, alignItems: 'center' },
+  leftSection: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  orderNumberLarge: { fontSize: 48, fontWeight: 'bold', color: '#2563EB' },
+  verticalDivider: { width: 2, height: 80, backgroundColor: '#E5E7EB', marginHorizontal: 16 },
+  rightSection: { flex: 1, alignItems: 'center', gap: 8 },
+  completedNumber: { fontSize: 32, fontWeight: 'bold', color: '#111827' },
+  timeRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  timeText: { fontSize: 14, color: '#6B7280', fontWeight: '500' },
+  actionRow: { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 12, paddingHorizontal: 16, borderTopWidth: 1, borderTopColor: '#E5E7EB', backgroundColor: '#F9FAFB' },
+  iconBtn: { padding: 8 },
 });
 
 export default KitchenDisplayScreen;
