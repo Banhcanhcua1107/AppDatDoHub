@@ -20,7 +20,6 @@ import { KitchenStackParamList } from '../../navigation/AppNavigator'; // Đư�
 
 type KitchenDisplayNavigationProp = NativeStackNavigationProp<KitchenStackParamList>;
 
-// Sử dụng các giá trị enum đã xác thực từ database
 const STATUS = {
   PENDING: 'waiting',
   IN_PROGRESS: 'in_progress',
@@ -46,7 +45,7 @@ interface OrderTicket {
   total_items: number;
 }
 
-// ---- COMPONENT CON (Giữ nguyên) ----
+// ---- COMPONENT CON (CẬP NHẬT LOGIC NHẤN) ----
 const KitchenOrderItem: React.FC<{
   item: KitchenItem;
   onStatusChange: (itemId: number, currentStatus: KitchenItemStatus) => void;
@@ -67,13 +66,14 @@ const KitchenOrderItem: React.FC<{
   };
 
   const { icon, color, textStyle } = getStatusStyle();
-  const isCompleted = item.status === STATUS.COMPLETED || item.status === STATUS.SERVED;
+  // [CẬP NHẬT] Chỉ vô hiệu hóa nút khi không phải trạng thái PENDING
+  const isDisabled = item.status !== STATUS.PENDING;
 
   return (
     <TouchableOpacity
       style={styles.itemRow}
       onPress={() => onStatusChange(item.id, item.status)}
-      disabled={isCompleted}
+      disabled={isDisabled}
     >
       <Text style={styles.itemQuantity}>{item.quantity}x</Text>
       <View style={styles.itemDetails}>
@@ -86,13 +86,13 @@ const KitchenOrderItem: React.FC<{
 };
 
 
-// ---- [CẬP NHẬT] COMPONENT ORDER TICKET ----
+// ---- COMPONENT ORDER TICKET (CẬP NHẬT NÚT BẤM) ----
 const OrderTicketCard: React.FC<{
   ticket: OrderTicket;
   onUpdateItemStatus: (itemId: number, currentStatus: KitchenItemStatus) => void;
-  onCompleteAll: (items: KitchenItem[]) => void;
+  onProcessAll: (items: KitchenItem[]) => void; // Đổi tên prop
   onNavigate: () => void;
-}> = ({ ticket, onUpdateItemStatus, onCompleteAll, onNavigate }) => {
+}> = ({ ticket, onUpdateItemStatus, onProcessAll, onNavigate }) => {
   const [elapsedTime, setElapsedTime] = useState('');
   const [isLoadingAll, setIsLoadingAll] = useState(false);
 
@@ -108,18 +108,18 @@ const OrderTicketCard: React.FC<{
     return () => clearInterval(timerInterval);
   }, [ticket.created_at]);
 
-  const handleCompleteAll = async () => {
+  const handleProcessAll = async () => {
     setIsLoadingAll(true);
-    await onCompleteAll(ticket.items);
+    await onProcessAll(ticket.items);
     setIsLoadingAll(false);
   }
 
-  const areAllItemsCompleted = ticket.items.every(
-    item => item.status === STATUS.COMPLETED || item.status === STATUS.SERVED
+  // [CẬP NHẬT] Logic để vô hiệu hóa nút: true nếu KHÔNG có món nào đang chờ
+  const hasNoPendingItems = !ticket.items.some(
+    item => item.status === STATUS.PENDING
   );
 
   return (
-    // TouchableOpacity này bao bọc toàn bộ thẻ để điều hướng
     <TouchableOpacity onPress={onNavigate} activeOpacity={0.8}>
       <View style={styles.cardShadow}>
         <View style={styles.cardHeader}>
@@ -139,23 +139,23 @@ const OrderTicketCard: React.FC<{
             <Ionicons name="time-outline" size={16} color="#6B7280" />
             <Text style={styles.footerTimerText}>{elapsedTime}</Text>
           </View>
-          {/* [ĐÂY LÀ THAY ĐỔI] */}
-          {/* Bọc nút "Hoàn thành" trong một View và thêm hàm inline vào onPress */}
-          {/* để ngăn sự kiện click lan ra ngoài, tránh việc điều hướng ngoài ý muốn. */}
           <TouchableOpacity
-            style={[styles.completeAllButton, areAllItemsCompleted && styles.disabledButton]}
+            // [CẬP NHẬT] Đổi style và logic disabled
+            style={[styles.actionButton, hasNoPendingItems && styles.disabledButton]}
             onPress={(e) => {
-              e.stopPropagation(); // Dừng sự kiện tại đây
-              handleCompleteAll();
+                e.stopPropagation();
+                handleProcessAll();
             }}
-            disabled={areAllItemsCompleted || isLoadingAll}
+            disabled={hasNoPendingItems || isLoadingAll}
           >
             {isLoadingAll ? (
               <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
-              <Ionicons name="checkmark-done-outline" size={20} color="white" style={{ marginRight: 8 }} />
+              // [CẬP NHẬT] Đổi icon
+              <Ionicons name="flame-outline" size={20} color="white" style={{ marginRight: 8 }} />
             )}
-            <Text style={styles.completeAllButtonText}>Hoàn thành tất cả</Text>
+            {/* [CẬP NHẬT] Đổi text */}
+            <Text style={styles.actionButtonText}>Chế biến hết</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -164,7 +164,7 @@ const OrderTicketCard: React.FC<{
 };
 
 
-// ---- COMPONENT CHÍNH: MÀN HÌNH KDS (Giữ nguyên)----
+// ---- COMPONENT CHÍNH: MÀN HÌNH KDS (CẬP NHẬT LOGIC HANDLER) ----
 const KitchenDisplayScreen = () => {
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<OrderTicket[]>([]);
@@ -244,15 +244,12 @@ const KitchenDisplayScreen = () => {
     }, [fetchKitchenOrders])
   );
 
+  // [CẬP NHẬT] Logic chỉ chuyển từ PENDING -> IN_PROGRESS
   const handleUpdateItemStatus = async (itemId: number, currentStatus: KitchenItemStatus) => {
-    let newStatus: KitchenItemStatus = STATUS.IN_PROGRESS;
-    if (currentStatus === STATUS.PENDING) {
-      newStatus = STATUS.IN_PROGRESS;
-    } else if (currentStatus === STATUS.IN_PROGRESS) {
-      newStatus = STATUS.COMPLETED;
-    } else {
-      return;
+    if (currentStatus !== STATUS.PENDING) {
+      return; // Nếu không phải đang chờ thì không làm gì cả
     }
+    const newStatus: KitchenItemStatus = STATUS.IN_PROGRESS;
 
     try {
       const { error } = await supabase.from('order_items').update({ status: newStatus }).eq('id', itemId);
@@ -263,9 +260,10 @@ const KitchenDisplayScreen = () => {
     }
   };
 
-  const handleCompleteAllItems = async (items: KitchenItem[]) => {
+  // [CẬP NHẬT] Đổi tên và logic hàm: chỉ chế biến các món PENDING
+  const handleProcessAllItems = async (items: KitchenItem[]) => {
     const itemsToUpdate = items
-      .filter(item => item.status === STATUS.PENDING || item.status === STATUS.IN_PROGRESS)
+      .filter(item => item.status === STATUS.PENDING) // Chỉ lọc món đang chờ
       .map(item => item.id);
 
     if (itemsToUpdate.length === 0) return;
@@ -273,12 +271,12 @@ const KitchenDisplayScreen = () => {
     try {
       const { error } = await supabase
         .from('order_items')
-        .update({ status: STATUS.COMPLETED })
+        .update({ status: STATUS.IN_PROGRESS }) // Cập nhật sang đang chế biến
         .in('id', itemsToUpdate);
       if (error) throw error;
     } catch (err: any) {
-      console.error("Error completing all items:", err.message);
-      Alert.alert("Lỗi", "Không thể hoàn thành tất cả món: " + err.message);
+      console.error("Error processing all items:", err.message);
+      Alert.alert("Lỗi", "Không thể chế biến tất cả món: " + err.message);
     }
   }
 
@@ -305,7 +303,7 @@ const KitchenDisplayScreen = () => {
           <OrderTicketCard
             ticket={item}
             onUpdateItemStatus={handleUpdateItemStatus}
-            onCompleteAll={handleCompleteAllItems}
+            onProcessAll={handleProcessAllItems} // Cập nhật tên prop
             onNavigate={() => navigation.navigate('KitchenDetail', {
               orderId: item.order_id,
               tableName: item.table_name
@@ -324,7 +322,7 @@ const KitchenDisplayScreen = () => {
   );
 };
 
-// --- STYLESHEET (Giữ nguyên) ---
+// --- STYLESHEET (CẬP NHẬT STYLE NÚT) ---
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F3F4F6' },
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
@@ -389,8 +387,9 @@ const styles = StyleSheet.create({
       marginLeft: 6,
       color: '#6B7280'
   },
-  completeAllButton: {
-      backgroundColor: '#2E8540',
+  // [CẬP NHẬT] Đổi tên và màu nút
+  actionButton: {
+      backgroundColor: '#F97316', // Màu cam
       flexDirection: 'row',
       alignItems: 'center',
       paddingHorizontal: 16,
@@ -398,9 +397,9 @@ const styles = StyleSheet.create({
       borderRadius: 20
   },
   disabledButton: {
-      backgroundColor: '#9CA3AF'
+      backgroundColor: '#9CA3AF' // Màu xám
   },
-  completeAllButtonText: {
+  actionButtonText: {
       color: 'white',
       fontWeight: 'bold',
       fontSize: 14,

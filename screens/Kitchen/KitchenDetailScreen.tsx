@@ -21,7 +21,6 @@ import { KitchenStackParamList } from '../../navigation/AppNavigator'; // Đảm
 type KitchenDetailScreenNavigationProp = NativeStackNavigationProp<KitchenStackParamList, 'KitchenDetail'>;
 type KitchenDetailScreenRouteProp = RouteProp<KitchenStackParamList, 'KitchenDetail'>;
 
-// Hằng số trạng thái
 const STATUS = {
   PENDING: 'waiting',
   IN_PROGRESS: 'in_progress',
@@ -39,7 +38,7 @@ interface KitchenDetailItem {
   customizations: any;
 }
 
-// ---- COMPONENT CON: HIỂN THỊ MỘT MÓN ĂN ----
+// ---- COMPONENT CON (Giữ nguyên) ----
 const KitchenDetailItemCard: React.FC<{
   item: KitchenDetailItem;
   onProcess: (itemId: number) => void;
@@ -51,10 +50,7 @@ const KitchenDetailItemCard: React.FC<{
   const toppingsText = (customizations.toppings?.map((t: any) => t.name) || []).join(', ') || 'Không có';
   const noteText = customizations.note;
 
-  // HÀM QUAN TRỌNG: QUYẾT ĐỊNH HIỂN THỊ ICON NÀO
   const renderFooterContent = () => {
-    // ---- TRƯỜNG HỢP 1: Món đã xong (completed) hoặc đã phục vụ (served) ----
-    // Chỉ hiển thị MỘT icon dấu tick duy nhất. Đây là trường hợp trong ảnh của bạn.
     if (status === STATUS.COMPLETED || status === STATUS.SERVED) {
       return (
         <View style={styles.footerActionsContainer}>
@@ -63,43 +59,34 @@ const KitchenDetailItemCard: React.FC<{
       );
     }
     
-    // ---- TRƯỜNG HỢP 2: Món đang chờ (pending) hoặc đang làm (in_progress) ----
-    // Sẽ hiển thị HAI icon (cái nồi và cái chuông)
     return (
       <View style={styles.footerActionsContainer}>
-        {/* Icon "Vào bếp" (cái nồi) */}
         <TouchableOpacity
           style={styles.footerActionButton}
           onPress={() => onProcess(item.id)}
-          // Nút này chỉ có thể bấm khi trạng thái là "chờ" (pending)
           disabled={status !== STATUS.PENDING}
         >
           <Ionicons 
-            name="restaurant" // Tên icon cái nồi
+            name="restaurant" 
             size={26} 
-            // Nếu là "chờ" thì icon màu xám, ngược lại thì màu rất nhạt (bị vô hiệu hóa)
             color={status === STATUS.PENDING ? '#6B7280' : '#D1D5DB'} 
           />
         </TouchableOpacity>
         
-        {/* Icon "Báo đã xong" (cái chuông) */}
         <TouchableOpacity
           style={styles.footerActionButton}
           onPress={() => onComplete(item.id)}
-          // Nút này chỉ có thể bấm khi trạng thái là "đang làm" (in_progress)
           disabled={status !== STATUS.IN_PROGRESS}
         >
           <Ionicons 
-            name="notifications" // Tên icon cái chuông
+            name="notifications" 
             size={26} 
-            // Nếu là "đang làm" thì icon màu xanh, ngược lại thì màu rất nhạt (bị vô hiệu hóa)
             color={status === STATUS.IN_PROGRESS ? '#10B981' : '#D1D5DB'}
           />
         </TouchableOpacity>
       </View>
     );
   };
-
 
   return (
     <View style={styles.cardShadow}>
@@ -109,9 +96,7 @@ const KitchenDetailItemCard: React.FC<{
         <Text style={styles.itemCustomization}>{`Topping: ${toppingsText}`}</Text>
         {noteText && <Text style={styles.itemNote}>Ghi chú: {noteText}</Text>}
       </View>
-
       <View style={styles.divider} />
-
       <View style={styles.itemFooter}>
         <Text style={styles.itemQuantityText}>Số lượng: {item.quantity}</Text>
         {renderFooterContent()}
@@ -121,7 +106,7 @@ const KitchenDetailItemCard: React.FC<{
 };
 
 
-// ---- COMPONENT CHÍNH: MÀN HÌNH CHI TIẾT BẾP (Logic giữ nguyên) ----
+// ---- COMPONENT CHÍNH: MÀN HÌNH CHI TIẾT BẾP (Giữ nguyên logic, cập nhật UI) ----
 const KitchenDetailScreen = () => {
   const navigation = useNavigation<KitchenDetailScreenNavigationProp>();
   const route = useRoute<KitchenDetailScreenRouteProp>();
@@ -233,19 +218,22 @@ const KitchenDetailScreen = () => {
       />
       <View style={styles.footer}>
         <TouchableOpacity
+            // [CẬP NHẬT] Đổi style nút
             style={[styles.processAllButton, !hasPendingItems && styles.disabledButton]}
             onPress={handleProcessAll}
             disabled={!hasPendingItems}
         >
-          <Ionicons name="restaurant" size={22} color="white" style={{ marginRight: 8 }} />
-          <Text style={styles.processAllButtonText}>Vào bếp tất cả món mới</Text>
+          {/* [CẬP NHẬT] Đổi icon */}
+          <Ionicons name="flame-outline" size={22} color="white" style={{ marginRight: 8 }} />
+          {/* [CẬP NHẬT] Đổi text */}
+          <Text style={styles.processAllButtonText}>Chế biến tất cả</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
 };
 
-// ---- STYLESHEET (Không thay đổi) ----
+// ---- STYLESHEET (CẬP NHẬT STYLE NÚT) ----
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F3F4F6' },
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
@@ -329,8 +317,9 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
   },
+  // [CẬP NHẬT] Đổi màu nút
   processAllButton: {
-    backgroundColor: '#1E3A8A',
+    backgroundColor: '#F97316', // Màu cam
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
