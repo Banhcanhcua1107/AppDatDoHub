@@ -330,7 +330,7 @@ const styles = StyleSheet.create({
       color: '#6B7280'
   },
   actionButton: {
-      backgroundColor: '#F97316',
+      backgroundColor: '#3B82F6', 
       flexDirection: 'row',
       alignItems: 'center',
       paddingHorizontal: 16,
@@ -345,7 +345,7 @@ const styles = StyleSheet.create({
       fontWeight: 'bold',
       fontSize: 14,
   },
-  // [ĐÃ XÓA] Các style cho item con không còn cần thiết
+
 });
 
 export default KitchenDisplayScreen;
