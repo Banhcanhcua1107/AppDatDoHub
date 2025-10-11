@@ -23,6 +23,7 @@ import SplitOrderScreen from '../screens/Menu/SplitOrderScreen';
 import ReturnSelectionScreen from '../screens/Orders/ReturnSelectionScreen';
 import ServeStatusScreen from '../screens/Orders/ServeStatusScreen';
 import ReturnedItemsDetailScreen from '../screens/Orders/ReturnedItemsDetailScreen';
+import ReturnNotificationScreen from '../screens/Orders/ReturnNotificationScreen';
 import ProvisionalBillScreen from '../screens/Orders/ProvisionalBillScreen';
 import PrintPreviewScreen from '../screens/Orders/PrintPreviewScreen';
 import ChangePasswordScreen from '../screens/Profile/ChangePasswordScreen';
@@ -66,6 +67,7 @@ const MainAppStack = () => (
         <AppStack.Screen name={ROUTES.TABLE_SELECTION} component={TableSelectionScreen} options={{ headerShown: true }} />
         <AppStack.Screen name={ROUTES.RETURN_SELECTION} component={ReturnSelectionScreen} />
         <AppStack.Screen name={ROUTES.RETURNED_ITEMS_DETAIL} component={ReturnedItemsDetailScreen} />
+        <AppStack.Screen name={ROUTES.RETURN_NOTIFICATIONS} component={ReturnNotificationScreen} />
         <AppStack.Screen name={ROUTES.SPLIT_ORDER} component={SplitOrderScreen} />
         <AppStack.Screen name={ROUTES.SERVE_STATUS} component={ServeStatusScreen} />
         <AppStack.Screen name={ROUTES.PROVISIONAL_BILL} component={ProvisionalBillScreen} />

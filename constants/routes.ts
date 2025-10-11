@@ -100,6 +100,7 @@ export type AppStackParamList = {
   [ROUTES.SERVE_STATUS]: { orderId: string; tableName: string };
   // [SỬA LỖI] Đổi tên 'ReturnedItemsDetail' thành ROUTES.RETURNED_ITEMS_DETAIL
   [ROUTES.RETURNED_ITEMS_DETAIL]: { orderId: string };
+  [ROUTES.RETURN_NOTIFICATIONS]: undefined;
   [ROUTES.PROVISIONAL_BILL]: undefined;
   [ROUTES.PRINT_PREVIEW]: {
     order: ProvisionalOrder;
