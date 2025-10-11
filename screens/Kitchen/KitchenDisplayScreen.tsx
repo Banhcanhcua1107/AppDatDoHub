@@ -37,7 +37,8 @@ const OrderTicketCard: React.FC<{
   ticket: OrderTicket;
   onNavigate: () => void;
   onProcessAll: () => void;
-}> = ({ ticket, onNavigate, onProcessAll }) => {
+  onReturnOrder: () => void;
+}> = ({ ticket, onNavigate, onProcessAll, onReturnOrder }) => {
   const [elapsedTime, setElapsedTime] = useState('');
 
   useEffect(() => {
@@ -55,7 +56,6 @@ const OrderTicketCard: React.FC<{
   }, [ticket.created_at]);
 
   const hasPendingItems = ticket.items.some(item => item.status === STATUS.PENDING);
-  const completedCount = ticket.items.filter(item => item.status === STATUS.COMPLETED || item.status === STATUS.SERVED).length;
 
   return (
     <TouchableOpacity style={styles.card} onPress={onNavigate} activeOpacity={0.8}>
@@ -63,7 +63,7 @@ const OrderTicketCard: React.FC<{
       <View style={styles.cardHeaderBlue}>
         <Text style={styles.tableName}>{ticket.table_name}</Text>
         <View style={styles.timeRow}>
-          <Ionicons name="time-outline" size={16} color="white" />
+          <Ionicons name="time-outline" size={14} color="white" />
           <Text style={[styles.timeText, { color: 'white' }]}>{elapsedTime}</Text>
         </View>
       </View>
@@ -71,14 +71,16 @@ const OrderTicketCard: React.FC<{
       {/* Body - Thông tin order */}
       <View style={styles.cardBody}>
         <View style={styles.centerSection}>
-          <Text style={styles.orderText}>Bàn {ticket.table_name} Order</Text>
+          <Text style={styles.orderText}>{ticket.table_name} Order</Text>
         </View>
         
         <View style={styles.verticalDivider} />
         
         <View style={styles.rightSection}>
-          <Text style={styles.completedNumber}>{completedCount}</Text>
-          <Ionicons name="checkmark-circle" size={24} color="#10B981" />
+          <View style={styles.rightRow}>
+            <Text style={styles.completedNumber}>{ticket.total_items}</Text>
+            <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+          </View>
         </View>
       </View>
 
@@ -89,12 +91,18 @@ const OrderTicketCard: React.FC<{
           onPress={(e) => { e.stopPropagation(); onProcessAll(); }}
           disabled={!hasPendingItems}
         >
-          <Ionicons name="restaurant-outline" size={20} color="white" />
+          <Ionicons name="restaurant-outline" size={16} color="white" />
           <Text style={styles.buttonText}>CHẾ BIẾN HẾT</Text>
         </TouchableOpacity>
         
-        <TouchableOpacity style={[styles.actionButton, styles.serveButton]}>
-          <Ionicons name="notifications-outline" size={20} color="white" />
+        <TouchableOpacity 
+          style={[styles.actionButton, styles.serveButton]}
+          onPress={(e) => {
+            e.stopPropagation();
+            onReturnOrder();
+          }}
+        >
+          <Ionicons name="notifications-outline" size={16} color="white" />
           <Text style={styles.buttonText}>TRẢ MÓN</Text>
         </TouchableOpacity>
       </View>
@@ -144,7 +152,11 @@ const KitchenDisplayScreen = () => {
 
       const finalOrders = Object.values(groupedOrders)
         .map(order => ({ ...order, total_items: order.items.reduce((sum, item) => sum + item.quantity, 0) }))
-        .filter(order => !order.items.every(item => item.status === STATUS.SERVED));
+        .filter(order => {
+          // Ẩn order nếu tất cả món đã served
+          const allServed = order.items.every(item => item.status === STATUS.SERVED);
+          return !allServed;
+        });
 
       setOrders(finalOrders);
     } catch (err: any) {
@@ -180,6 +192,42 @@ const KitchenDisplayScreen = () => {
     }
   };
 
+  const handleReturnOrder = async (ticket: OrderTicket) => {
+    Alert.alert(
+      "Xác nhận trả món",
+      `Bạn có chắc chắn muốn trả món cho ${ticket.table_name}?`,
+      [
+        { text: "Hủy", style: "cancel" },
+        {
+          text: "Xác nhận",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              // Lấy danh sách tên món
+              const itemNames = ticket.items.map(item => `${item.name} (x${item.quantity})`);
+              
+              // Tạo thông báo trả món
+              const { error } = await supabase
+                .from('return_notifications')
+                .insert({
+                  order_id: ticket.order_id,
+                  table_name: ticket.table_name,
+                  item_names: itemNames,
+                  status: 'pending'
+                });
+
+              if (error) throw error;
+              Alert.alert("Thành công", "Đã gửi thông báo trả món đến nhân viên");
+            } catch (err: any) {
+              console.error("Error creating return notification:", err.message);
+              Alert.alert("Lỗi", "Không thể gửi thông báo trả món: " + err.message);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   if (loading) {
     return (
       <View style={styles.centerContainer}>
@@ -204,6 +252,7 @@ const KitchenDisplayScreen = () => {
             ticket={item}
             onNavigate={() => navigation.navigate('KitchenDetail', { orderId: item.order_id, tableName: item.table_name })}
             onProcessAll={() => handleProcessAllOrder(item)}
+            onReturnOrder={() => handleReturnOrder(item)}
           />
         )}
         contentContainerStyle={styles.listContainer}
@@ -226,23 +275,24 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1E3A8A', paddingHorizontal: 16, paddingVertical: 14, paddingTop: 20 },
   headerTitle: { color: 'white', fontSize: 20, fontWeight: 'bold', marginLeft: 12 },
   listContainer: { paddingHorizontal: 12, paddingVertical: 12 },
-  card: { backgroundColor: 'white', borderRadius: 12, marginBottom: 16, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 },
-  cardHeaderBlue: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1E3A8A', paddingHorizontal: 16, paddingVertical: 10 },
-  tableName: { fontSize: 18, fontWeight: 'bold', color: 'white' },
-  timeRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  timeText: { fontSize: 14, fontWeight: '500' },
-  cardBody: { flexDirection: 'row', paddingVertical: 16, paddingHorizontal: 16, alignItems: 'center' },
+  card: { backgroundColor: 'white', borderRadius: 10, marginBottom: 12, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 3, elevation: 2 },
+  cardHeaderBlue: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1E3A8A', paddingHorizontal: 12, paddingVertical: 6 },
+  tableName: { fontSize: 16, fontWeight: 'bold', color: 'white' },
+  timeRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  timeText: { fontSize: 12, fontWeight: '500' },
+  cardBody: { flexDirection: 'row', paddingVertical: 8, paddingHorizontal: 12, alignItems: 'center' },
   centerSection: { flex: 2, justifyContent: 'center', alignItems: 'center' },
-  orderText: { fontSize: 18, fontWeight: '600', color: '#1E3A8A' },
-  verticalDivider: { width: 2, height: 50, backgroundColor: '#E5E7EB', marginHorizontal: 12 },
-  rightSection: { flex: 1, alignItems: 'center', gap: 6 },
-  completedNumber: { fontSize: 28, fontWeight: 'bold', color: '#111827' },
-  actionRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#E5E7EB', backgroundColor: '#F9FAFB' },
-  actionButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 8, gap: 6 },
+  orderText: { fontSize: 15, fontWeight: '600', color: '#1E3A8A' },
+  verticalDivider: { width: 1.5, height: 30, backgroundColor: '#E5E7EB', marginHorizontal: 8 },
+  rightSection: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  rightRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  completedNumber: { fontSize: 22, fontWeight: 'bold', color: '#111827' },
+  actionRow: { flexDirection: 'row', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderTopWidth: 1, borderTopColor: '#E5E7EB', backgroundColor: '#F9FAFB' },
+  actionButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 6, paddingHorizontal: 8, borderRadius: 6, gap: 4 },
   processButton: { backgroundColor: '#F97316' },
   serveButton: { backgroundColor: '#10B981' },
   buttonDisabled: { backgroundColor: '#D1D5DB' },
-  buttonText: { color: 'white', fontSize: 14, fontWeight: 'bold' },
+  buttonText: { color: 'white', fontSize: 12, fontWeight: 'bold' },
 });
 
 export default KitchenDisplayScreen;

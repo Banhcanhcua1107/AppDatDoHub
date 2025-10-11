@@ -93,13 +93,25 @@ const ServeStatusScreen = ({ route, navigation }: Props) => {
         quantity: item.quantity,
         status: item.status, // Gán status mới
       }));
+      
+      // Kiểm tra nếu tất cả món đã được phục vụ, tự động quay lại
+      const allServed = formattedItems.every(item => item.status === 'served');
+      if (allServed && formattedItems.length > 0) {
+        Alert.alert('Hoàn thành', 'Tất cả món đã được phục vụ!', [
+          {
+            text: 'OK',
+            onPress: () => navigation.goBack()
+          }
+        ]);
+      }
+      
       setItems(formattedItems);
     } catch (err: any) {
       Alert.alert('Lỗi', 'Không thể tải danh sách món: ' + err.message);
     } finally {
       setLoading(false);
     }
-  }, [orderId]);
+  }, [orderId, navigation]);
 
   useEffect(() => {
     setLoading(true);

@@ -227,21 +227,40 @@ const KitchenDetailScreen = () => {
     }
   };
   
-  const handleReturnItems = () => {
-      Alert.alert(
-          "Xác nhận trả món",
-          "Bạn có chắc chắn muốn trả lại các món trong đơn này không?",
-          [
-              { text: "Hủy", style: "cancel" },
-              { 
-                  text: "Xác nhận", 
-                  onPress: () => {
-                      Alert.alert("Thông báo", "Chức năng đang được phát triển.");
-                  },
-                  style: "destructive"
-              }
-          ]
-      );
+  const handleReturnItems = async () => {
+    Alert.alert(
+      "Xác nhận trả món",
+      "Bạn có chắc chắn muốn trả lại các món trong đơn này không?",
+      [
+        { text: "Hủy", style: "cancel" },
+        {
+          text: "Xác nhận",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              // Lấy danh sách tên món
+              const itemNames = items.map(item => `${item.customizations.name} (x${item.quantity})`);
+
+              // Tạo thông báo trả món
+              const { error } = await supabase
+                .from('return_notifications')
+                .insert({
+                  order_id: orderId,
+                  table_name: tableName,
+                  item_names: itemNames,
+                  status: 'pending'
+                });
+
+              if (error) throw error;
+              Alert.alert("Thành công", "Đã gửi thông báo trả món đến nhân viên");
+            } catch (err: any) {
+              console.error("Error creating return notification:", err.message);
+              Alert.alert("Lỗi", "Không thể gửi thông báo trả món: " + err.message);
+            }
+          }
+        }
+      ]
+    );
   };
 
   if (loading) {

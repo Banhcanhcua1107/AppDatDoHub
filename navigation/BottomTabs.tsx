@@ -12,6 +12,7 @@ import HomeScreen from '../screens/Tables/HomeScreen';
 import OrderScreen from '../screens/Orders/OrderScreen'; // Đảm bảo dòng này tồn tại
 import ProvisionalBillScreen from '../screens/Orders/ProvisionalBillScreen';
 import ReturnItemsScreen from '../screens/Orders/ReturnItemsScreen';
+import ReturnNotificationScreen from '../screens/Orders/ReturnNotificationScreen';
 // import PlaceholderScreen from '../screens/Placeholders/PlaceholderScreen';
 import UtilitiesScreen from '../screens/Utilities/UtilitiesScreen';
 const Tab = createBottomTabNavigator<AppTabParamList>();
@@ -33,6 +34,8 @@ const BottomTabs = () => {
             iconName = focused ? 'document-text' : 'document-text-outline';
           } else if (route.name === ROUTES.RETURN_ITEMS_TAB) {
             iconName = focused ? 'restaurant' : 'restaurant-outline';
+          } else if (route.name === ROUTES.RETURN_NOTIFICATIONS) {
+            iconName = focused ? 'notifications' : 'notifications-outline';
           } else if (route.name === ROUTES.PROVISIONAL_BILL_TAB) {
             iconName = focused ? 'receipt' : 'receipt-outline';
           } else if (route.name === ROUTES.UTILITIES_TAB) {
@@ -63,7 +66,16 @@ const BottomTabs = () => {
         }}
       />
 
-      {/* Tab 4: Tạm tính */}
+      {/* Tab 4: Thông báo trả món */}
+      <Tab.Screen
+        name={ROUTES.RETURN_NOTIFICATIONS}
+        component={ReturnNotificationScreen}
+        options={{
+          title: 'Thông báo',
+        }}
+      />
+
+      {/* Tab 5: Tạm tính */}
       <Tab.Screen
         name={ROUTES.PROVISIONAL_BILL_TAB}
         component={ProvisionalBillScreen}
@@ -72,7 +84,7 @@ const BottomTabs = () => {
         }}
       />
 
-      {/* Tab 5: Tiện ích */}
+      {/* Tab 6: Tiện ích */}
       <Tab.Screen
         name={ROUTES.UTILITIES_TAB}
         component={UtilitiesScreen} // <-- THAY THẾ Ở ĐÂY

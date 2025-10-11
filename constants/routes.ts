@@ -25,6 +25,7 @@ export const ROUTES = {
   HOME_TAB: 'Sơ đồ',
   ORDER_TAB: 'Order',
   RETURN_ITEMS_TAB: 'Trả món',
+  RETURN_NOTIFICATIONS: 'ReturnNotifications',
   PROVISIONAL_BILL_TAB: 'Tạm tính',
   UTILITIES_TAB: 'Tiện ích',
 
@@ -65,6 +66,7 @@ export type AppTabParamList = {
   [ROUTES.HOME_TAB]: undefined;
   [ROUTES.ORDER_TAB]: undefined;
   [ROUTES.RETURN_ITEMS_TAB]: undefined;
+  [ROUTES.RETURN_NOTIFICATIONS]: undefined;
   [ROUTES.PROVISIONAL_BILL_TAB]: undefined;
   [ROUTES.UTILITIES_TAB]: { screenName: string };
 };

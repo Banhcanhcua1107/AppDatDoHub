@@ -355,7 +355,7 @@ const styles = StyleSheet.create({
   emptyText: { marginTop: 16, fontSize: 18, color: '#6B7280', fontWeight: '500', textAlign: 'center' },
   header: { 
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#1E3A8A', 
-    paddingHorizontal: 16, paddingVertical: 12 
+    paddingHorizontal: 16, paddingVertical: 12 , paddingTop: 20
   },
   headerTitle: { color: 'white', fontSize: 20, fontWeight: 'bold', marginLeft: 12 },
   
