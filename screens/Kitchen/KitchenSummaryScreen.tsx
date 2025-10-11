@@ -10,7 +10,6 @@ import {
   SafeAreaView,
   StatusBar,
   TouchableOpacity,
-  Alert,
   TextInput,
   Modal,
   TouchableWithoutFeedback,
@@ -21,7 +20,7 @@ import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 
 import { supabase } from '../../services/supabase';
-import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 
 // [SỬA LỖI] Import cả hai ParamList
 import { KitchenStackParamList } from '../../navigation/AppNavigator';
@@ -33,6 +32,11 @@ const STATUS_TO_AGGREGATE = ['waiting', 'in_progress'];
 interface SummarizedItem {
   name: string;
   total_quantity: number;
+  waiting_quantity: number;
+  in_progress_quantity: number;
+  table_count: number;
+  tables: string[];
+  oldest_time: string | null;
 }
 
 type SortOption = 'quantity_desc' | 'name_asc' | 'name_desc';
@@ -57,23 +61,68 @@ const KitchenSummaryScreen = () => {
     try {
       const { data, error } = await supabase
         .from('order_items')
-        .select('quantity, customizations')
+        .select('quantity, customizations, status, created_at, orders!inner(order_tables(tables(name)))')
         .in('status', STATUS_TO_AGGREGATE);
 
       if (error) throw error;
 
+      // Safety check for data
+      if (!data || !Array.isArray(data)) {
+        console.warn('No data returned from query');
+        setSummaryItems([]);
+        return;
+      }
+
+      interface ItemData {
+        total_quantity: number;
+        waiting_quantity: number;
+        in_progress_quantity: number;
+        tables: Set<string>;
+        oldest_time: string | null;
+      }
+
       const itemMap = data.reduce((acc, item) => {
         const itemName = item.customizations.name;
+        // Fix: Get table name from nested structure through order_tables (it's an array!)
+        const orders = item.orders as any;
+        const tableName = orders?.order_tables?.[0]?.tables?.name || 'Mang về';
+        
         if (!acc[itemName]) {
-          acc[itemName] = 0;
+          acc[itemName] = {
+            total_quantity: 0,
+            waiting_quantity: 0,
+            in_progress_quantity: 0,
+            tables: new Set<string>(),
+            oldest_time: null,
+          };
         }
-        acc[itemName] += item.quantity;
+        
+        acc[itemName].total_quantity += item.quantity;
+        
+        if (item.status === 'waiting') {
+          acc[itemName].waiting_quantity += item.quantity;
+        } else if (item.status === 'in_progress') {
+          acc[itemName].in_progress_quantity += item.quantity;
+        }
+        
+        acc[itemName].tables.add(tableName);
+        
+        // Cập nhật thời gian cũ nhất
+        if (!acc[itemName].oldest_time || item.created_at < acc[itemName].oldest_time) {
+          acc[itemName].oldest_time = item.created_at;
+        }
+        
         return acc;
-      }, {} as Record<string, number>);
+      }, {} as Record<string, ItemData>);
 
       const aggregatedList: SummarizedItem[] = Object.keys(itemMap).map(name => ({
         name: name,
-        total_quantity: itemMap[name],
+        total_quantity: itemMap[name].total_quantity,
+        waiting_quantity: itemMap[name].waiting_quantity,
+        in_progress_quantity: itemMap[name].in_progress_quantity,
+        table_count: itemMap[name].tables.size,
+        tables: Array.from(itemMap[name].tables),
+        oldest_time: itemMap[name].oldest_time,
       }));
       
       setSummaryItems(aggregatedList);
@@ -126,40 +175,79 @@ const KitchenSummaryScreen = () => {
     return filteredItems;
   }, [summaryItems, searchQuery, sortOption]);
   
-  const renderSummaryItem = ({ item }: { item: SummarizedItem }) => (
-    <TouchableOpacity
-      style={styles.card}
-      activeOpacity={0.7}
-      onPress={() => navigation.navigate('KitchenSummaryDetail', { itemName: item.name })}
-    >
-      <View style={styles.quantityContainer}>
-        <Text style={styles.quantityText}>{item.total_quantity}</Text>
-      </View>
-      <View style={styles.nameContainer}>
-        <Text style={styles.itemNameText} numberOfLines={2}>{item.name}</Text>
-      </View>
-      <View style={styles.actionsContainer}>
-        <TouchableOpacity 
-          style={styles.actionButton}
-          onPress={(e) => {
-            e.stopPropagation();
-            Alert.alert("Thông báo", `Chức năng ưu tiên cho món: ${item.name}.`);
-          }}
-        >
-          <FontAwesome5 name="concierge-bell" size={20} color="#F97316" />
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.actionButton}
-          onPress={(e) => {
-            e.stopPropagation();
-            Alert.alert("Thông báo", `Chức năng báo hết món: ${item.name}.`);
-          }}
-        >
-          <Ionicons name="notifications-outline" size={24} color="#10B981" />
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
-  );
+  const renderSummaryItem = ({ item }: { item: SummarizedItem }) => {
+    // Tính thời gian chờ
+    const getWaitingTime = () => {
+      if (!item.oldest_time) return '';
+      const now = new Date();
+      const oldestTime = new Date(item.oldest_time);
+      const diffMinutes = Math.floor((now.getTime() - oldestTime.getTime()) / (1000 * 60));
+      
+      if (diffMinutes < 60) {
+        return `${diffMinutes}p`;
+      } else {
+        const hours = Math.floor(diffMinutes / 60);
+        const mins = diffMinutes % 60;
+        return `${hours}h${mins}p`;
+      }
+    };
+
+    const waitingTime = getWaitingTime();
+    
+    return (
+      <TouchableOpacity
+        style={styles.card}
+        activeOpacity={0.7}
+        onPress={() => navigation.navigate('KitchenSummaryDetail', { itemName: item.name })}
+      >
+        {/* Row 1: Tên món + Tổng số lượng */}
+        <View style={styles.topRow}>
+          <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
+          <View style={styles.totalBadge}>
+            <Text style={styles.totalText}>{item.total_quantity}</Text>
+          </View>
+        </View>
+
+        {/* Row 2: Chi tiết trạng thái */}
+        <View style={styles.statusRow}>
+          <View style={styles.statusItem}>
+            <Text style={styles.statusLabel}>Chờ</Text>
+            <Text style={styles.statusValue}>{item.waiting_quantity}</Text>
+          </View>
+          
+          <View style={styles.dividerVertical} />
+          
+          <View style={styles.statusItem}>
+            <Text style={styles.statusLabel}>Đang làm</Text>
+            <Text style={styles.statusValue}>{item.in_progress_quantity}</Text>
+          </View>
+          
+          <View style={styles.dividerVertical} />
+          
+          <View style={styles.statusItem}>
+            <Text style={styles.statusLabel}>Bàn</Text>
+            <Text style={styles.statusValue}>{item.table_count}</Text>
+          </View>
+          
+          {waitingTime && (
+            <>
+              <View style={styles.dividerVertical} />
+              <View style={styles.statusItem}>
+                <Text style={styles.statusLabel}>Thời gian</Text>
+                <Text style={styles.timeValue}>{waitingTime}</Text>
+              </View>
+            </>
+          )}
+        </View>
+
+        {/* Row 3: Danh sách bàn */}
+        <View style={styles.tablesRow}>
+          <Ionicons name="restaurant-outline" size={14} color="#9CA3AF" />
+          <Text style={styles.tablesText} numberOfLines={1}>{item.tables.join(', ')}</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   const renderSortModal = () => (
     <Modal
@@ -248,7 +336,7 @@ const KitchenSummaryScreen = () => {
   );
 };
 
-// Styles không thay đổi
+// Styles
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F3F4F6' },
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
@@ -326,18 +414,91 @@ const styles = StyleSheet.create({
   sortOptionDisabled: { paddingVertical: 12, paddingHorizontal: 8 },
   sortOptionDisabledText: { fontSize: 16, color: '#9CA3AF', fontStyle: 'italic' },
 
+  // Card styles - Clean & Structured
   card: {
-    backgroundColor: 'white', borderRadius: 12, paddingHorizontal: 16,
-    paddingVertical: 16, marginBottom: 12, shadowColor: '#9CA3AF',
-    shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1,
-    shadowRadius: 5, elevation: 3, flexDirection: 'row', alignItems: 'center',
+    backgroundColor: 'white',
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  quantityContainer: { minWidth: 40, marginRight: 12, alignItems: 'center' },
-  quantityText: { fontSize: 18, fontWeight: 'bold', color: '#3B82F6' },
-  nameContainer: { flex: 1, marginRight: 12 },
-  itemNameText: { fontSize: 16, fontWeight: '600', color: '#111827' },
-  actionsContainer: { flexDirection: 'row', alignItems: 'center' },
-  actionButton: { padding: 8, marginLeft: 4 },
+  
+  // Row 1: Tên món + Tổng số
+  topRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  itemName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    flex: 1,
+    marginRight: 12,
+  },
+  totalBadge: {
+    backgroundColor: '#3B82F6',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    minWidth: 36,
+    alignItems: 'center',
+  },
+  totalText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: 'white',
+  },
+  
+  // Row 2: Status grid
+  statusRow: {
+    flexDirection: 'row',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 10,
+  },
+  statusItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statusLabel: {
+    fontSize: 11,
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  statusValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  timeValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#DC2626',
+  },
+  dividerVertical: {
+    width: 1,
+    backgroundColor: '#E5E7EB',
+    marginHorizontal: 8,
+  },
+  
+  // Row 3: Tables list
+  tablesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  tablesText: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginLeft: 6,
+    flex: 1,
+  },
 });
 
 export default KitchenSummaryScreen;
