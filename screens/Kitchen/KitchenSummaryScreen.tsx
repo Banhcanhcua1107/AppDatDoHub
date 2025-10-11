@@ -15,9 +15,18 @@ import {
   Modal,
   TouchableWithoutFeedback,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+// [SỬA LỖI] Import các type cần thiết
+import { useFocusEffect, useNavigation, CompositeScreenProps } from '@react-navigation/native';
+import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+
 import { supabase } from '../../services/supabase';
 import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
+
+// [SỬA LỖI] Import cả hai ParamList
+import { KitchenStackParamList } from '../../navigation/AppNavigator';
+import { KitchenTabParamList } from '../../navigation/KitchenTabs';
+
 
 const STATUS_TO_AGGREGATE = ['waiting', 'in_progress'];
 
@@ -28,12 +37,21 @@ interface SummarizedItem {
 
 type SortOption = 'quantity_desc' | 'name_asc' | 'name_desc';
 
+type KitchenSummaryScreenProps = CompositeScreenProps<
+  BottomTabScreenProps<KitchenTabParamList, 'KitchenSummary'>,
+  NativeStackScreenProps<KitchenStackParamList>
+>;
+
+
 const KitchenSummaryScreen = () => {
   const [loading, setLoading] = useState(true);
   const [summaryItems, setSummaryItems] = useState<SummarizedItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSortMenuVisible, setSortMenuVisible] = useState(false);
   const [sortOption, setSortOption] = useState<SortOption>('quantity_desc');
+  
+  // [SỬA LỖI] Lấy navigation từ prop type đã kết hợp
+  const navigation = useNavigation<KitchenSummaryScreenProps['navigation']>();
 
   const fetchSummaryData = useCallback(async () => {
     try {
@@ -109,7 +127,11 @@ const KitchenSummaryScreen = () => {
   }, [summaryItems, searchQuery, sortOption]);
   
   const renderSummaryItem = ({ item }: { item: SummarizedItem }) => (
-    <View style={styles.card}>
+    <TouchableOpacity
+      style={styles.card}
+      activeOpacity={0.7}
+      onPress={() => navigation.navigate('KitchenSummaryDetail', { itemName: item.name })}
+    >
       <View style={styles.quantityContainer}>
         <Text style={styles.quantityText}>{item.total_quantity}</Text>
       </View>
@@ -119,19 +141,24 @@ const KitchenSummaryScreen = () => {
       <View style={styles.actionsContainer}>
         <TouchableOpacity 
           style={styles.actionButton}
-          onPress={() => Alert.alert("Thông báo", `Chức năng ưu tiên cho món: ${item.name}.`)}
+          onPress={(e) => {
+            e.stopPropagation();
+            Alert.alert("Thông báo", `Chức năng ưu tiên cho món: ${item.name}.`);
+          }}
         >
-          {/* [CẬP NHẬT] Thay đổi icon cho giống hình ảnh hơn */}
           <FontAwesome5 name="concierge-bell" size={20} color="#6B7280" />
         </TouchableOpacity>
         <TouchableOpacity 
           style={styles.actionButton}
-          onPress={() => Alert.alert("Thông báo", `Chức năng báo hết món: ${item.name}.`)}
+          onPress={(e) => {
+            e.stopPropagation();
+            Alert.alert("Thông báo", `Chức năng báo hết món: ${item.name}.`);
+          }}
         >
           <Ionicons name="notifications-outline" size={24} color="#F97316" />
         </TouchableOpacity>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   const renderSortModal = () => (
@@ -144,7 +171,6 @@ const KitchenSummaryScreen = () => {
       <TouchableWithoutFeedback onPress={() => setSortMenuVisible(false)}>
         <View style={styles.modalOverlay}>
           <TouchableWithoutFeedback>
-            {/* [CẬP NHẬT] Điều chỉnh vị trí modal */}
             <View style={styles.modalContent}>
               <TouchableOpacity
                 style={styles.sortOption}
@@ -200,7 +226,6 @@ const KitchenSummaryScreen = () => {
           style={styles.filterButton}
           onPress={() => setSortMenuVisible(true)}
         >
-          {/* [CẬP NHẬT] Đổi icon và làm đậm hơn */}
           <Ionicons name="menu-outline" size={28} color="#1F2937" />
         </TouchableOpacity>
       </View>
@@ -223,7 +248,7 @@ const KitchenSummaryScreen = () => {
   );
 };
 
-// ---- [CẬP NHẬT] STYLESHEET ----
+// Styles không thay đổi
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F3F4F6' },
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
@@ -234,32 +259,29 @@ const styles = StyleSheet.create({
   },
   headerTitle: { color: 'white', fontSize: 20, fontWeight: 'bold', marginLeft: 12 },
   
-  // [CẬP NHẬT] listContainer để tạo khoảng cách
   listContainer: { 
     paddingHorizontal: 16, 
     paddingBottom: 16,
-    paddingTop: 4, // Thêm khoảng cách nhỏ ở trên
+    paddingTop: 4,
   },
 
-  // [CẬP NHẬT] Bỏ màu nền và điều chỉnh padding
   searchFilterContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingTop: 12,
-    paddingBottom: 8, // Giảm padding dưới một chút
-    backgroundColor: '#F3F4F6', // Nền trong suốt (trùng màu nền chính)
+    paddingBottom: 8,
+    backgroundColor: '#F3F4F6',
   },
   searchBar: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    // [CẬP NHẬT] Đổi nền search bar thành màu trắng để nổi bật
     backgroundColor: 'white',
-    borderRadius: 25, // Bo tròn nhiều hơn
-    height: 44, // Tăng chiều cao một chút
-    elevation: 2, // Thêm đổ bóng nhẹ cho Android
-    shadowColor: '#000', // Thêm đổ bóng cho iOS
+    borderRadius: 25,
+    height: 44,
+    elevation: 2,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
@@ -281,12 +303,11 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
     alignItems: 'flex-end',
   },
-  // [CẬP NHẬT] Vị trí modal
   modalContent: {
     backgroundColor: 'white',
     borderRadius: 8,
     padding: 8,
-    marginTop: 105, // Điều chỉnh lại cho khớp
+    marginTop: 105,
     marginRight: 16,
     width: 250,
     elevation: 10,
