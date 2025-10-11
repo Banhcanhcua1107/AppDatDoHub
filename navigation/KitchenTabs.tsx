@@ -6,11 +6,13 @@ import { Ionicons } from '@expo/vector-icons';
 
 // Import các màn hình của bếp
 import KitchenDisplayScreen from '../screens/Kitchen/KitchenDisplayScreen';
+import KitchenSummaryScreen from '../screens/Kitchen/KitchenSummaryScreen';
 import KitchenUtilitiesScreen from '../screens/Kitchen/KitchenUtilitiesScreen';
 
 // Định nghĩa kiểu cho các route trong tab
 export type KitchenTabParamList = {
   KitchenDisplay: undefined;
+  KitchenSummary: undefined;
   KitchenUtilities: undefined;
 };
 
@@ -23,7 +25,6 @@ const KitchenTabs = () => {
         headerShown: false,
         tabBarActiveTintColor: '#1E3A8A', 
         tabBarInactiveTintColor: 'gray',
-        // [CẬP NHẬT] Áp dụng style giống hệt BottomTabs
         tabBarStyle: { 
           paddingBottom: 5, 
           height: 60 
@@ -33,14 +34,18 @@ const KitchenTabs = () => {
         },
         tabBarIcon: ({ focused, color, size }) => {
           let iconName: React.ComponentProps<typeof Ionicons>['name'] = 'alert-circle-outline';
+          let iconSize = size; // Sử dụng một biến để có thể tùy chỉnh
 
           if (route.name === 'KitchenDisplay') {
             iconName = focused ? 'restaurant' : 'restaurant-outline';
+          } else if (route.name === 'KitchenSummary') {
+            iconName = focused ? 'analytics' : 'analytics-outline';
+            iconSize = size + 5; 
           } else if (route.name === 'KitchenUtilities') {
             iconName = focused ? 'settings' : 'settings-outline';
           }
 
-          return <Ionicons name={iconName} size={size} color={color} />;
+          return <Ionicons name={iconName} size={iconSize} color={color} />;
         },
       })}
     >
@@ -50,12 +55,23 @@ const KitchenTabs = () => {
         options={{ tabBarLabel: 'Màn hình chính' }}
       />
       <Tab.Screen
+        name="KitchenSummary"
+        component={KitchenSummaryScreen}
+        options={{ 
+          tabBarLabel: 'Tổng hợp',
+          // [CẬP NHẬT] Ghi đè style của label cho tab này để tăng cỡ chữ
+          tabBarLabelStyle: {
+            fontSize: 13,
+          }
+        }}
+      />
+      <Tab.Screen
         name="KitchenUtilities"
         component={KitchenUtilitiesScreen}
         options={{ 
           tabBarLabel: 'Tiện ích',
-          headerShown: true, // Hiển thị header cho trang Tiện ích Bếp
-          headerTitle: 'Tiện ích', // Thêm tiêu đề cho header
+          headerShown: true,
+          headerTitle: 'Tiện ích',
           headerTitleAlign: 'center',
          }}
       />
