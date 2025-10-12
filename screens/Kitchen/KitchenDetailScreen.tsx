@@ -38,7 +38,7 @@ interface KitchenDetailItem {
   customizations: any;
 }
 
-// ---- COMPONENT CON (Không thay đổi) ----
+// ---- COMPONENT CON (ĐÃ CẬP NHẬT NÚT "TRẢ MÓN") ----
 const KitchenDetailItemCard: React.FC<{
   item: KitchenDetailItem;
   onProcess: (itemId: number) => void;
@@ -72,13 +72,14 @@ const KitchenDetailItemCard: React.FC<{
           </TouchableOpacity>
         )}
         
+        {/* [CẬP NHẬT] Thay đổi nút "Xong" thành "Trả món" với icon chuông */}
         {status === STATUS.IN_PROGRESS && (
           <TouchableOpacity
             style={styles.completeButton}
             onPress={() => onComplete(item.id)}
           >
-            <Ionicons name="checkmark-circle-outline" size={18} color="white" />
-            <Text style={styles.buttonText}>Xong</Text>
+            <Ionicons name="notifications-outline" size={18} color="white" />
+            <Text style={styles.buttonText}>Trả món</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -244,7 +245,7 @@ const KitchenDetailScreen = () => {
       // Lấy danh sách ID của tất cả items trong order này
       const itemIds = items.map(item => item.id);
 
-      // Cập nhật status của tất cả items về 'served' (đã phục vụ/trả về)
+      // Cập nhật status của tất cả items về 'completed' (đã hoàn thành/sẵn sàng)
       const { error: updateError } = await supabase
         .from('order_items')
         .update({ status: STATUS.COMPLETED }) 
@@ -334,7 +335,7 @@ const KitchenDetailScreen = () => {
   );
 };
 
-// ---- STYLESHEET (CẬP NHẬT) ----
+// ---- STYLESHEET ----
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F3F4F6' },
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
@@ -413,7 +414,6 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   
-  // Action buttons with text
   processButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -452,7 +452,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   
-  // [CẬP NHẬT] Styles cho footer
   footer: {
     paddingTop: 12,
     paddingBottom: 24,
@@ -461,7 +460,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#E5E7EB',
     flexDirection: 'row',
-    // [CẬP NHẬT] Đẩy các nút sang bên phải
     justifyContent: 'flex-end', 
     alignItems: 'center',
   },

@@ -1,4 +1,4 @@
-// --- START OF FILE ServeStatusScreen.tsx (ĐÃ NÂNG CẤP) ---
+// --- START OF FILE ServeStatusScreen.tsx (ĐÃ NÂNG CẤP VỚI LOGGING) ---
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -78,11 +78,10 @@ const ServeStatusScreen = ({ route, navigation }: Props) => {
   const [items, setItems] = useState<ServeItem[]>([]);
 
   const fetchItems = useCallback(async () => {
-    // Không set loading ở đây để refresh nền mượt hơn
     try {
       const { data, error } = await supabase
         .from('order_items')
-        .select('id, quantity, status, customizations') // Lấy cột status mới
+        .select('id, quantity, status, customizations')
         .eq('order_id', orderId);
 
       if (error) throw error;
@@ -91,10 +90,9 @@ const ServeStatusScreen = ({ route, navigation }: Props) => {
         id: item.id,
         name: item.customizations?.name || 'Món không xác định',
         quantity: item.quantity,
-        status: item.status, // Gán status mới
+        status: item.status,
       }));
       
-      // Kiểm tra nếu tất cả món đã được phục vụ, tự động quay lại
       const allServed = formattedItems.every(item => item.status === 'served');
       if (allServed && formattedItems.length > 0) {
         Alert.alert('Hoàn thành', 'Tất cả món đã được phục vụ!', [
@@ -118,7 +116,11 @@ const ServeStatusScreen = ({ route, navigation }: Props) => {
     fetchItems();
     const channel = supabase.channel(`public:order_items:serve_status:${orderId}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'order_items', filter: `order_id=eq.${orderId}`},
-      () => { fetchItems() }
+      (payload) => { 
+        // [THÊM LOGGING] Dòng này sẽ giúp bạn kiểm tra xem client có nhận được event không
+        console.log('Real-time update received! Payload:', payload);
+        fetchItems(); 
+      }
     ).subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [fetchItems, orderId]);
@@ -127,7 +129,7 @@ const ServeStatusScreen = ({ route, navigation }: Props) => {
     try {
       const { error } = await supabase
         .from('order_items')
-        .update({ status: 'served' }) // Cập nhật status thành 'served'
+        .update({ status: 'served' })
         .eq('id', itemToUpdate.id);
 
       if (error) throw error;
@@ -185,4 +187,4 @@ const styles = StyleSheet.create({
 });
 
 export default ServeStatusScreen;
-// --- END OF FILE ServeStatusScreen.tsx (ĐÃ NÂNG CẤP) ---
+// --- END OF FILE ServeStatusScreen.tsx (ĐÃ NÂNG CẤP VỚI LOGGING) ---

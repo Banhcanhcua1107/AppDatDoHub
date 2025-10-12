@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { supabase } from '../../services/supabase';
-import { Ionicons, FontAwesome5 } from '@expo/vector-icons'; // Import FontAwesome5
+import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { KitchenStackParamList } from '../../navigation/AppNavigator';
 
@@ -37,7 +37,7 @@ interface SummaryDetailItem {
   table_name: string;
 }
 
-// ---- [CẬP NHẬT] COMPONENT CON VỚI CÁC NÚT HÀNH ĐỘNG RIÊNG LẺ ----
+// ---- COMPONENT CON (ĐÃ CẬP NHẬT NÚT "TRẢ MÓN") ----
 const DetailItemCard: React.FC<{
   item: SummaryDetailItem;
   onProcess: (itemId: number) => void;
@@ -83,13 +83,14 @@ const DetailItemCard: React.FC<{
           </TouchableOpacity>
         )}
         
+        {/* [CẬP NHẬT] Thay đổi nút "Xong" thành "Trả món" với icon chuông */}
         {status === STATUS.IN_PROGRESS && (
           <TouchableOpacity
             style={styles.completeButton}
             onPress={() => onComplete(item.id)}
           >
-            <Ionicons name="checkmark-circle-outline" size={18} color="white" />
-            <Text style={styles.buttonText}>Xong</Text>
+            <Ionicons name="notifications-outline" size={18} color="white" />
+            <Text style={styles.buttonText}>Trả món</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -186,7 +187,6 @@ const KitchenSummaryDetailScreen = () => {
     }, [fetchDetails, itemName])
   );
 
-  // --- [THÊM] LOGIC CHO CÁC NÚT HÀNH ĐỘNG RIÊNG LẺ ---
   const handleProcessItem = async (itemId: number) => {
     setDetailItems(current => current.map(item => item.id === itemId ? { ...item, status: STATUS.IN_PROGRESS } : item));
     try {
@@ -198,11 +198,9 @@ const KitchenSummaryDetailScreen = () => {
   };
 
   const handleCompleteItem = async (itemId: number) => {
-    // Cập nhật trạng thái tạm thời, sau đó sẽ lọc bỏ khỏi list
     setDetailItems(current => current.map(item => item.id === itemId ? { ...item, status: STATUS.COMPLETED } : item));
     try {
       await supabase.from('order_items').update({ status: STATUS.COMPLETED }).eq('id', itemId).throwOnError();
-      // Sau khi thành công, lọc bỏ món đã hoàn thành ra khỏi danh sách
       setDetailItems(current => current.filter(item => item.id !== itemId));
     } catch (err: any) {
       Alert.alert('Lỗi', 'Không thể hoàn thành món: ' + err.message);
@@ -210,7 +208,6 @@ const KitchenSummaryDetailScreen = () => {
     }
   };
 
-  // --- LOGIC CHO CÁC NÚT HÀNH ĐỘNG TỔNG ---
   const handleProcessAllPending = async () => {
     const itemsToUpdate = detailItems.filter(item => item.status === STATUS.PENDING);
     if (itemsToUpdate.length === 0) return;
@@ -307,7 +304,7 @@ const KitchenSummaryDetailScreen = () => {
   );
 };
 
-// ---- [CẬP NHẬT] STYLESHEET ----
+// ---- STYLESHEET ----
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F3F4F6' },
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
@@ -369,7 +366,6 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     alignSelf: 'flex-start',
   },
-  // [CẬP NHẬT] cardFooter để chứa cả status và nút
   cardFooter: {
       paddingHorizontal: 16,
       paddingBottom: 8,
@@ -391,7 +387,6 @@ const styles = StyleSheet.create({
       fontWeight: '600', 
       fontSize: 12 
   },
-  // [THÊM] Styles cho các nút hành động riêng lẻ
   footerActionsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -402,7 +397,6 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   
-  // Action buttons with text
   processButton: {
     flexDirection: 'row',
     alignItems: 'center',
