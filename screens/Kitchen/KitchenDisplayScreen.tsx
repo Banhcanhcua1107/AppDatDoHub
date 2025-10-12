@@ -208,10 +208,10 @@ const KitchenDisplayScreen = () => {
       const itemNames = ticketToReturn.items.map(item => `${item.name} (x${item.quantity})`);
       const itemIds = ticketToReturn.items.map(item => item.id);
 
-      // Cập nhật status của tất cả items về 'served' (đã phục vụ/trả về)
+      // [SỬA] Cập nhật status sang 'served' thay vì 'completed' để món biến mất khỏi tổng hợp
       const { error: updateError } = await supabase
         .from('order_items')
-        .update({ status: STATUS.COMPLETED })
+        .update({ status: STATUS.SERVED })
         .in('id', itemIds);
       if (updateError) throw updateError;
 

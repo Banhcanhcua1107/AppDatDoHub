@@ -153,7 +153,7 @@ const KitchenSummaryDetailScreen = () => {
       const { data, error } = await supabase
         .from('order_items')
         .select(`id, quantity, status, customizations, orders ( order_tables ( tables ( name ) ) )`)
-        .in('status', [STATUS.PENDING, STATUS.IN_PROGRESS])
+        .in('status', [STATUS.PENDING, STATUS.IN_PROGRESS, STATUS.COMPLETED])  // [SỬA] Thêm COMPLETED
         .eq('customizations->>name', itemName)
         .order('created_at', { referencedTable: 'orders', ascending: true });
 
@@ -201,7 +201,8 @@ const KitchenSummaryDetailScreen = () => {
     setDetailItems(current => current.map(item => item.id === itemId ? { ...item, status: STATUS.COMPLETED } : item));
     try {
       await supabase.from('order_items').update({ status: STATUS.COMPLETED }).eq('id', itemId).throwOnError();
-      setDetailItems(current => current.filter(item => item.id !== itemId));
+      // [XÓA] Không filter ra nữa, để món vẫn hiển thị với status completed
+      // setDetailItems(current => current.filter(item => item.id !== itemId));
     } catch (err: any) {
       Alert.alert('Lỗi', 'Không thể hoàn thành món: ' + err.message);
       setDetailItems(current => current.map(item => item.id === itemId ? { ...item, status: STATUS.IN_PROGRESS } : item));
@@ -241,7 +242,8 @@ const KitchenSummaryDetailScreen = () => {
       setDetailItems(current => current.map(item => itemIdsToUpdate.includes(item.id) ? { ...item, status: STATUS.IN_PROGRESS } : item));
     } finally {
       setIsCompleting(false);
-      setDetailItems(current => current.filter(item => item.status !== STATUS.COMPLETED));
+      // [XÓA] Không filter ra nữa, để món vẫn hiển thị với status completed
+      // setDetailItems(current => current.filter(item => item.status !== STATUS.COMPLETED));
     }
   };
 

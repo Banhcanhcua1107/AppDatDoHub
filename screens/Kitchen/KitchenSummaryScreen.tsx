@@ -25,13 +25,16 @@ import { KitchenStackParamList } from '../../navigation/AppNavigator';
 import { KitchenTabParamList } from '../../navigation/KitchenTabs';
 
 
-const STATUS_TO_AGGREGATE = ['waiting', 'in_progress'];
+// [SỬA] Thêm 'completed' để hiển thị món đã hoàn thành trong tổng hợp
+// Chỉ khi nào chuyển sang 'served' thì món mới biến mất
+const STATUS_TO_AGGREGATE = ['waiting', 'in_progress', 'completed'];
 
 interface SummarizedItem {
   name: string;
   total_quantity: number;
   waiting_quantity: number;
   in_progress_quantity: number;
+  completed_quantity: number;  // [THÊM] Số lượng món đã hoàn thành
   table_count: number;
   tables: string[];
   oldest_time: string | null;
@@ -75,6 +78,7 @@ const KitchenSummaryScreen = () => {
         total_quantity: number;
         waiting_quantity: number;
         in_progress_quantity: number;
+        completed_quantity: number;  // [THÊM]
         tables: Set<string>;
         oldest_time: string | null;
       }
@@ -90,6 +94,7 @@ const KitchenSummaryScreen = () => {
             total_quantity: 0,
             waiting_quantity: 0,
             in_progress_quantity: 0,
+            completed_quantity: 0,  // [THÊM]
             tables: new Set<string>(),
             oldest_time: null,
           };
@@ -101,6 +106,8 @@ const KitchenSummaryScreen = () => {
           acc[itemName].waiting_quantity += item.quantity;
         } else if (item.status === 'in_progress') {
           acc[itemName].in_progress_quantity += item.quantity;
+        } else if (item.status === 'completed') {  // [THÊM]
+          acc[itemName].completed_quantity += item.quantity;
         }
         
         acc[itemName].tables.add(tableName);
@@ -117,6 +124,7 @@ const KitchenSummaryScreen = () => {
         total_quantity: itemMap[name].total_quantity,
         waiting_quantity: itemMap[name].waiting_quantity,
         in_progress_quantity: itemMap[name].in_progress_quantity,
+        completed_quantity: itemMap[name].completed_quantity,  // [THÊM]
         table_count: itemMap[name].tables.size,
         tables: Array.from(itemMap[name].tables),
         oldest_time: itemMap[name].oldest_time,
@@ -221,6 +229,14 @@ const KitchenSummaryScreen = () => {
           <View style={styles.statusItem}>
             <Text style={styles.statusLabel}>Đang làm</Text>
             <Text style={styles.statusValue}>{item.in_progress_quantity}</Text>
+          </View>
+          
+          <View style={styles.dividerVertical} />
+          
+          {/* [THÊM] Hiển thị số lượng đã hoàn thành */}
+          <View style={styles.statusItem}>
+            <Text style={styles.statusLabel}>Xong</Text>
+            <Text style={[styles.statusValue, { color: '#10B981' }]}>{item.completed_quantity}</Text>
           </View>
           
           <View style={styles.dividerVertical} />

@@ -38,7 +38,7 @@ interface KitchenDetailItem {
   customizations: any;
 }
 
-// ---- COMPONENT CON (ĐÃ CẬP NHẬT NÚT "TRẢ MÓN") ----
+// ---- COMPONENT CON (CẬP NHẬT UI ĐỂ KHỚP VỚI HÌNH ẢNH) ----
 const KitchenDetailItemCard: React.FC<{
   item: KitchenDetailItem;
   onProcess: (itemId: number) => void;
@@ -72,14 +72,14 @@ const KitchenDetailItemCard: React.FC<{
           </TouchableOpacity>
         )}
         
-        {/* [CẬP NHẬT] Thay đổi nút "Xong" thành "Trả món" với icon chuông */}
+        {/* [CẬP NHẬT] Thay đổi lại thành "Xong" để khớp với UI trong ảnh */}
         {status === STATUS.IN_PROGRESS && (
           <TouchableOpacity
             style={styles.completeButton}
             onPress={() => onComplete(item.id)}
           >
-            <Ionicons name="notifications-outline" size={18} color="white" />
-            <Text style={styles.buttonText}>Trả món</Text>
+            <Ionicons name="checkmark-circle-outline" size={18} color="white" />
+            <Text style={styles.buttonText}>Xong</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -209,11 +209,10 @@ const KitchenDetailScreen = () => {
   const handleProcessAll = async () => {
     const itemsToProcess = items.filter(item => item.status === STATUS.PENDING);
     if (itemsToProcess.length === 0) {
-      return; // Không có món nào để chế biến
+      return;
     }
     const itemIdsToProcess = itemsToProcess.map(item => item.id);
     
-    // Cập nhật UI ngay lập tức
     setItems(currentItems =>
       currentItems.map(item =>
         itemIdsToProcess.includes(item.id) ? { ...item, status: STATUS.IN_PROGRESS } : item
@@ -222,11 +221,9 @@ const KitchenDetailScreen = () => {
     
     try {
       await supabase.from('order_items').update({ status: STATUS.IN_PROGRESS }).in('id', itemIdsToProcess).throwOnError();
-      // Refresh data để đảm bảo đồng bộ
       await fetchOrderDetails();
     } catch (err: any) {
       console.error('Lỗi chế biến tất cả món:', err.message);
-      // Rollback nếu lỗi
       setItems(currentItems =>
         currentItems.map(item =>
           itemIdsToProcess.includes(item.id) ? { ...item, status: STATUS.PENDING } : item
@@ -239,21 +236,17 @@ const KitchenDetailScreen = () => {
     setReturnModalVisible(false);
     
     try {
-      // Lấy danh sách tên món
       const itemNames = items.map(item => `${item.customizations.name} (x${item.quantity})`);
-      
-      // Lấy danh sách ID của tất cả items trong order này
       const itemIds = items.map(item => item.id);
 
-      // Cập nhật status của tất cả items về 'completed' (đã hoàn thành/sẵn sàng)
+      // [SỬA] Chuyển status sang 'served' thay vì 'completed' để món biến mất khỏi tổng hợp
       const { error: updateError } = await supabase
         .from('order_items')
-        .update({ status: STATUS.COMPLETED }) 
+        .update({ status: STATUS.SERVED }) 
         .in('id', itemIds);
 
       if (updateError) throw updateError;
 
-      // Tạo thông báo trả món
       const { error: insertError } = await supabase
         .from('return_notifications')
         .insert({
@@ -265,11 +258,9 @@ const KitchenDetailScreen = () => {
 
       if (insertError) throw insertError;
       
-      // Trả món thành công, quay về màn hình trước
       navigation.goBack();
     } catch (err: any) {
       console.error("Error creating return notification:", err.message);
-      // Hiển thị toast hoặc thông báo lỗi đơn giản
     }
   };
 
@@ -302,7 +293,6 @@ const KitchenDetailScreen = () => {
         contentContainerStyle={styles.listContainer}
         ListEmptyComponent={<View style={styles.centerContainer}><Text style={{color: '#6B7280'}}>Order này không có món nào.</Text></View>}
       />
-      {/* Footer với các nút hành động */}
       <View style={styles.footer}>
           <FooterActionButton
               icon="flame-outline"
@@ -321,7 +311,6 @@ const KitchenDetailScreen = () => {
           />
       </View>
 
-      {/* Modal xác nhận trả món */}
       <ConfirmModal
         isVisible={isReturnModalVisible}
         title="Xác nhận trả món"
