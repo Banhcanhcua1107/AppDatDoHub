@@ -247,7 +247,7 @@ const KitchenDetailScreen = () => {
       // Cập nhật status của tất cả items về 'served' (đã phục vụ/trả về)
       const { error: updateError } = await supabase
         .from('order_items')
-        .update({ status: STATUS.SERVED })
+        .update({ status: STATUS.COMPLETED }) 
         .in('id', itemIds);
 
       if (updateError) throw updateError;
