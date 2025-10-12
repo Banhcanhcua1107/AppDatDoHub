@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, SafeAreaView, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, SafeAreaView, StatusBar, Alert } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { supabase } from '../../services/supabase';
 import { Ionicons } from '@expo/vector-icons';
@@ -123,7 +123,7 @@ const KitchenDisplayScreen = () => {
       const { data, error } = await supabase
         .from('order_items')
         .select('id, quantity, customizations, status, orders ( id, created_at, order_tables ( tables ( name ) ) )')
-        .in('status', [STATUS.PENDING, STATUS.IN_PROGRESS, STATUS.COMPLETED])
+        .neq('status', STATUS.SERVED)
         .order('created_at', { referencedTable: 'orders', ascending: true });
 
       if (error) throw error;
@@ -166,6 +166,7 @@ const KitchenDisplayScreen = () => {
 
   useFocusEffect(
     useCallback(() => {
+      setOrders([]);
       setLoading(true);
       fetchKitchenOrders();
       const channel = supabase
@@ -195,22 +196,23 @@ const KitchenDisplayScreen = () => {
 
   const handleConfirmReturnOrder = async () => {
     if (!selectedTicket) return;
-    
+    const originalOrders = orders;
+    const ticketToReturn = selectedTicket;
+
+    setOrders(prevOrders => prevOrders.filter(order => order.order_id !== ticketToReturn.order_id));
+    setReturnModalVisible(false);
+    setSelectedTicket(null);
     setReturnModalVisible(false);
     
     try {
-      // Lấy danh sách tên món
-      const itemNames = selectedTicket.items.map(item => `${item.name} (x${item.quantity})`);
-      
-      // Lấy danh sách ID của tất cả items trong order này
-      const itemIds = selectedTicket.items.map(item => item.id);
+      const itemNames = ticketToReturn.items.map(item => `${item.name} (x${item.quantity})`);
+      const itemIds = ticketToReturn.items.map(item => item.id);
 
       // Cập nhật status của tất cả items về 'served' (đã phục vụ/trả về)
       const { error: updateError } = await supabase
         .from('order_items')
         .update({ status: STATUS.SERVED })
         .in('id', itemIds);
-
       if (updateError) throw updateError;
 
       // Tạo thông báo trả món
@@ -229,6 +231,8 @@ const KitchenDisplayScreen = () => {
       // setOrders(prevOrders => prevOrders.filter(order => order.order_id !== selectedTicket.order_id));
     } catch (err: any) {
       console.error("Error creating return notification:", err.message);
+      Alert.alert('Lỗi', 'Không thể trả món. Vui lòng thử lại.');
+      setOrders(originalOrders);
     }
   };
 
