@@ -136,6 +136,7 @@ const KitchenDetailScreen = () => {
         .from('order_items')
         .select('id, quantity, customizations, status')
         .eq('order_id', orderId)
+        .neq('status', STATUS.SERVED) // Loại bỏ các món đã served
         .order('created_at', { ascending: true });
 
       if (error) throw error;
@@ -239,9 +240,20 @@ const KitchenDetailScreen = () => {
     try {
       // Lấy danh sách tên món
       const itemNames = items.map(item => `${item.customizations.name} (x${item.quantity})`);
+      
+      // Lấy danh sách ID của tất cả items trong order này
+      const itemIds = items.map(item => item.id);
+
+      // Cập nhật status của tất cả items về 'served' (đã phục vụ/trả về)
+      const { error: updateError } = await supabase
+        .from('order_items')
+        .update({ status: STATUS.SERVED })
+        .in('id', itemIds);
+
+      if (updateError) throw updateError;
 
       // Tạo thông báo trả món
-      const { error } = await supabase
+      const { error: insertError } = await supabase
         .from('return_notifications')
         .insert({
           order_id: orderId,
@@ -250,7 +262,7 @@ const KitchenDetailScreen = () => {
           status: 'pending'
         });
 
-      if (error) throw error;
+      if (insertError) throw insertError;
       
       // Trả món thành công, quay về màn hình trước
       navigation.goBack();

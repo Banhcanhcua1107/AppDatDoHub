@@ -207,6 +207,17 @@ const KitchenDisplayScreen = () => {
       // Lấy danh sách tên món
       const itemNames = selectedTicket.items.map(item => `${item.name} (x${item.quantity})`);
       
+      // Lấy danh sách ID của tất cả items trong order này
+      const itemIds = selectedTicket.items.map(item => item.id);
+
+      // Cập nhật status của tất cả items về 'served' (đã phục vụ/trả về)
+      const { error: updateError } = await supabase
+        .from('order_items')
+        .update({ status: STATUS.SERVED })
+        .in('id', itemIds);
+
+      if (updateError) throw updateError;
+
       // Tạo thông báo trả món
       const { error } = await supabase
         .from('return_notifications')
@@ -219,8 +230,8 @@ const KitchenDisplayScreen = () => {
 
       if (error) throw error;
       
-      // Cập nhật danh sách để ẩn order này
-      setOrders(prevOrders => prevOrders.filter(order => order.order_id !== selectedTicket.order_id));
+      // Cập nhật danh sách để ẩn order này (không cần thiết vì real-time sẽ tự cập nhật)
+      // setOrders(prevOrders => prevOrders.filter(order => order.order_id !== selectedTicket.order_id));
     } catch (err: any) {
       console.error("Error creating return notification:", err.message);
     }
