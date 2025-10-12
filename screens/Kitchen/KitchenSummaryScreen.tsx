@@ -14,7 +14,6 @@ import {
   Modal,
   TouchableWithoutFeedback,
 } from 'react-native';
-// [SỬA LỖI] Import các type cần thiết
 import { useFocusEffect, useNavigation, CompositeScreenProps } from '@react-navigation/native';
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -22,7 +21,6 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { supabase } from '../../services/supabase';
 import { Ionicons } from '@expo/vector-icons';
 
-// [SỬA LỖI] Import cả hai ParamList
 import { KitchenStackParamList } from '../../navigation/AppNavigator';
 import { KitchenTabParamList } from '../../navigation/KitchenTabs';
 
@@ -54,19 +52,19 @@ const KitchenSummaryScreen = () => {
   const [isSortMenuVisible, setSortMenuVisible] = useState(false);
   const [sortOption, setSortOption] = useState<SortOption>('quantity_desc');
   
-  // [SỬA LỖI] Lấy navigation từ prop type đã kết hợp
   const navigation = useNavigation<KitchenSummaryScreenProps['navigation']>();
 
   const fetchSummaryData = useCallback(async () => {
     try {
+      // [SỬA LỖI] Xóa "!inner" để chuyển thành LEFT JOIN, giúp truy vấn ổn định hơn
+      // và không bỏ sót các món có thể bị thiếu liên kết tạm thời.
       const { data, error } = await supabase
         .from('order_items')
-        .select('quantity, customizations, status, created_at, orders!inner(order_tables(tables(name)))')
+        .select('quantity, customizations, status, created_at, orders(order_tables(tables(name)))')
         .in('status', STATUS_TO_AGGREGATE);
 
       if (error) throw error;
 
-      // Safety check for data
       if (!data || !Array.isArray(data)) {
         console.warn('No data returned from query');
         setSummaryItems([]);
@@ -83,8 +81,8 @@ const KitchenSummaryScreen = () => {
 
       const itemMap = data.reduce((acc, item) => {
         const itemName = item.customizations.name;
-        // Fix: Get table name from nested structure through order_tables (it's an array!)
         const orders = item.orders as any;
+        // Logic xử lý tên bàn đã có fallback "Mang về" nên sẽ hoạt động tốt với left join
         const tableName = orders?.order_tables?.[0]?.tables?.name || 'Mang về';
         
         if (!acc[itemName]) {
@@ -107,7 +105,6 @@ const KitchenSummaryScreen = () => {
         
         acc[itemName].tables.add(tableName);
         
-        // Cập nhật thời gian cũ nhất
         if (!acc[itemName].oldest_time || item.created_at < acc[itemName].oldest_time) {
           acc[itemName].oldest_time = item.created_at;
         }
@@ -167,9 +164,8 @@ const KitchenSummaryScreen = () => {
         filteredItems.sort((a, b) => b.name.localeCompare(a.name));
         break;
       case 'time_asc':
-        // Sắp xếp theo thời gian chờ lâu nhất (oldest_time cũ nhất lên đầu)
         filteredItems.sort((a, b) => {
-          if (!a.oldest_time) return 1; // Không có thời gian thì xuống cuối
+          if (!a.oldest_time) return 1;
           if (!b.oldest_time) return -1;
           return new Date(a.oldest_time).getTime() - new Date(b.oldest_time).getTime();
         });
@@ -184,7 +180,6 @@ const KitchenSummaryScreen = () => {
   }, [summaryItems, searchQuery, sortOption]);
   
   const renderSummaryItem = ({ item }: { item: SummarizedItem }) => {
-    // Tính thời gian chờ
     const getWaitingTime = () => {
       if (!item.oldest_time) return '';
       const now = new Date();
@@ -208,7 +203,6 @@ const KitchenSummaryScreen = () => {
         activeOpacity={0.7}
         onPress={() => navigation.navigate('KitchenSummaryDetail', { itemName: item.name })}
       >
-        {/* Row 1: Tên món + Tổng số lượng */}
         <View style={styles.topRow}>
           <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
           <View style={styles.totalBadge}>
@@ -216,7 +210,6 @@ const KitchenSummaryScreen = () => {
           </View>
         </View>
 
-        {/* Row 2: Chi tiết trạng thái */}
         <View style={styles.statusRow}>
           <View style={styles.statusItem}>
             <Text style={styles.statusLabel}>Chờ</Text>
@@ -248,7 +241,6 @@ const KitchenSummaryScreen = () => {
           )}
         </View>
 
-        {/* Row 3: Danh sách bàn */}
         <View style={styles.tablesRow}>
           <Ionicons name="restaurant-outline" size={14} color="#9CA3AF" />
           <Text style={styles.tablesText} numberOfLines={1}>{item.tables.join(', ')}</Text>
@@ -426,7 +418,6 @@ const styles = StyleSheet.create({
   sortOptionDisabled: { paddingVertical: 12, paddingHorizontal: 8 },
   sortOptionDisabledText: { fontSize: 16, color: '#9CA3AF', fontStyle: 'italic' },
 
-  // Card styles - Clean & Structured
   card: {
     backgroundColor: 'white',
     borderRadius: 10,
@@ -439,7 +430,6 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   
-  // Row 1: Tên món + Tổng số
   topRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -467,7 +457,6 @@ const styles = StyleSheet.create({
     color: 'white',
   },
   
-  // Row 2: Status grid
   statusRow: {
     flexDirection: 'row',
     backgroundColor: '#F9FAFB',
@@ -500,7 +489,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 8,
   },
   
-  // Row 3: Tables list
   tablesRow: {
     flexDirection: 'row',
     alignItems: 'center',
