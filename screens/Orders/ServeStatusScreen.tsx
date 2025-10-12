@@ -187,4 +187,3 @@ const styles = StyleSheet.create({
 });
 
 export default ServeStatusScreen;
-// --- END OF FILE ServeStatusScreen.tsx (ĐÃ NÂNG CẤP VỚI LOGGING) ---

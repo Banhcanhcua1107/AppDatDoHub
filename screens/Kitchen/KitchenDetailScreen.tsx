@@ -236,10 +236,18 @@ const KitchenDetailScreen = () => {
     setReturnModalVisible(false);
     
     try {
-      const itemNames = items.map(item => `${item.customizations.name} (x${item.quantity})`);
-      const itemIds = items.map(item => item.id);
+      // [SỬA] Lấy TẤT CẢ món của order này (không filter theo status)
+      const { data: allOrderItems, error: fetchError } = await supabase
+        .from('order_items')
+        .select('id, quantity, customizations')
+        .eq('order_id', orderId);
 
-      // [SỬA] Chuyển status sang 'served' thay vì 'completed' để món biến mất khỏi tổng hợp
+      if (fetchError) throw fetchError;
+
+      const itemNames = allOrderItems.map(item => `${item.customizations.name} (x${item.quantity})`);
+      const itemIds = allOrderItems.map(item => item.id);
+
+      // Chuyển TẤT CẢ món sang 'served'
       const { error: updateError } = await supabase
         .from('order_items')
         .update({ status: STATUS.SERVED }) 

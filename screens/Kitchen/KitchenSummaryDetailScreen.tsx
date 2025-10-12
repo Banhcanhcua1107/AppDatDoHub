@@ -1,5 +1,3 @@
-// screens/Kitchen/KitchenSummaryDetailScreen.tsx
-
 import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
@@ -25,6 +23,7 @@ const STATUS = {
   PENDING: 'waiting',
   IN_PROGRESS: 'in_progress',
   COMPLETED: 'completed',
+  SERVED: 'served',  // [THÊM]
 } as const;
 
 type StatusType = typeof STATUS[keyof typeof STATUS];
@@ -228,27 +227,85 @@ const KitchenSummaryDetailScreen = () => {
   };
 
   const handleCompleteAllInProgress = async () => {
-    const itemsToUpdate = detailItems.filter(item => item.status === STATUS.IN_PROGRESS);
-    if (itemsToUpdate.length === 0) return;
-    const itemIdsToUpdate = itemsToUpdate.map(item => item.id);
-
+    // [SỬA] Lấy TẤT CẢ món có tên này (không filter theo status hiển thị)
     setIsCompleting(true);
-    setDetailItems(current => current.map(item => itemIdsToUpdate.includes(item.id) ? { ...item, status: STATUS.COMPLETED } : item));
 
     try {
-      await supabase.from('order_items').update({ status: STATUS.COMPLETED }).in('id', itemIdsToUpdate).throwOnError();
+      // Query TẤT CẢ món có tên này, không filter theo status trong detailItems
+      const { data: allItemsWithName, error: fetchError } = await supabase
+        .from('order_items')
+        .select(`id, quantity, status, customizations, orders ( order_tables ( tables ( name ) ) )`)
+        .eq('customizations->>name', itemName);
+
+      if (fetchError) throw fetchError;
+
+      if (!allItemsWithName || allItemsWithName.length === 0) {
+        Alert.alert('Thông báo', 'Không có món nào để trả.');
+        setIsCompleting(false);
+        return;
+      }
+
+      // Map lại để lấy table_name
+      const mappedAllItems = allItemsWithName.map((item: any) => ({
+        id: item.id,
+        quantity: item.quantity,
+        status: item.status,
+        customizations: item.customizations,
+        table_name: item.orders?.order_tables?.[0]?.tables?.name || 'Mang về',
+      }));
+
+      // Nhóm theo bàn
+      const orderMap = new Map<string, { tableName: string; items: typeof mappedAllItems }>();
+      
+      mappedAllItems.forEach(item => {
+        const key = item.table_name;
+        if (!orderMap.has(key)) {
+          orderMap.set(key, { tableName: item.table_name, items: [] });
+        }
+        orderMap.get(key)!.items.push(item);
+      });
+
+      // Cập nhật TẤT CẢ món sang 'served'
+      const allItemIds = mappedAllItems.map(item => item.id);
+      const { error: updateError } = await supabase
+        .from('order_items')
+        .update({ status: STATUS.SERVED })
+        .in('id', allItemIds);
+
+      if (updateError) throw updateError;
+
+      // Tạo thông báo trả món cho mỗi bàn
+      for (const [tableName, data] of orderMap.entries()) {
+        const itemNames = data.items.map(item => `${item.customizations.name} (x${item.quantity})`);
+        
+        const { error: notifError } = await supabase
+          .from('return_notifications')
+          .insert({
+            order_id: null,
+            table_name: tableName,
+            item_names: itemNames,
+            status: 'pending'
+          });
+
+        if (notifError) console.error('Error creating notification:', notifError);
+      }
+      
+      // Tự động quay về màn hình trước
+      navigation.goBack();
+
     } catch (err: any) {
-      Alert.alert('Lỗi', 'Không thể hoàn thành món: ' + err.message);
-      setDetailItems(current => current.map(item => itemIdsToUpdate.includes(item.id) ? { ...item, status: STATUS.IN_PROGRESS } : item));
+      Alert.alert('Lỗi', 'Không thể trả món: ' + err.message);
     } finally {
       setIsCompleting(false);
-      // [XÓA] Không filter ra nữa, để món vẫn hiển thị với status completed
-      // setDetailItems(current => current.filter(item => item.status !== STATUS.COMPLETED));
     }
   };
 
   const hasPendingItems = useMemo(() => detailItems.some(item => item.status === STATUS.PENDING), [detailItems]);
-  const hasInProgressItems = useMemo(() => detailItems.some(item => item.status === STATUS.IN_PROGRESS), [detailItems]);
+  // [THÊM] Kiểm tra xem có món nào để trả không (in_progress hoặc completed)
+  const hasItemsToReturn = useMemo(() => 
+    detailItems.some(item => item.status === STATUS.IN_PROGRESS || item.status === STATUS.COMPLETED), 
+    [detailItems]
+  );
 
   if (loading) {
     return <View style={styles.centerContainer}><ActivityIndicator size="large" color="#1E3A8A" /></View>;
@@ -298,7 +355,7 @@ const KitchenSummaryDetailScreen = () => {
               onPress={handleCompleteAllInProgress}
               color="#10B981"
               backgroundColor="#ECFDF5"
-              disabled={!hasInProgressItems}
+              disabled={!hasItemsToReturn}
               loading={isCompleting}
           />
       </View>
