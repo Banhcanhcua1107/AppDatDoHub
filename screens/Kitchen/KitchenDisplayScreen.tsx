@@ -123,7 +123,7 @@ const KitchenDisplayScreen = () => {
       const { data, error } = await supabase
         .from('order_items')
         .select('id, quantity, customizations, status, orders ( id, created_at, order_tables ( tables ( name ) ) )')
-        .in('status', [STATUS.PENDING, STATUS.IN_PROGRESS, STATUS.COMPLETED, STATUS.SERVED])
+        .in('status', [STATUS.PENDING, STATUS.IN_PROGRESS, STATUS.COMPLETED])
         .order('created_at', { referencedTable: 'orders', ascending: true });
 
       if (error) throw error;
@@ -154,12 +154,7 @@ const KitchenDisplayScreen = () => {
       }, {} as Record<string, OrderTicket>);
 
       const finalOrders = Object.values(groupedOrders)
-        .map(order => ({ ...order, total_items: order.items.reduce((sum, item) => sum + item.quantity, 0) }))
-        .filter(order => {
-          // Ẩn order nếu tất cả món đã served
-          const allServed = order.items.every(item => item.status === STATUS.SERVED);
-          return !allServed;
-        });
+        .map(order => ({ ...order, total_items: order.items.reduce((sum, item) => sum + item.quantity, 0) }));
 
       setOrders(finalOrders);
     } catch (err: any) {
