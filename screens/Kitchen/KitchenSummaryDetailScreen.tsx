@@ -227,25 +227,25 @@ const KitchenSummaryDetailScreen = () => {
   };
 
   const handleCompleteAllInProgress = async () => {
-    // [SỬA] Lấy TẤT CẢ món có tên này (không filter theo status hiển thị)
     setIsCompleting(true);
-
     try {
-      // Query TẤT CẢ món có tên này, không filter theo status trong detailItems
+      // [*** SỬA LỖI ***]
+      // Chỉ query những món có tên này VÀ có status là waiting, in_progress, hoặc completed.
+      // Điều này ngăn chặn việc "hồi sinh" các món đã được 'served'.
       const { data: allItemsWithName, error: fetchError } = await supabase
         .from('order_items')
         .select(`id, quantity, status, customizations, orders ( order_tables ( tables ( name ) ) )`)
-        .eq('customizations->>name', itemName);
+        .eq('customizations->>name', itemName)
+        .in('status', [STATUS.PENDING, STATUS.IN_PROGRESS, STATUS.COMPLETED]); // <-- THÊM DÒNG NÀY
 
       if (fetchError) throw fetchError;
 
       if (!allItemsWithName || allItemsWithName.length === 0) {
-        Alert.alert('Thông báo', 'Không có món nào để trả.');
+        Alert.alert('Thông báo', 'Không có món nào để hoàn thành.');
         setIsCompleting(false);
         return;
       }
 
-      // Map lại để lấy table_name
       const mappedAllItems = allItemsWithName.map((item: any) => ({
         id: item.id,
         quantity: item.quantity,
@@ -254,20 +254,7 @@ const KitchenSummaryDetailScreen = () => {
         table_name: item.orders?.order_tables?.[0]?.tables?.name || 'Mang về',
       }));
 
-      // Nhóm theo bàn
-      const orderMap = new Map<string, { tableName: string; items: typeof mappedAllItems }>();
-      
-      mappedAllItems.forEach(item => {
-        const key = item.table_name;
-        if (!orderMap.has(key)) {
-          orderMap.set(key, { tableName: item.table_name, items: [] });
-        }
-        orderMap.get(key)!.items.push(item);
-      });
-
-      // [*** YÊU CẦU 3 & 4 ***] 
-      // Cập nhật TẤT CẢ món sang 'completed' thay vì 'served'
-      // để box không bị mất ở màn hình KitchenSummaryScreen.
+      // Cập nhật tất cả các món tìm được (chỉ những món đang hoạt động) sang 'completed'
       const allItemIds = mappedAllItems.map(item => item.id);
       const { error: updateError } = await supabase
         .from('order_items')
@@ -275,35 +262,18 @@ const KitchenSummaryDetailScreen = () => {
         .in('id', allItemIds);
 
       if (updateError) throw updateError;
-
-      // Tạo thông báo trả món cho mỗi bàn
-      for (const [tableName, data] of orderMap.entries()) {
-        const itemNames = data.items.map(item => `${item.customizations.name} (x${item.quantity})`);
-        
-        const { error: notifError } = await supabase
-          .from('return_notifications')
-          .insert({
-            order_id: null,
-            table_name: tableName,
-            item_names: itemNames,
-            status: 'pending'
-          });
-
-        if (notifError) console.error('Error creating notification:', notifError);
-      }
       
       // Tự động quay về màn hình trước
       navigation.goBack();
 
     } catch (err: any) {
-      Alert.alert('Lỗi', 'Không thể trả món: ' + err.message);
+      Alert.alert('Lỗi', 'Không thể hoàn thành món: ' + err.message);
     } finally {
       setIsCompleting(false);
     }
   };
 
   const hasPendingItems = useMemo(() => detailItems.some(item => item.status === STATUS.PENDING), [detailItems]);
-  // [THÊM] Kiểm tra xem có món nào để trả không (in_progress hoặc completed)
   const hasItemsToReturn = useMemo(() => 
     detailItems.some(item => item.status === STATUS.IN_PROGRESS || item.status === STATUS.COMPLETED), 
     [detailItems]
@@ -353,7 +323,7 @@ const KitchenSummaryDetailScreen = () => {
           />
           <FooterActionButton
               icon="notifications-outline"
-              label="Báo xong hết"
+              label="Xong"
               onPress={handleCompleteAllInProgress}
               color="#10B981"
               backgroundColor="#ECFDF5"

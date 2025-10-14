@@ -312,7 +312,7 @@ const KitchenDetailScreen = () => {
           />
           <FooterActionButton
               icon="notifications-outline"
-              label="Báo xong hết"
+              label="Xong"
               onPress={() => setReturnModalVisible(true)}
               color="#10B981"
               backgroundColor="#ECFDF5"
