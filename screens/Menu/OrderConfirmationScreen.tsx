@@ -26,6 +26,7 @@ import { useNetwork } from '../../context/NetworkContext';
 import { offlineManager } from '../../services/OfflineManager';
 import PaymentMethodBox from '../../components/PaymentMethodBox';
 import BillContent from '../../components/BillContent';
+import { BillItem } from '../Orders/ProvisionalBillScreen';
 
 interface OrderSection {
   title: string;
@@ -986,20 +987,85 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
     setPendingPaymentAction(null);
   };
 
-  const handleCompleteCashPayment = () => {
+  const handleCompleteCashPayment = async () => {
     setBillModalVisible(false);
     
     if (!paymentInfo || !pendingPaymentAction) return;
     
-    // Xử lý thanh toán tiền mặt
-    if (pendingPaymentAction === 'keep') {
-      handleKeepSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'Tiền mặt');
-    } else if (pendingPaymentAction === 'end') {
-      handleEndSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'Tiền mặt');
-    }
+    setLoading(true);
     
-    // Reset states
-    setPendingPaymentAction(null);
+    try {
+      // Lấy thông tin order và items để truyền vào PrintPreview
+      const { data: orderData, error: orderError } = await supabase
+        .from('orders')
+        .select(`
+          id,
+          created_at,
+          order_tables!inner(
+            tables(id, name)
+          )
+        `)
+        .eq('id', paymentInfo.orderId)
+        .single();
+      
+      if (orderError) throw orderError;
+      
+      const { data: itemsData, error: itemsError } = await supabase
+        .from('order_items')
+        .select('quantity, unit_price, customizations, returned_quantity')
+        .eq('order_id', paymentInfo.orderId);
+      
+      if (itemsError) throw itemsError;
+      
+      // Xử lý thanh toán tiền mặt
+      if (pendingPaymentAction === 'keep') {
+        await handleKeepSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'Tiền mặt');
+      } else if (pendingPaymentAction === 'end') {
+        await handleEndSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'Tiền mặt');
+      }
+      
+      // Chuẩn bị dữ liệu cho PrintPreview
+      const items = itemsData
+        .map((item: any) => {
+          const remainingQuantity = item.quantity - (item.returned_quantity || 0);
+          if (remainingQuantity <= 0) return null;
+          
+          return {
+            name: item.customizations?.name || 'Món đã xóa',
+            unit_price: item.unit_price,
+            quantity: remainingQuantity,
+            totalPrice: item.unit_price * remainingQuantity
+          };
+        })
+        .filter((item: any): item is BillItem => item !== null);
+      
+      const totalPrice = items.reduce((sum, item) => sum + item.totalPrice, 0);
+      const totalItemCount = items.reduce((sum, item) => sum + item.quantity, 0);
+      
+      const order = {
+        orderId: orderData.id,
+        createdAt: orderData.created_at,
+        tables: orderData.order_tables.map((ot: any) => ({
+          id: ot.tables.id,
+          name: ot.tables.name
+        })),
+        totalPrice,
+        totalItemCount
+      };
+      
+      // Navigate đến màn hình in
+      navigation.navigate('PrintPreview', { order, items });
+      
+    } catch (error: any) {
+      Toast.show({
+        type: 'error',
+        text1: 'Lỗi',
+        text2: error.message
+      });
+    } finally {
+      setLoading(false);
+      setPendingPaymentAction(null);
+    }
   };
 
 
