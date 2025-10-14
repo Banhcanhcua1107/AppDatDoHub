@@ -172,6 +172,7 @@ const ServeStatusScreen = ({ route, navigation }: Props) => {
         message="Tất cả món đã được phục vụ xong! Bạn có muốn quay lại không?"
         confirmText="Quay lại"
         cancelText="Ở lại"
+        variant="success"
         onClose={() => setCompleteModalVisible(false)}
         onConfirm={() => {
           setCompleteModalVisible(false);

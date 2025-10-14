@@ -13,6 +13,7 @@ interface ConfirmModalProps {
   onConfirm: () => void;
   confirmText?: string;
   cancelText?: string;
+  variant?: 'danger' | 'success' | 'info' | 'warning'; // Thêm variant để tùy chỉnh màu
 }
 
 const ConfirmModal = ({
@@ -23,7 +24,42 @@ const ConfirmModal = ({
   onConfirm,
   confirmText = "Xác nhận",
   cancelText = "Hủy",
+  variant = 'danger', // Mặc định là danger (đỏ) để giữ tương thích với code cũ
 }: ConfirmModalProps) => {
+  
+  // Hàm lấy thông tin màu sắc và icon theo variant
+  const getVariantStyle = () => {
+    switch (variant) {
+      case 'success':
+        return {
+          iconName: 'checkmark-circle-outline' as const,
+          iconColor: '#10B981',
+          confirmButtonColor: '#10B981', // Xanh lá
+        };
+      case 'info':
+        return {
+          iconName: 'information-circle-outline' as const,
+          iconColor: '#3B82F6',
+          confirmButtonColor: '#3B82F6', // Xanh dương
+        };
+      case 'warning':
+        return {
+          iconName: 'warning-outline' as const,
+          iconColor: '#F97316',
+          confirmButtonColor: '#F97316', // Cam
+        };
+      case 'danger':
+      default:
+        return {
+          iconName: 'warning-outline' as const,
+          iconColor: '#F97316',
+          confirmButtonColor: '#DC2626', // Đỏ
+        };
+    }
+  };
+  
+  const variantStyle = getVariantStyle();
+  
   return (
     <Modal
       isVisible={isVisible}
@@ -35,7 +71,7 @@ const ConfirmModal = ({
     >
       <View style={styles.container}>
         <View style={styles.header}>
-            <Ionicons name="warning-outline" size={32} color="#F97316" />
+            <Ionicons name={variantStyle.iconName} size={32} color={variantStyle.iconColor} />
             <Text style={styles.title}>{title}</Text>
         </View>
 
@@ -45,7 +81,10 @@ const ConfirmModal = ({
           <TouchableOpacity style={[styles.button, styles.cancelButton]} onPress={onClose}>
             <Text style={styles.cancelButtonText}>{cancelText}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.button, styles.confirmButton]} onPress={onConfirm}>
+          <TouchableOpacity 
+            style={[styles.button, styles.confirmButton, { backgroundColor: variantStyle.confirmButtonColor }]} 
+            onPress={onConfirm}
+          >
             <Text style={styles.confirmButtonText}>{confirmText}</Text>
           </TouchableOpacity>
         </View>
@@ -111,7 +150,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   confirmButton: {
-    backgroundColor: '#DC2626', // Màu đỏ nguy hiểm
+    backgroundColor: '#DC2626', // Màu mặc định, sẽ bị override bởi inline style
     marginLeft: 8,
   },
   confirmButtonText: {
