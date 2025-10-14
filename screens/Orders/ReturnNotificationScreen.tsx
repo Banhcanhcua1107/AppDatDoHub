@@ -353,7 +353,8 @@ const styles = StyleSheet.create({
   // Acknowledge All Button
   acknowledgeAllContainer: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingTop: 8,
+    paddingBottom: 4,
     backgroundColor: '#f5f5f5',
   },
   acknowledgeAllButton: {
