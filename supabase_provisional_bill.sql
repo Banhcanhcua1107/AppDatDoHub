@@ -3,6 +3,25 @@
 -- ============================================
 -- Copy và chạy trong Supabase SQL Editor
 
+-- 0. Đảm bảo bảng orders có cột updated_at (chạy trước tiên)
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+-- Tạo trigger để tự động cập nhật updated_at khi có thay đổi
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Gắn trigger vào bảng orders (nếu chưa có)
+DROP TRIGGER IF EXISTS update_orders_updated_at ON orders;
+CREATE TRIGGER update_orders_updated_at
+    BEFORE UPDATE ON orders
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
 -- 1. Function để GỬI/CẬP NHẬT tạm tính (dùng trong OrderConfirmationScreen)
 -- Hàm này LUÔN set is_provisional = true, không toggle
 CREATE OR REPLACE FUNCTION send_provisional_bill(p_order_id UUID)
@@ -10,8 +29,7 @@ RETURNS void AS $$
 BEGIN
   -- Cập nhật trạng thái tạm tính cho order
   UPDATE orders 
-  SET is_provisional = true,
-      updated_at = NOW()
+  SET is_provisional = true
   WHERE id = p_order_id;
   
   -- Kiểm tra xem có lỗi không
@@ -28,8 +46,7 @@ RETURNS void AS $$
 BEGIN
   -- Toggle trạng thái is_provisional
   UPDATE orders 
-  SET is_provisional = NOT is_provisional,
-      updated_at = NOW()
+  SET is_provisional = NOT is_provisional
   WHERE id = p_order_id;
   
   -- Kiểm tra xem có lỗi không
@@ -45,8 +62,7 @@ RETURNS void AS $$
 BEGIN
   -- Set is_provisional = false
   UPDATE orders 
-  SET is_provisional = false,
-      updated_at = NOW()
+  SET is_provisional = false
   WHERE id = p_order_id;
   
   IF NOT FOUND THEN
