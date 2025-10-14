@@ -105,6 +105,7 @@ export type AppStackParamList = {
   [ROUTES.PRINT_PREVIEW]: {
     order: ProvisionalOrder;
     items: BillItem[];
+    paymentMethod?: string; // Thêm phương thức thanh toán
   };
   [ROUTES.CHANGE_PASSWORD]: undefined;
   [ROUTES.BILL_HISTORY]: undefined;

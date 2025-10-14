@@ -1053,8 +1053,8 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         totalItemCount
       };
       
-      // Navigate đến màn hình in
-      navigation.navigate('PrintPreview', { order, items });
+      // Navigate đến màn hình in với thông tin phương thức thanh toán
+      navigation.navigate('PrintPreview', { order, items, paymentMethod: 'cash' });
       
     } catch (error: any) {
       Toast.show({
@@ -1231,7 +1231,7 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
   return (
     <View style={styles.flex1}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-      <View style={{ paddingTop: insets.top + 10 }} className="px-4 pb-3">
+      <View style={{ paddingTop: (insets.top || 0) + 10 }} className="px-4 pb-3">
         <View className="flex-row items-center justify-between">
           <TouchableOpacity onPress={handleGoBack} className="p-2 -ml-2">
             <Icon name="arrow-back-outline" size={26} color="#1F2937" />

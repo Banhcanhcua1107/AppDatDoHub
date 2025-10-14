@@ -15,7 +15,7 @@ interface BillContentProps {
   showQRCode?: boolean; // Thêm prop để điều khiển hiển thị QR Code
 }
 
-const formatCurrency = (value: number) => value.toLocaleString('vi-VN');
+const formatCurrency = (value: number) => Math.round(value).toLocaleString('vi-VN');
 const formatDateTime = (dateString: string) => {
   const date = new Date(dateString);
   return (
@@ -32,10 +32,17 @@ const BillContent: React.FC<BillContentProps> = ({ order, items, title = 'PHIẾ
   const serverName = 'Hà Trang';
   const vatRate = 0.1;
 
-  const subtotal = items.reduce((sum: number, item: BillItem) => sum + item.totalPrice, 0);
+  // CÁCH 1: Giá đã bao gồm VAT (phổ biến ở VN)
+  const grandTotal = items.reduce((sum: number, item: BillItem) => sum + item.totalPrice, 0);
   const discount = 0;
-  const vatAmount = subtotal * vatRate;
-  const grandTotal = subtotal - discount + vatAmount;
+  const subtotal = (grandTotal - discount) / (1 + vatRate); // Giá chưa thuế
+  const vatAmount = grandTotal - discount - subtotal; // Thuế VAT = Tổng - Giá chưa thuế
+
+  // CÁCH 2: Giá chưa có VAT, cộng thêm (nếu muốn dùng cách này thì comment dòng trên và uncomment dòng dưới)
+  // const subtotal = items.reduce((sum: number, item: BillItem) => sum + item.totalPrice, 0);
+  // const discount = 0;
+  // const vatAmount = subtotal * vatRate;
+  // const grandTotal = subtotal - discount + vatAmount;
 
   return (
     // Đây là phần giao diện của hóa đơn được lấy từ PrintPreviewScreen
@@ -156,7 +163,7 @@ const styles = StyleSheet.create({
   grandTotalLabel: { fontSize: 18, fontWeight: 'bold', color: '#000' },
   grandTotalValue: { fontSize: 18, fontWeight: 'bold', color: '#000' },
   qrContainer: { alignItems: 'center', marginVertical: 25 },
-  footerText: { textAlign: 'center', fontStyle: 'italic', color: '#555' },
+  footerText: { textAlign: 'center', fontStyle: 'italic', color: '#555',paddingTop: 10},
 });
 
 export default BillContent;

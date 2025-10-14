@@ -13,12 +13,15 @@ const PrintPreviewScreen = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const route = useRoute<PrintPreviewScreenRouteProp>();
-  const { order, items } = route.params;
+  const { order, items, paymentMethod } = route.params;
 
   const [copyCount, setCopyCount] = useState(1);
+  
+  // Chỉ hiển thị QR code khi KHÔNG phải thanh toán tiền mặt
+  const shouldShowQR = paymentMethod !== 'cash';
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top + 20 }]}>
+    <View style={[styles.container, { paddingTop: (insets.top || 0) + 20 }]}>
       <StatusBar barStyle="dark-content" />
       {/* Header */}
       <View style={styles.header}>
@@ -53,7 +56,7 @@ const PrintPreviewScreen = () => {
 
       {/* Dùng ScrollView và component BillContent để hiển thị */}
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <BillContent order={order} items={items} />
+        <BillContent order={order} items={items} showQRCode={shouldShowQR} />
       </ScrollView>
     </View>
   );
