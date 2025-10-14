@@ -1046,14 +1046,19 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
     }
     setLoading(true);
     try {
-      const { error } = await supabase.rpc('toggle_provisional_bill_status', {
+      // [SỬA] Dùng send_provisional_bill thay vì toggle
+      const { error } = await supabase.rpc('send_provisional_bill', {
         p_order_id: activeOrderId,
       });
       if (error) throw error;
+      
+      // Fetch lại để cập nhật UI
+      await fetchAllData(false);
+      
       Toast.show({
-          type: 'info',
+          type: 'success',
           text1: 'Đã gửi tạm tính',
-          text2: 'Có thể xem trong tab Tạm tính.'
+          text2: 'Bàn này đã được đánh dấu tạm tính.'
       });
     } catch (error: any) {
       Toast.show({

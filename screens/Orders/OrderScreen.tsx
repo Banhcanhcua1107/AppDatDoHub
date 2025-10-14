@@ -110,11 +110,13 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
             p_order_id: item.orderId
         });
         if (error) throw error;
-        // Giao diện sẽ tự cập nhật nhờ real-time
+        
+        // Hiển thị thông báo dựa trên trạng thái HIỆN TẠI (sẽ đổi ngược lại)
+        const newStatus = !item.is_provisional;
         Toast.show({
-            type: 'info',
-            text1: `Đã ${item.is_provisional ? 'hủy' : 'gửi'} tạm tính`,
-            text2: `Bàn ${displayTableName} đã được cập nhật.`
+            type: newStatus ? 'success' : 'info',
+            text1: newStatus ? 'Đã bật tạm tính' : 'Đã tắt tạm tính',
+            text2: `Bàn ${displayTableName} - ${newStatus ? 'Hiển thị trong tab Tạm tính' : 'Đã ẩn khỏi tab Tạm tính'}`
         });
     } catch (error: any) {
         Alert.alert("Lỗi", "Không thể cập nhật trạng thái tạm tính: " + error.message);
