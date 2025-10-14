@@ -16,6 +16,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppStackParamList } from '../../constants/routes';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { supabase } from '../../services/supabase';
+import ConfirmModal from '../../components/ConfirmModal';
 
 type ItemStatus = 'waiting' | 'in_progress' | 'completed' | 'served';
 
@@ -76,6 +77,7 @@ const ServeStatusScreen = ({ route, navigation }: Props) => {
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<ServeItem[]>([]);
+  const [isCompleteModalVisible, setCompleteModalVisible] = useState(false);
 
   const fetchItems = useCallback(async () => {
     try {
@@ -95,12 +97,7 @@ const ServeStatusScreen = ({ route, navigation }: Props) => {
       
       const allServed = formattedItems.every(item => item.status === 'served');
       if (allServed && formattedItems.length > 0) {
-        Alert.alert('Hoàn thành', 'Tất cả món đã được phục vụ!', [
-          {
-            text: 'OK',
-            onPress: () => navigation.goBack()
-          }
-        ]);
+        setCompleteModalVisible(true);
       }
       
       setItems(formattedItems);
@@ -109,7 +106,7 @@ const ServeStatusScreen = ({ route, navigation }: Props) => {
     } finally {
       setLoading(false);
     }
-  }, [orderId, navigation]);
+  }, [orderId]);
 
   useEffect(() => {
     setLoading(true);
@@ -166,6 +163,20 @@ const ServeStatusScreen = ({ route, navigation }: Props) => {
             <Text style={{ color: 'gray' }}>Chưa có món nào trong order này.</Text>
           </View>
         }
+      />
+      
+      {/* Modal thông báo hoàn thành */}
+      <ConfirmModal
+        isVisible={isCompleteModalVisible}
+        title="Hoàn thành phục vụ"
+        message="Tất cả món đã được phục vụ xong! Bạn có muốn quay lại không?"
+        confirmText="Quay lại"
+        cancelText="Ở lại"
+        onClose={() => setCompleteModalVisible(false)}
+        onConfirm={() => {
+          setCompleteModalVisible(false);
+          navigation.goBack();
+        }}
       />
     </View>
   );

@@ -12,7 +12,6 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
-  ScrollView
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { supabase } from '../../services/supabase';
@@ -27,6 +26,8 @@ interface MenuItem {
   name: string;
   is_available: boolean;
 }
+
+type ActiveTab = 'available' | 'unavailable';
 
 const ItemCard: React.FC<{
   item: MenuItem;
@@ -43,7 +44,7 @@ const ItemCard: React.FC<{
   
   return (
     <View style={styles.itemContainer}>
-      <Text style={styles.itemName}>{item.name}</Text>
+      <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
       <TouchableOpacity 
         style={buttonStyle}
         onPress={() => onUpdate(item.id, !isAvailable)}
@@ -59,13 +60,13 @@ const ItemAvailabilityScreen = () => {
   const navigation = useNavigation<AvailabilityNavigationProp>();
   const [loading, setLoading] = useState(true);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [searchAvailable, setSearchAvailable] = useState('');
-  const [searchUnavailable, setSearchUnavailable] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('available');
 
   const fetchMenuItems = useCallback(async () => {
     try {
       const { data, error } = await supabase
-        .from('menu_items') // <-- THAY TÊN BẢNG NẾU CẦN
+        .from('menu_items')
         .select('id, name, is_available')
         .order('name', { ascending: true });
 
@@ -86,36 +87,40 @@ const ItemAvailabilityScreen = () => {
   );
 
   const handleUpdateAvailability = async (id: number, newStatus: boolean) => {
-    // Cập nhật giao diện ngay lập tức để người dùng thấy phản hồi
+    const originalItems = [...menuItems];
     setMenuItems(currentItems =>
       currentItems.map(item => (item.id === id ? { ...item, is_available: newStatus } : item))
     );
-    
-    // Cập nhật lên server
+
     try {
-      const { error } = await supabase
-        .from('menu_items') // <-- THAY TÊN BẢNG NẾU CẦN
+      const { data, error } = await supabase
+        .from('menu_items')
         .update({ is_available: newStatus })
-        .eq('id', id);
-        
-      if (error) throw error;
+        .eq('id', id)
+        .select('id'); 
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data || data.length === 0) {
+        throw new Error('Không có quyền cập nhật hoặc không tìm thấy món.');
+      }
+
     } catch (err: any) {
       Alert.alert('Lỗi', `Không thể cập nhật trạng thái món: ${err.message}`);
-      setMenuItems(currentItems =>
-        currentItems.map(item => (item.id === id ? { ...item, is_available: !newStatus } : item))
-      );
+
+      setMenuItems(originalItems);
     }
   };
 
-  const filteredAvailableItems = useMemo(() => 
-    menuItems.filter(item => item.is_available && item.name.toLowerCase().includes(searchAvailable.toLowerCase())),
-    [menuItems, searchAvailable]
-  );
-  
-  const filteredUnavailableItems = useMemo(() => 
-    menuItems.filter(item => !item.is_available && item.name.toLowerCase().includes(searchUnavailable.toLowerCase())),
-    [menuItems, searchUnavailable]
-  );
+  const filteredItems = useMemo(() => {
+    const isAvailableTab = activeTab === 'available';
+    return menuItems.filter(item => 
+      item.is_available === isAvailableTab && 
+      item.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [menuItems, activeTab, searchQuery]);
 
   if (loading) {
     return <View style={styles.centerContainer}><ActivityIndicator size="large" color="#1E3A8A" /></View>;
@@ -131,47 +136,55 @@ const ItemAvailabilityScreen = () => {
         <Text style={styles.headerTitle}>Báo Hết / Báo Còn Món</Text>
         <View style={{ width: 40 }} />
       </View>
-      <ScrollView style={styles.container}>
-        {/* DANH SÁCH MÓN CÒN */}
-        <View style={styles.listSection}>
-          <Text style={styles.sectionTitle}>DANH SÁCH MÓN CÒN</Text>
-          <View style={styles.searchBar}>
-            <Ionicons name="search-outline" size={20} color="#9CA3AF" />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Tìm kiếm tên món..."
-              value={searchAvailable}
-              onChangeText={setSearchAvailable}
-            />
-          </View>
-          <FlatList
-            data={filteredAvailableItems}
-            keyExtractor={item => item.id.toString()}
-            renderItem={({ item }) => <ItemCard item={item} onUpdate={handleUpdateAvailability} />}
-            scrollEnabled={false} // Để ScrollView bên ngoài cuộn
-          />
-        </View>
 
-        {/* DANH SÁCH MÓN HẾT */}
-        <View style={styles.listSection}>
-          <Text style={styles.sectionTitle}>DANH SÁCH MÓN HẾT</Text>
-          <View style={styles.searchBar}>
+      {/* Thanh chuyển đổi (Segmented Control) */}
+      <View style={styles.tabContainer}>
+        <TouchableOpacity 
+          style={[styles.tabButton, activeTab === 'available' && styles.activeTab]}
+          onPress={() => setActiveTab('available')}
+        >
+          <Text style={[styles.tabText, activeTab === 'available' && styles.activeTabText]}>
+            Món còn
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.tabButton, activeTab === 'unavailable' && styles.activeTab]}
+          onPress={() => setActiveTab('unavailable')}
+        >
+          <Text style={[styles.tabText, activeTab === 'unavailable' && styles.activeTabText]}>
+            Món hết
+          </Text>
+        </TouchableOpacity>
+      </View>
+      
+      {/* Thanh tìm kiếm duy nhất */}
+      <View style={styles.searchBarContainer}>
+        <View style={styles.searchBar}>
             <Ionicons name="search-outline" size={20} color="#9CA3AF" />
             <TextInput
               style={styles.searchInput}
               placeholder="Tìm kiếm tên món..."
-              value={searchUnavailable}
-              onChangeText={setSearchUnavailable}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
             />
-          </View>
-          <FlatList
-            data={filteredUnavailableItems}
-            keyExtractor={item => item.id.toString()}
-            renderItem={({ item }) => <ItemCard item={item} onUpdate={handleUpdateAvailability} />}
-            scrollEnabled={false} // Để ScrollView bên ngoài cuộn
-          />
         </View>
-      </ScrollView>
+      </View>
+
+      {/* Một FlatList duy nhất */}
+      <FlatList
+        data={filteredItems}
+        keyExtractor={item => item.id.toString()}
+        renderItem={({ item }) => <ItemCard item={item} onUpdate={handleUpdateAvailability} />}
+        contentContainerStyle={styles.listContainer}
+        ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+                <Ionicons name="file-tray-outline" size={60} color="#D1D5DB" />
+                <Text style={styles.emptyText}>
+                    {searchQuery ? 'Không tìm thấy món nào' : `Không có món nào đang "${activeTab === 'available' ? 'còn' : 'hết'}"`}
+                </Text>
+            </View>
+        }
+      />
     </SafeAreaView>
   );
 };
@@ -179,7 +192,6 @@ const ItemAvailabilityScreen = () => {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F3F4F6' },
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  container: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -190,18 +202,40 @@ const styles = StyleSheet.create({
   },
   backButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'flex-start' },
   headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#FFFFFF' },
-  listSection: {
+
+  tabContainer: {
+    flexDirection: 'row',
     backgroundColor: 'white',
-    margin: 16,
-    borderRadius: 8,
-    padding: 12,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
   },
-  sectionTitle: {
+  tabButton: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderBottomWidth: 3,
+    borderBottomColor: 'transparent',
+  },
+  activeTab: {
+    borderBottomColor: '#3B82F6',
+  },
+  tabText: {
     fontSize: 16,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  activeTabText: {
+    color: '#3B82F6',
     fontWeight: 'bold',
-    marginBottom: 12,
-    textAlign: 'center',
-    color: '#111827',
+  },
+
+  searchBarContainer: {
+    backgroundColor: 'white',
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
   searchBar: {
     flexDirection: 'row',
@@ -209,7 +243,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3F4F6',
     borderRadius: 8,
     paddingHorizontal: 12,
-    marginBottom: 12,
   },
   searchInput: {
     flex: 1,
@@ -217,17 +250,26 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginLeft: 8,
   },
+  
+  listContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+  },
   itemContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    borderBottomColor: '#E5E7EB',
+    backgroundColor: 'white',
+    paddingHorizontal: 16,
+    marginBottom: 1, // Tạo khoảng cách nhỏ giữa các item
   },
   itemName: {
     fontSize: 16,
     flex: 1,
+    color: '#111827'
   },
   reportOutButton: {
     flexDirection: 'row',
@@ -266,6 +308,18 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#EF4444',
   },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 80,
+  },
+  emptyText: {
+      color: '#6B7280',
+      fontSize: 16,
+      marginTop: 16,
+      textAlign: 'center',
+  }
 });
 
 export default ItemAvailabilityScreen;
