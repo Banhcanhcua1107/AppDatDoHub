@@ -32,6 +32,7 @@ import BillHistoryScreen from '../screens/Utilities/BillHistoryScreen';
 import KitchenTabs from './KitchenTabs';
 import KitchenDetailScreen from '../screens/Kitchen/KitchenDetailScreen';
 import KitchenSummaryDetailScreen from '../screens/Kitchen/KitchenSummaryDetailScreen';
+import KitchenProcessingReportScreen from 'screens/Kitchen/KitchenProcessingReportScreen';
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const AppStack = createNativeStackNavigator<AppStackParamList>();
@@ -40,6 +41,7 @@ export type KitchenStackParamList = {
   KitchenRoot: undefined; // Màn hình chứa các tab
   KitchenDetail: { orderId: string; tableName: string }; // Màn hình chi tiết
   KitchenSummaryDetail: { itemName: string }; 
+  KitchenProcessingReport: undefined;
 };
 
 const KitchenStack = createNativeStackNavigator<KitchenStackParamList>();
@@ -85,6 +87,7 @@ const KitchenNavigator = () => (
     <KitchenStack.Screen name="KitchenRoot" component={KitchenTabs} />
     <KitchenStack.Screen name="KitchenDetail" component={KitchenDetailScreen} />
     <KitchenStack.Screen name="KitchenSummaryDetail" component={KitchenSummaryDetailScreen} />
+    <KitchenStack.Screen name="KitchenProcessingReport" component={KitchenProcessingReportScreen} options={{ headerShown: false }} />
   </KitchenStack.Navigator>
 );
 

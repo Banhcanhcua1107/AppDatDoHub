@@ -3,13 +3,20 @@
 import React, { useState } from 'react';
 import { SafeAreaView, ScrollView, View, StyleSheet } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
+import { useNavigation } from '@react-navigation/native'; // << [THÊM] Import useNavigation
+import { NativeStackNavigationProp } from '@react-navigation/native-stack'; // << [THÊM] Import kiểu
+import { KitchenStackParamList } from '../../navigation/AppNavigator'; // << [THÊM] Import Stack Param List
 
 import UtilityItem from '../../components/UtilityItem';
 import ConfirmModal from '../../components/ConfirmModal';
 
+// [THÊM] Định nghĩa kiểu cho navigation
+type UtilitiesNavigationProp = NativeStackNavigationProp<KitchenStackParamList>;
+
 const KitchenUtilitiesScreen = () => {
   const { logout } = useAuth();
   const [isLogoutModalVisible, setLogoutModalVisible] = useState(false);
+  const navigation = useNavigation<UtilitiesNavigationProp>(); // << [THÊM] Khởi tạo navigation
 
   const handleConfirmLogout = () => {
     setLogoutModalVisible(false);
@@ -19,7 +26,16 @@ const KitchenUtilitiesScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView>
-        {/* Khu vực tài khoản - Đã chỉnh sửa để giống màn hình nhân viên */}
+        {/* Khu vực báo cáo */}
+        <View style={styles.section}>
+          <UtilityItem
+            icon="bar-chart-outline"
+            title="Thống kê chế biến"
+            onPress={() => navigation.navigate('KitchenProcessingReport')}
+          />
+        </View>
+
+        {/* Khu vực tài khoản */}
         <View style={styles.section}>
           <UtilityItem
             icon="log-out-outline"
@@ -27,9 +43,6 @@ const KitchenUtilitiesScreen = () => {
             onPress={() => setLogoutModalVisible(true)}
           />
         </View>
-
-        {/* Thêm các tiện ích khác của bếp ở đây nếu cần */}
-        
       </ScrollView>
 
       {/* Modal xác nhận đăng xuất */}
@@ -54,9 +67,9 @@ const styles = StyleSheet.create({
   section: {
     backgroundColor: 'white',
     marginTop: 12,
-    paddingHorizontal: 16, // Thêm padding ngang giống màn hình nhân viên
+    paddingHorizontal: 16,
+
   },
-  // Đã xóa sectionTitle vì không còn sử dụng
 });
 
 export default KitchenUtilitiesScreen;
