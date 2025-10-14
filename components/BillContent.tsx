@@ -12,6 +12,7 @@ interface BillContentProps {
   order: ProvisionalOrder;
   items: BillItem[];
   title?: string;
+  showQRCode?: boolean; // Thêm prop để điều khiển hiển thị QR Code
 }
 
 const formatCurrency = (value: number) => value.toLocaleString('vi-VN');
@@ -24,7 +25,7 @@ const formatDateTime = (dateString: string) => {
   );
 };
 
-const BillContent: React.FC<BillContentProps> = ({ order, items, title = 'PHIẾU TÍNH TIỀN' }) => {
+const BillContent: React.FC<BillContentProps> = ({ order, items, title = 'PHIẾU TÍNH TIỀN', showQRCode = true }) => {
   // --- Dữ liệu và logic tính toán được giữ nguyên ---
   const invoiceId = `HD${order.orderId.substring(0, 6).toUpperCase()}`;
   const cashierName = 'Hà Trang';
@@ -96,9 +97,12 @@ const BillContent: React.FC<BillContentProps> = ({ order, items, title = 'PHIẾ
         </View>
       </View>
 
-      <View style={styles.qrContainer}>
-        <QRCode value={`ORDER_ID:${order.orderId}|TOTAL:${grandTotal}`} size={120} />
-      </View>
+      {/* Chỉ hiển thị QR Code nếu showQRCode = true */}
+      {showQRCode && (
+        <View style={styles.qrContainer}>
+          <QRCode value={`ORDER_ID:${order.orderId}|TOTAL:${grandTotal}`} size={120} />
+        </View>
+      )}
 
       <Text style={styles.footerText}>Xin cảm ơn quý khách và hẹn gặp lại!</Text>
     </View>

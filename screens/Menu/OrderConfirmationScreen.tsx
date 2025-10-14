@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Modal,
   TextInput,
+  ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -23,6 +24,9 @@ import ActionSheetModal, { ActionSheetItem } from '../../components/ActionSheetM
 import Toast from 'react-native-toast-message';
 import { useNetwork } from '../../context/NetworkContext';
 import { offlineManager } from '../../services/OfflineManager';
+import PaymentMethodBox from '../../components/PaymentMethodBox';
+import BillContent from '../../components/BillContent';
+
 interface OrderSection {
   title: string;
   data: DisplayItem[];
@@ -244,6 +248,12 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
     initialTableId ? [{ id: initialTableId, name: initialTableName }] : []
   );
   const [isActionSheetVisible, setActionSheetVisible] = useState(false);
+  const [isPaymentModalVisible, setPaymentModalVisible] = useState(false);
+  const [paymentInfo, setPaymentInfo] = useState<{ orderId: string; amount: number } | null>(null);
+  const [isPaymentMethodBoxVisible, setPaymentMethodBoxVisible] = useState(false);
+  const [pendingPaymentAction, setPendingPaymentAction] = useState<'keep' | 'end' | null>(null);
+  const [isBillModalVisible, setBillModalVisible] = useState(false);
+  
   const fetchAllData = useCallback(
     async (isInitialLoad = true) => {
       if (isInitialLoad) setLoading(true);
@@ -870,36 +880,29 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
     }, 0);
 
     setLoading(false);
-    Alert.alert(
-      'Xác nhận thanh toán',
-      `Tổng hóa đơn là ${finalBillToPay.toLocaleString('vi-VN')}đ.`,
-      [
-        { text: 'Hủy' },
-        {
-          text: 'Giữ phiên',
-          onPress: () => handleKeepSessionAfterPayment(finalOrderId!, finalBillToPay),
-        },
-        {
-          text: 'Kết thúc',
-          onPress: () => handleEndSessionAfterPayment(finalOrderId!, finalBillToPay),
-        },
-      ]
-    );
+    
+    // Lưu thông tin thanh toán và hiển thị modal
+    setPaymentInfo({ orderId: finalOrderId, amount: finalBillToPay });
+    setPaymentModalVisible(true);
   };
 
-  const handleKeepSessionAfterPayment = async (orderId: string, finalBill: number) => {
+  const handleKeepSessionAfterPayment = async (orderId: string, finalBill: number, paymentMethod: string) => {
     setLoading(true);
     try {
       await supabase
         .from('orders')
-        .update({ status: 'paid', total_price: finalBill })
+        .update({ 
+          status: 'paid', 
+          total_price: finalBill,
+          payment_method: paymentMethod // Lưu phương thức thanh toán
+        })
         .eq('id', orderId)
         .throwOnError();
       
       Toast.show({
         type: 'success',
         text1: 'Thanh toán thành công',
-        text2: 'Bàn vẫn đang được phục vụ.'
+        text2: `Đã thanh toán ${finalBill.toLocaleString('vi-VN')}đ qua ${paymentMethod === 'cash' ? 'Tiền mặt' : paymentMethod === 'momo' ? 'Momo' : 'Chuyển khoản'}`
       });
     } catch (error: any) {
       Toast.show({
@@ -912,7 +915,7 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
     }
   };
 
-  const handleEndSessionAfterPayment = async (orderId: string, finalBill: number) => {
+  const handleEndSessionAfterPayment = async (orderId: string, finalBill: number, paymentMethod: string) => {
     setLoading(true);
     try {
       const { data: orderTables, error: tablesError } = await supabase
@@ -924,7 +927,11 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
 
       await supabase
         .from('orders')
-        .update({ status: 'closed', total_price: finalBill })
+        .update({ 
+          status: 'closed', 
+          total_price: finalBill,
+          payment_method: paymentMethod // Lưu phương thức thanh toán
+        })
         .eq('id', orderId)
         .throwOnError();
       await supabase
@@ -936,7 +943,7 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
        Toast.show({
         type: 'success',
         text1: 'Hoàn tất phiên',
-        text2: 'Bàn đã được thanh toán và dọn dẹp.'
+        text2: `Đã thanh toán ${finalBill.toLocaleString('vi-VN')}đ và dọn bàn.`
       });
       navigation.navigate(ROUTES.APP_TABS, { screen: ROUTES.HOME_TAB });
     } catch (error: any) {
@@ -949,6 +956,52 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
       setLoading(false);
     }
   };
+
+  const handlePaymentMethodSelect = (method: 'cash' | 'momo' | 'transfer') => {
+    setPaymentMethodBoxVisible(false);
+    
+    if (!paymentInfo || !pendingPaymentAction) return;
+    
+    const methodNames = {
+      cash: 'Tiền mặt',
+      momo: 'Momo',
+      transfer: 'Chuyển khoản'
+    };
+    
+    // Nếu thanh toán bằng tiền mặt, hiển thị Bill trước
+    if (method === 'cash') {
+      setBillModalVisible(true);
+      // Sau khi xem bill, mới xử lý thanh toán
+      return;
+    }
+    
+    // Xử lý thanh toán cho Momo và Chuyển khoản
+    if (pendingPaymentAction === 'keep') {
+      handleKeepSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, methodNames[method]);
+    } else if (pendingPaymentAction === 'end') {
+      handleEndSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, methodNames[method]);
+    }
+    
+    // Reset states
+    setPendingPaymentAction(null);
+  };
+
+  const handleCompleteCashPayment = () => {
+    setBillModalVisible(false);
+    
+    if (!paymentInfo || !pendingPaymentAction) return;
+    
+    // Xử lý thanh toán tiền mặt
+    if (pendingPaymentAction === 'keep') {
+      handleKeepSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'Tiền mặt');
+    } else if (pendingPaymentAction === 'end') {
+      handleEndSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'Tiền mặt');
+    }
+    
+    // Reset states
+    setPendingPaymentAction(null);
+  };
+
 
   const handleCloseSessionAfterPayment = () => {
     if (!activeOrderId) return;
@@ -1100,12 +1153,21 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
 
 
   
+  const handleGoBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      // Nếu không có màn hình nào để quay lại, navigate về HomeScreen
+      navigation.navigate('HomeTabs' as never);
+    }
+  };
+
   return (
     <View style={styles.flex1}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
       <View style={{ paddingTop: insets.top + 10 }} className="px-4 pb-3">
         <View className="flex-row items-center justify-between">
-          <TouchableOpacity onPress={() => navigation.goBack()} className="p-2 -ml-2">
+          <TouchableOpacity onPress={handleGoBack} className="p-2 -ml-2">
             <Icon name="arrow-back-outline" size={26} color="#1F2937" />
           </TouchableOpacity>
           <Text
@@ -1217,6 +1279,142 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
           actions={itemActions}
         />
       )}
+      
+      {/* Modal thanh toán với 3 tùy chọn */}
+      {paymentInfo && (
+        <Modal
+          transparent={true}
+          visible={isPaymentModalVisible}
+          animationType="fade"
+          onRequestClose={() => setPaymentModalVisible(false)}
+        >
+          <View style={styles.paymentModalOverlay}>
+            <View style={styles.paymentModalContainer}>
+              <View style={styles.paymentHeader}>
+                <Icon name="cash-outline" size={32} color="#10B981" />
+                <Text style={styles.paymentTitle}>Xác nhận thanh toán</Text>
+              </View>
+              
+              <Text style={styles.paymentMessage}>
+                Tổng hóa đơn là{' '}
+                <Text style={styles.paymentAmount}>
+                  {paymentInfo.amount.toLocaleString('vi-VN')}đ
+                </Text>
+              </Text>
+              
+              <Text style={styles.paymentQuestion}>
+                Bạn muốn giữ phiên hay kết thúc phục vụ?
+              </Text>
+              
+              <View style={styles.paymentButtonContainer}>
+                <TouchableOpacity
+                  style={[styles.paymentButton, styles.cancelButton]}
+                  onPress={() => setPaymentModalVisible(false)}
+                >
+                  <Text style={styles.cancelButtonText}>Hủy</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.paymentButton, styles.keepSessionButton]}
+                  onPress={() => {
+                    setPaymentModalVisible(false);
+                    setPendingPaymentAction('keep');
+                    // Hiển thị PaymentMethodBox sau khi đóng modal
+                    setTimeout(() => setPaymentMethodBoxVisible(true), 300);
+                  }}
+                >
+                  <Icon name="time-outline" size={18} color="white" />
+                  <Text style={styles.keepSessionButtonText}>Giữ phiên</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.paymentButton, styles.endSessionButton]}
+                  onPress={() => {
+                    setPaymentModalVisible(false);
+                    setPendingPaymentAction('end');
+                    // Hiển thị PaymentMethodBox sau khi đóng modal
+                    setTimeout(() => setPaymentMethodBoxVisible(true), 300);
+                  }}
+                >
+                  <Icon name="checkmark-done-outline" size={18} color="white" />
+                  <Text style={styles.endSessionButtonText}>Kết thúc</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
+      
+      {/* Payment Method Box - Chọn phương thức thanh toán */}
+      {paymentInfo && (
+        <PaymentMethodBox
+          isVisible={isPaymentMethodBoxVisible}
+          onClose={() => {
+            setPaymentMethodBoxVisible(false);
+            setPendingPaymentAction(null);
+          }}
+          totalAmount={paymentInfo.amount}
+          onSelectMethod={handlePaymentMethodSelect}
+        />
+      )}
+      
+      {/* Bill Modal - Hiển thị hóa đơn khi thanh toán tiền mặt */}
+      {paymentInfo && (
+        <Modal
+          transparent={true}
+          visible={isBillModalVisible}
+          animationType="slide"
+          onRequestClose={() => setBillModalVisible(false)}
+        >
+          <View style={styles.billModalOverlay}>
+            <View style={styles.billModalContainer}>
+              <View style={styles.billModalHeader}>
+                <Text style={styles.billModalTitle}>HÓA ĐƠN THANH TOÁN</Text>
+                <TouchableOpacity onPress={() => setBillModalVisible(false)}>
+                  <Icon name="close-outline" size={28} color="#333" />
+                </TouchableOpacity>
+              </View>
+              
+              <ScrollView style={styles.billScrollView}>
+                <BillContent 
+                  order={{
+                    orderId: paymentInfo.orderId,
+                    tables: currentTables,
+                    totalPrice: paymentInfo.amount,
+                    totalItemCount: allItems.length,
+                    createdAt: new Date().toISOString()
+                  }}
+                  items={billableItems.map(item => ({
+                    name: item.name,
+                    quantity: item.quantity,
+                    unit_price: item.unit_price,
+                    totalPrice: item.totalPrice
+                  }))}
+                  title="HÓA ĐƠN THANH TOÁN"
+                  showQRCode={false}
+                />
+              </ScrollView>
+              
+              <View style={styles.billModalFooter}>
+                <TouchableOpacity
+                  style={styles.billCancelButton}
+                  onPress={() => setBillModalVisible(false)}
+                >
+                  <Text style={styles.billCancelButtonText}>Quay lại</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={styles.billConfirmButton}
+                  onPress={handleCompleteCashPayment}
+                >
+                  <Icon name="checkmark-circle-outline" size={20} color="white" />
+                  <Text style={styles.billConfirmButtonText}>Xác nhận thanh toán</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
     </View>
   );
 };
@@ -1303,6 +1501,163 @@ const styles = StyleSheet.create({
   modalButtonText: { fontSize: 16, fontWeight: '600' },
   saveButton: { backgroundColor: '#3B82F6', marginLeft: 12 },
   saveButtonText: { color: 'white' },
+  
+  // Payment Modal Styles
+  paymentModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  paymentModalContainer: {
+    width: '90%',
+    maxWidth: 400,
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 24,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+  },
+  paymentHeader: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  paymentTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginTop: 12,
+    textAlign: 'center',
+  },
+  paymentMessage: {
+    fontSize: 16,
+    color: '#4B5563',
+    textAlign: 'center',
+    marginBottom: 8,
+    lineHeight: 24,
+  },
+  paymentAmount: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#10B981',
+  },
+  paymentQuestion: {
+    fontSize: 15,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 24,
+    marginTop: 8,
+  },
+  paymentButtonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  paymentButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
+  },
+  cancelButton: {
+    backgroundColor: '#F3F4F6',
+  },
+  cancelButtonText: {
+    color: '#4B5563',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  keepSessionButton: {
+    backgroundColor: '#3B82F6',
+  },
+  keepSessionButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  endSessionButton: {
+    backgroundColor: '#10B981',
+  },
+  endSessionButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  
+  // Bill Modal Styles
+  billModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  billModalContainer: {
+    width: '95%',
+    maxHeight: '90%',
+    backgroundColor: 'white',
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  billModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#10B981',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  billModalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: 'white',
+  },
+  billScrollView: {
+    flex: 1,
+  },
+  billModalFooter: {
+    flexDirection: 'row',
+    padding: 16,
+    gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+    backgroundColor: '#F9FAFB',
+  },
+  billCancelButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  billCancelButtonText: {
+    color: '#6B7280',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  billConfirmButton: {
+    flex: 2,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#10B981',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  billConfirmButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
 });
 
 export default OrderConfirmationScreen;
