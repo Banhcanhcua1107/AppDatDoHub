@@ -265,11 +265,13 @@ const KitchenSummaryDetailScreen = () => {
         orderMap.get(key)!.items.push(item);
       });
 
-      // Cập nhật TẤT CẢ món sang 'served'
+      // [*** YÊU CẦU 3 & 4 ***] 
+      // Cập nhật TẤT CẢ món sang 'completed' thay vì 'served'
+      // để box không bị mất ở màn hình KitchenSummaryScreen.
       const allItemIds = mappedAllItems.map(item => item.id);
       const { error: updateError } = await supabase
         .from('order_items')
-        .update({ status: STATUS.SERVED })
+        .update({ status: STATUS.COMPLETED }) 
         .in('id', allItemIds);
 
       if (updateError) throw updateError;
