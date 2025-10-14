@@ -59,6 +59,7 @@ interface MenuItemFromDB {
   price: number;
   image_url: string | null;
   categoryId: string;
+  is_available: boolean; // Tùy chọn, để tương thích với ItemAvailabilityScreen
 }
 interface CategoryFromDB {
   id: string;
@@ -171,12 +172,15 @@ const MenuItemGrid: React.FC<{ item: MenuItemFromDB; onSelect: () => void }> = (
   item,
   onSelect,
 }) => {
+  const isAvailable = item.is_available;
   const placeholderImage = 'https://via.placeholder.com/150';
+
   return (
     <View style={styles.gridItem}>
       <TouchableOpacity
         onPress={onSelect}
-        style={styles.shadow}
+        disabled={!isAvailable} // <-- Vô hiệu hóa nút
+        style={[styles.shadow, !isAvailable && styles.disabledGridItem]} // <-- Thêm style khi hết hàng
         className="bg-white rounded-2xl p-3 h-full justify-between"
       >
         <View>
@@ -193,13 +197,19 @@ const MenuItemGrid: React.FC<{ item: MenuItemFromDB; onSelect: () => void }> = (
           <Text className="text-lg font-semibold text-gray-900">
             {item.price.toLocaleString('vi-VN')}đ
           </Text>
-          <TouchableOpacity
-            onPress={onSelect}
-            className="w-10 h-10 bg-blue-500 rounded-full items-center justify-center"
+          <View
+            className={`w-10 h-10 rounded-full items-center justify-center ${isAvailable ? 'bg-blue-500' : 'bg-gray-300'}`}
           >
             <Icon name="add" size={24} color="white" />
-          </TouchableOpacity>
+          </View>
         </View>
+        
+        {/* Lớp phủ "Hết món" */}
+        {!isAvailable && (
+            <View style={styles.outOfStockOverlay}>
+                <Text style={styles.outOfStockText}>Hết món</Text>
+            </View>
+        )}
       </TouchableOpacity>
     </View>
   );
@@ -223,7 +233,6 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
   const [hotItems, setHotItems] = useState<MenuItemFromDB[]>([]);
   const [cartItems, setCartItems] = useState<CartItemFromDB[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
-  // [MỚI] State cho bộ lọc
   const [isFilterModalVisible, setFilterModalVisible] = useState(false);
   const [selectedFilterCategoryIds, setSelectedFilterCategoryIds] = useState<string[]>([]);
 
@@ -233,8 +242,8 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
       const [menuResponse, hotItemsResponse, cartResponse, orderLinkResponse] = await Promise.all([
         supabase
           .from('categories')
-          .select(`id, name, menu_items (id, name, description, price, image_url)`),
-        supabase.from('menu_items').select('*').eq('is_hot', true).limit(10),
+          .select(`id, name, menu_items (id, name, description, price, image_url, is_available)`),
+        supabase.from('menu_items').select('*, is_available').eq('is_hot', true).limit(10),
         supabase.from('cart_items').select(`*`).eq('table_id', tableId),
         supabase
           .from('order_tables')
@@ -321,6 +330,10 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
   );
 
   const handleSelectItem = (item: MenuItemFromDB) => {
+    if (!item.is_available) {
+      Toast.show({ type: 'info', text1: 'Thông báo', text2: `Món "${item.name}" đã hết hàng.` });
+      return;
+    }
     setSelectedItem(item);
     setModalVisible(true);
   };
@@ -818,6 +831,29 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: 'white',
   },
+  disabledGridItem: {
+    opacity: 0.5,
+  },
+  outOfStockOverlay: {
+    ...StyleSheet.absoluteFillObject, // Phủ lên toàn bộ component cha
+    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 16, // Phải khớp với borderRadius của TouchableOpacity
+  },
+  outOfStockText: {
+    color: '#DC2626',
+    fontWeight: 'bold',
+    fontSize: 18,
+    borderWidth: 2,
+    borderColor: '#DC2626',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    transform: [{ rotate: '-15deg' }], // Xoay chữ cho đẹp
+  },
+
+
 });
 
 export default MenuScreen;

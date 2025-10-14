@@ -35,6 +35,14 @@ const KitchenUtilitiesScreen = () => {
           />
         </View>
 
+        <View style={styles.section}>
+          <UtilityItem
+            icon="swap-horizontal-outline"
+            title="Báo hết / Báo còn"
+            onPress={() => navigation.navigate('ItemAvailability')}
+          />
+        </View>
+
         {/* Khu vực tài khoản */}
         <View style={styles.section}>
           <UtilityItem
