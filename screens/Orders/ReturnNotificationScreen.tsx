@@ -8,7 +8,6 @@ import {
   ActivityIndicator,
   StatusBar,
   Vibration,
-  Animated,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -24,20 +23,6 @@ interface ReturnNotification {
   status: 'pending' | 'acknowledged';
   created_at: string;
 }
-
-// Status colors for different states
-const StatusColors = {
-  pending: {
-    indicator: '#FB923C',
-    background: '#FFF7ED',
-    icon: '#FB923C',
-  },
-  acknowledged: {
-    indicator: '#10B981',
-    background: '#ECFDF5',
-    icon: '#10B981',
-  },
-} as const;
 
 const ReturnNotificationScreen = () => {
   const navigation = useNavigation();
@@ -121,6 +106,40 @@ const ReturnNotificationScreen = () => {
         type: 'error',
         text1: 'Lỗi',
         text2: 'Không thể xác nhận thông báo',
+      });
+    }
+  };
+
+  const handleAcknowledgeAll = async () => {
+    const pendingNotifications = notifications.filter(n => n.status === 'pending');
+    
+    if (pendingNotifications.length === 0) {
+      Toast.show({
+        type: 'info',
+        text1: 'Không có thông báo nào cần xác nhận',
+      });
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('return_notifications')
+        .update({ status: 'acknowledged', acknowledged_at: new Date().toISOString() })
+        .eq('status', 'pending');
+
+      if (error) throw error;
+      
+      Toast.show({
+        type: 'success',
+        text1: 'Đã xác nhận tất cả',
+        text2: `Đã xác nhận ${pendingNotifications.length} thông báo`,
+      });
+    } catch (err: any) {
+      console.error('Error acknowledging all notifications:', err.message);
+      Toast.show({
+        type: 'error',
+        text1: 'Lỗi',
+        text2: 'Không thể xác nhận tất cả thông báo',
       });
     }
   };
@@ -217,7 +236,7 @@ const ReturnNotificationScreen = () => {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
-      <View style={[styles.header, { paddingTop: insets.top }]}>
+      <View style={[styles.header, { paddingTop: insets.top}]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#111827" />
         </TouchableOpacity>
@@ -235,6 +254,21 @@ const ReturnNotificationScreen = () => {
           <Ionicons name="refresh" size={24} color="#111827" />
         </TouchableOpacity>
       </View>
+
+      {/* Nút Xác nhận hết - chỉ hiện khi có thông báo pending */}
+      {pendingCount > 0 && (
+        <View style={styles.acknowledgeAllContainer}>
+          <TouchableOpacity 
+            style={styles.acknowledgeAllButton}
+            onPress={handleAcknowledgeAll}
+          >
+            <Ionicons name="checkmark-done" size={20} color="white" />
+            <Text style={styles.acknowledgeAllText}>
+              Xác nhận hết ({pendingCount})
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <FlatList
         data={notifications}
@@ -315,6 +349,29 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'flex-end',
   },
+  
+  // Acknowledge All Button
+  acknowledgeAllContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#f5f5f5',
+  },
+  acknowledgeAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#10B981',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    gap: 5,
+  },
+  acknowledgeAllText: {
+    color: 'white',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  
   listContainer: {
     padding: 16,
   },
