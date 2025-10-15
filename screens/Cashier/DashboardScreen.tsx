@@ -20,6 +20,8 @@ import {
   RecentActivity,
   Alert as DashboardAlert
 } from '../../services/dashboardService';
+// Uncomment để test
+// import { testAllDashboardFunctions } from '../../utils/testDashboard';
 
 const { width } = Dimensions.get('window');
 
@@ -70,6 +72,7 @@ const QuickActionButton = ({
 export default function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [stats, setStats] = useState<DashboardStats>({
     todayRevenue: 0,
     todayOrders: 0,
@@ -103,13 +106,32 @@ export default function DashboardScreen() {
   const loadDashboardData = async () => {
     try {
       setLoading(true);
+      console.log('📊 DashboardScreen: Loading data...');
+      
       const data = await getDashboardData();
+      
+      console.log('📊 DashboardScreen: Data loaded:', {
+        stats: data.stats,
+        topItemsCount: data.topItems.length,
+        activitiesCount: data.activities.length,
+        alertsCount: data.alerts.length,
+      });
+      
       setStats(data.stats);
       setTopItems(data.topItems);
       setActivities(data.activities);
       setAlerts(data.alerts);
+      setLastUpdated(new Date());
     } catch (error) {
-      console.error('Error loading dashboard:', error);
+      console.error('❌ DashboardScreen: Error loading dashboard:', error);
+      
+      // Hiển thị thông báo lỗi cho user
+      setAlerts([{
+        id: 'load-error',
+        type: 'error',
+        title: 'Không thể tải dữ liệu',
+        message: 'Vui lòng kiểm tra kết nối và thử lại',
+      }]);
     } finally {
       setLoading(false);
     }
@@ -118,6 +140,9 @@ export default function DashboardScreen() {
   // Load data on mount
   useEffect(() => {
     loadDashboardData();
+    
+    // Uncomment để chạy test
+    // testAllDashboardFunctions();
   }, []);
 
   const onRefresh = async () => {
@@ -146,15 +171,25 @@ export default function DashboardScreen() {
       >
         {/* Header with date */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Tổng quan</Text>
-          <Text style={styles.headerDate}>
-            {new Date().toLocaleDateString('vi-VN', { 
-              weekday: 'long', 
-              year: 'numeric', 
-              month: 'long', 
-              day: 'numeric' 
-            })}
-          </Text>
+          <View>
+            <Text style={styles.headerTitle}>Tổng quan</Text>
+            <Text style={styles.headerDate}>
+              {new Date().toLocaleDateString('vi-VN', { 
+                weekday: 'long', 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+              })}
+            </Text>
+          </View>
+          {lastUpdated && (
+            <View style={styles.lastUpdatedContainer}>
+              <Ionicons name="time-outline" size={14} color="#6B7280" />
+              <Text style={styles.lastUpdatedText}>
+                Cập nhật {getTimeAgo(lastUpdated)}
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Stats Cards - Top Row */}
@@ -359,6 +394,9 @@ const styles = StyleSheet.create({
     padding: 16,
     backgroundColor: '#fff',
     marginBottom: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
   },
   headerTitle: {
     fontSize: 24,
@@ -369,6 +407,19 @@ const styles = StyleSheet.create({
   headerDate: {
     fontSize: 14,
     color: '#6B7280',
+  },
+  lastUpdatedContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  lastUpdatedText: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginLeft: 4,
   },
   statsRow: {
     padding: 16,
