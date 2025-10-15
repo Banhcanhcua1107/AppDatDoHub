@@ -178,6 +178,7 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
         orderId: data.orderId,
       });
     } else if (action === 'add_new_order' || action === 'add_items') {
+      // [SỬA LỖI] Không truyền fromOrderConfirmation vì từ Home chưa qua OrderConfirmation
       navigation.navigate(ROUTES.MENU, {
         tableId: data.tableId,
         tableName: data.tableName,

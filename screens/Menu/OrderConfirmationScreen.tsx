@@ -1206,6 +1206,7 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
           tableId: representativeTable.id,
           tableName: currentTableNameForDisplay,
           orderId: activeOrderId || undefined,
+          fromOrderConfirmation: true, // Đánh dấu đã qua OrderConfirmation
         })
       }
     >
@@ -1220,12 +1221,8 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
 
   
   const handleGoBack = () => {
-    if (navigation.canGoBack()) {
-      navigation.goBack();
-    } else {
-      // Nếu không có màn hình nào để quay lại, navigate về HomeScreen
-      navigation.navigate('HomeTabs' as never);
-    }
+    // Luôn quay về màn hình trước đó trong stack
+    navigation.goBack();
   };
 
   return (

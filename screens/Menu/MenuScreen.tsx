@@ -219,7 +219,7 @@ const HOT_CATEGORY_ID = 'hot_items';
 type MenuScreenProps = NativeStackScreenProps<AppStackParamList, 'Menu'>;
 
 const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
-  const { tableId, tableName } = route.params;
+  const { tableId, tableName, fromOrderConfirmation } = route.params;
   const insets = useSafeAreaInsets();
   const { isOnline } = useNetwork();
 
@@ -398,7 +398,13 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
       Alert.alert('Thông báo', 'Vui lòng thêm món vào giỏ hàng!');
       return;
     }
-    navigation.navigate(ROUTES.ORDER_CONFIRMATION, { tableId: tableId, tableName: tableName });
+    // [SỬA LỖI] Nếu đã từng qua OrderConfirmation, dùng goBack để quay về
+    // Nếu chưa, dùng navigate để tạo màn hình mới
+    if (fromOrderConfirmation) {
+      navigation.goBack();
+    } else {
+      navigation.navigate(ROUTES.ORDER_CONFIRMATION, { tableId: tableId, tableName: tableName });
+    }
   };
 
   const handleUpdateQuantity = async (cartItemId: number, newQuantity: number) => {
@@ -442,15 +448,15 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
     }
   };
 
-  const handleGoBackWithConfirmation = () => {
+    const handleGoBackWithConfirmation = () => {
     if (cartItems.length > 0) {
       Alert.alert(
-        'Thoát và hủy các món đã chọn?',
-        'Bạn có chắc muốn thoát và xóa các món mới chọn?',
+        'Xác nhận',
+        'Giỏ hàng của bạn có món chưa được xác nhận. Bạn có muốn hủy những món này không?',
         [
-          { text: 'Ở lại' },
+          { text: 'Không', style: 'cancel' },
           {
-            text: 'Thoát & Xóa',
+            text: 'Có',
             style: 'destructive',
             onPress: async () => {
               await handleClearCart();

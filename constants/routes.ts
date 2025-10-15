@@ -73,7 +73,7 @@ export type AppTabParamList = {
 
 export type AppStackParamList = {
   [ROUTES.APP_TABS]: NavigatorScreenParams<AppTabParamList>;
-  [ROUTES.MENU]: { tableId: string; tableName: string; orderId?: string };
+  [ROUTES.MENU]: { tableId: string; tableName: string; orderId?: string; fromOrderConfirmation?: boolean };
   [ROUTES.ORDER_CONFIRMATION]: {
     tableId: string;
     tableName: string;
