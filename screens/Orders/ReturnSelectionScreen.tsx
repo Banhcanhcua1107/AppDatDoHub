@@ -123,6 +123,46 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
         .insert(slipItemsToInsert);
       if (slipItemsError) throw slipItemsError;
 
+      // [THÊM MỚI] Lấy thông tin bàn từ order để insert vào return_notifications
+      const { data: orderData, error: orderError } = await supabase
+        .from('orders')
+        .select(`
+          id,
+          order_tables (
+            tables (
+              name
+            )
+          )
+        `)
+        .eq('id', orderId)
+        .single();
+
+      let tableNames = 'Không xác định';
+      if (orderData && orderData.order_tables && orderData.order_tables.length > 0) {
+        tableNames = orderData.order_tables.map((ot: any) => ot.tables.name).join(', ');
+      }
+
+      // Lấy tên món từ items ban đầu
+      const itemNames = itemsToReturnList.map(returnItem => {
+        const originalItem = items.find(i => i.id === returnItem.order_item_id);
+        return originalItem?.name || 'Món không xác định';
+      });
+
+      // Insert vào return_notifications để bếp có thể xem lịch sử
+      const { error: notificationError } = await supabase
+        .from('return_notifications')
+        .insert({
+          order_id: orderId,
+          table_name: tableNames,
+          item_names: itemNames,
+          status: 'pending',
+        });
+      
+      if (notificationError) {
+        console.error('Error creating return notification:', notificationError);
+        // Không throw error vì đây chỉ là notification, không ảnh hưởng chính
+      }
+
       const updatePromises = itemsToReturnList.map((itemToReturn) => {
         return supabase.rpc('update_returned_quantity', {
           p_order_item_id: itemToReturn.order_item_id,
