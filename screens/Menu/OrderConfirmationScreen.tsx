@@ -979,7 +979,9 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         text1: 'Hoàn tất phiên',
         text2: `Đã thanh toán ${finalBill.toLocaleString('vi-VN')}đ và dọn bàn.`
       });
-      navigation.navigate(ROUTES.APP_TABS, { screen: ROUTES.HOME_TAB });
+      // Navigate về màn hình chính - hoạt động với cả nhân viên và thu ngân
+      navigation.getParent()?.goBack();
+      navigation.getParent()?.goBack();
     } catch (error: any) {
       Toast.show({
         type: 'error',
@@ -1129,7 +1131,9 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
               .in('id', tableIdsToUpdate)
               .throwOnError();
             Alert.alert('Thành công', 'Đã đóng bàn và kết thúc phiên.');
-            navigation.navigate(ROUTES.APP_TABS, { screen: ROUTES.HOME_TAB });
+            // Navigate về màn hình chính - hoạt động với cả nhân viên và thu ngân
+            navigation.getParent()?.goBack();
+            navigation.getParent()?.goBack();
           } catch (error: any) {
             Alert.alert('Lỗi', `Không thể đóng bàn: ${error.message}`);
           } finally {

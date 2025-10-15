@@ -37,6 +37,7 @@ import ItemAvailabilityScreen from 'screens/Kitchen/ItemAvailabilityScreen';
 import ReturnHistoryScreen from 'screens/Kitchen/ReturnHistoryScreen'; // [MỚI]
 // --- [THÊM] Import CashierTabs và các màn hình Thu ngân ---
 import CashierTabs from './CashierTabs';
+import DashboardScreen from '../screens/Cashier/DashboardScreen';
 import CashierReportScreen from '../screens/Cashier/CashierReportScreen';
 import PurchaseScreen from '../screens/Cashier/PurchaseScreen';
 import InventoryScreen from '../screens/Cashier/InventoryScreen';
@@ -63,6 +64,7 @@ const KitchenStack = createNativeStackNavigator<KitchenStackParamList>();
 // --- [THÊM] Khai báo CashierStack cho Thu ngân ---
 export type CashierStackParamList = {
   CashierRoot: undefined; // Màn hình chứa các tab
+  Dashboard: undefined; // Tổng quan
   CashierReport: undefined;
   Purchase: undefined;
   Inventory: undefined;
@@ -74,6 +76,17 @@ export type CashierStackParamList = {
   // Thêm các màn hình dùng chung
   ChangePassword: undefined;
   BillHistory: undefined;
+  // Thêm các màn hình Menu và Order (giống nhân viên)
+  Menu: { tableId: string; tableName: string; orderId?: string; fromOrderConfirmation?: boolean };
+  OrderConfirmation: { orderId: string; tableId: string; tableName: string };
+  TableSelection: any;
+  SplitOrder: any;
+  ReturnSelection: any;
+  ReturnedItemsDetail: { returnId: string };
+  ReturnNotifications: undefined;
+  ServeStatus: any;
+  ProvisionalBill: { orderId: string };
+  PrintPreview: { orderId: string };
 };
 
 const CashierStack = createNativeStackNavigator<CashierStackParamList>();
@@ -129,6 +142,8 @@ const KitchenNavigator = () => (
 const CashierNavigator = () => (
   <CashierStack.Navigator screenOptions={{ headerShown: false }}>
     <CashierStack.Screen name="CashierRoot" component={CashierTabs} />
+    {/* Màn hình Thu ngân riêng */}
+    <CashierStack.Screen name="Dashboard" component={DashboardScreen} options={{ headerShown: true, title: 'Tổng quan' }} />
     <CashierStack.Screen name="CashierReport" component={CashierReportScreen} options={{ headerShown: true, title: 'Báo cáo' }} />
     <CashierStack.Screen name="Purchase" component={PurchaseScreen} options={{ headerShown: true, title: 'Mua hàng' }} />
     <CashierStack.Screen name="Inventory" component={InventoryScreen} options={{ headerShown: true, title: 'Kho' }} />
@@ -137,9 +152,20 @@ const CashierNavigator = () => (
     <CashierStack.Screen name="Expenses" component={ExpensesScreen} options={{ headerShown: true, title: 'Chi phí' }} />
     <CashierStack.Screen name="Promotions" component={PromotionsScreen} options={{ headerShown: true, title: 'Khuyến mãi' }} />
     <CashierStack.Screen name="MenuManagement" component={MenuManagementScreen} options={{ headerShown: true, title: 'Thực đơn' }} />
-    {/* Thêm các màn hình dùng chung */}
+    {/* Màn hình dùng chung */}
     <CashierStack.Screen name="ChangePassword" component={ChangePasswordScreen} />
     <CashierStack.Screen name="BillHistory" component={BillHistoryScreen} />
+    {/* Màn hình Menu và Order (giống nhân viên) */}
+    <CashierStack.Screen name="Menu" component={MenuScreen} />
+    <CashierStack.Screen name="OrderConfirmation" component={OrderConfirmationScreen} />
+    <CashierStack.Screen name="TableSelection" component={TableSelectionScreen as any} options={{ headerShown: true }} />
+    <CashierStack.Screen name="ReturnSelection" component={ReturnSelectionScreen as any} />
+    <CashierStack.Screen name="ReturnedItemsDetail" component={ReturnedItemsDetailScreen} />
+    <CashierStack.Screen name="ReturnNotifications" component={ReturnNotificationScreen} />
+    <CashierStack.Screen name="SplitOrder" component={SplitOrderScreen as any} />
+    <CashierStack.Screen name="ServeStatus" component={ServeStatusScreen as any} />
+    <CashierStack.Screen name="ProvisionalBill" component={ProvisionalBillScreen} />
+    <CashierStack.Screen name="PrintPreview" component={PrintPreviewScreen} />
   </CashierStack.Navigator>
 );
 

@@ -79,6 +79,11 @@ export default function CashierUtilitiesScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Quản lý Thu ngân</Text>
           <UtilityItem 
+            icon="stats-chart"
+            title="Tổng quan" 
+            onPress={() => navigation.navigate('Dashboard')}
+          />
+          <UtilityItem 
             icon="bar-chart-outline" 
             title="Báo cáo" 
             onPress={() => navigation.navigate('CashierReport')}
