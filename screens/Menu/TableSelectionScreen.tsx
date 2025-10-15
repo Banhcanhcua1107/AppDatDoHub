@@ -16,6 +16,7 @@ import { AppStackParamList, ROUTES } from '../../constants/routes';
 import { supabase } from '../../services/supabase';
 import Icon from 'react-native-vector-icons/Ionicons';
 import Toast from 'react-native-toast-message';
+import ConfirmModal from '../../components/ConfirmModal';
 interface Table {
   id: string;
   name: string;
@@ -115,6 +116,12 @@ const TableSelectionScreen = ({ route, navigation }: Props) => {
   const [tables, setTables] = useState<Table[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTableIds, setSelectedTableIds] = useState<Set<string>>(new Set());
+  
+  // State cho Confirm Modal
+  const [transferConfirmModal, setTransferConfirmModal] = useState<{
+    visible: boolean;
+    targetTable: Table | null;
+  }>({ visible: false, targetTable: null });
 
   const handleConfirmSelection = useCallback(async () => {
     const selectedIds = Array.from(selectedTableIds);
@@ -162,36 +169,7 @@ const TableSelectionScreen = ({ route, navigation }: Props) => {
 
       case 'transfer':
         const targetTable = selectedTables[0];
-        Alert.alert(
-          'Xác nhận Chuyển bàn',
-          `Bạn có chắc muốn chuyển toàn bộ order và giỏ hàng từ ${sourceTable.name} sang ${targetTable.name}?`,
-          [
-            { text: 'Hủy' },
-            {
-              text: 'Xác nhận',
-              onPress: async () => {
-                setLoading(true);
-                try {
-                  await handleTransferTable(sourceTable.id, targetTable);
-                  Toast.show({
-                    type: 'success',
-                    text1: 'Chuyển bàn thành công',
-                    text2: `Order đã được chuyển sang ${targetTable.name}.`
-                  });
-                  navigation.goBack();
-                } catch (error: any) {
-                  Toast.show({
-                    type: 'error',
-                    text1: 'Lỗi chuyển bàn',
-                    text2: error.message
-                  });
-                } finally {
-                  setLoading(false);
-                }
-              },
-            },
-          ]
-        );
+        setTransferConfirmModal({ visible: true, targetTable });
         break;
 
       case 'merge':
@@ -336,6 +314,39 @@ const TableSelectionScreen = ({ route, navigation }: Props) => {
             <Text>Không tìm thấy bàn nào.</Text>
           </View>
         }
+      />
+
+      {/* Confirm Modal cho Chuyển Bàn */}
+      <ConfirmModal
+        isVisible={transferConfirmModal.visible}
+        title="Xác nhận Chuyển bàn"
+        message={`Bạn có chắc muốn chuyển toàn bộ order và giỏ hàng từ ${sourceTable?.name} sang ${transferConfirmModal.targetTable?.name}?`}
+        onClose={() => setTransferConfirmModal({ visible: false, targetTable: null })}
+        onConfirm={async () => {
+          if (!sourceTable || !transferConfirmModal.targetTable) return;
+          setTransferConfirmModal({ visible: false, targetTable: null });
+          setLoading(true);
+          try {
+            await handleTransferTable(sourceTable.id, transferConfirmModal.targetTable);
+            Toast.show({
+              type: 'success',
+              text1: 'Chuyển bàn thành công',
+              text2: `Order đã được chuyển sang ${transferConfirmModal.targetTable.name}.`
+            });
+            navigation.goBack();
+          } catch (error: any) {
+            Toast.show({
+              type: 'error',
+              text1: 'Lỗi chuyển bàn',
+              text2: error.message
+            });
+          } finally {
+            setLoading(false);
+          }
+        }}
+        confirmText="Xác nhận"
+        cancelText="Hủy"
+        variant="info"
       />
     </SafeAreaView>
   );

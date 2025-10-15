@@ -27,6 +27,7 @@ import { offlineManager } from '../../services/OfflineManager';
 import PaymentMethodBox from '../../components/PaymentMethodBox';
 import BillContent from '../../components/BillContent';
 import { BillItem } from '../Orders/ProvisionalBillScreen';
+import ConfirmModal from '../../components/ConfirmModal';
 
 interface OrderSection {
   title: string;
@@ -267,6 +268,14 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
   const [isPaymentMethodBoxVisible, setPaymentMethodBoxVisible] = useState(false);
   const [pendingPaymentAction, setPendingPaymentAction] = useState<'keep' | 'end' | null>(null);
   const [isBillModalVisible, setBillModalVisible] = useState(false);
+  
+  // State cho Confirm Modals
+  const [cancelItemModal, setCancelItemModal] = useState<{
+    visible: boolean;
+    item: DisplayItem | null;
+  }>({ visible: false, item: null });
+  
+  const [closeSessionModal, setCloseSessionModal] = useState(false);
   
   const fetchAllData = useCallback(
     async (isInitialLoad = true) => {
@@ -652,10 +661,8 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
   if (itemToRemove.isNew) {
     action(); // Xóa món trong giỏ hàng thì không cần hỏi
   } else {
-    Alert.alert('Xác nhận Hủy Món', `Bạn có chắc muốn hủy món "${itemToRemove.name}"?`, [
-      { text: 'Không' },
-      { text: 'Đồng ý', style: 'destructive', onPress: action },
-    ]);
+    // Hiển thị ConfirmModal thay vì Alert
+    setCancelItemModal({ visible: true, item: itemToRemove });
   }
 };
 
@@ -1112,42 +1119,47 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
 
   const handleCloseSessionAfterPayment = () => {
     if (!activeOrderId) return;
-    Alert.alert('Xác nhận Đóng Bàn', 'Bạn có chắc muốn kết thúc phiên và dọn bàn này không?', [
-      { text: 'Hủy' },
-      {
-        text: 'Đồng ý',
-        style: 'destructive',
-        onPress: async () => {
-          setLoading(true);
-          try {
-            const { data: orderTables, error: tablesError } = await supabase
-              .from('order_tables')
-              .select('table_id')
-              .eq('order_id', activeOrderId);
-            if (tablesError) throw tablesError;
-            const tableIdsToUpdate = orderTables.map((t) => t.table_id);
-            await supabase
-              .from('orders')
-              .update({ status: 'closed' })
-              .eq('id', activeOrderId)
-              .throwOnError();
-            await supabase
-              .from('tables')
-              .update({ status: 'Trống' })
-              .in('id', tableIdsToUpdate)
-              .throwOnError();
-            Alert.alert('Thành công', 'Đã đóng bàn và kết thúc phiên.');
-            // Navigate về màn hình chính - hoạt động với cả nhân viên và thu ngân
-            navigation.getParent()?.goBack();
-            navigation.getParent()?.goBack();
-          } catch (error: any) {
-            Alert.alert('Lỗi', `Không thể đóng bàn: ${error.message}`);
-          } finally {
-            setLoading(false);
-          }
-        },
-      },
-    ]);
+    setCloseSessionModal(true);
+  };
+
+  const confirmCloseSession = async () => {
+    if (!activeOrderId) return;
+    setLoading(true);
+    setCloseSessionModal(false);
+    try {
+      const { data: orderTables, error: tablesError } = await supabase
+        .from('order_tables')
+        .select('table_id')
+        .eq('order_id', activeOrderId);
+      if (tablesError) throw tablesError;
+      const tableIdsToUpdate = orderTables.map((t) => t.table_id);
+      await supabase
+        .from('orders')
+        .update({ status: 'closed' })
+        .eq('id', activeOrderId)
+        .throwOnError();
+      await supabase
+        .from('tables')
+        .update({ status: 'Trống' })
+        .in('id', tableIdsToUpdate)
+        .throwOnError();
+      Toast.show({
+        type: 'success',
+        text1: 'Thành công',
+        text2: 'Đã đóng bàn và kết thúc phiên.'
+      });
+      // Navigate về màn hình chính
+      navigation.getParent()?.goBack();
+      navigation.getParent()?.goBack();
+    } catch (error: any) {
+      Toast.show({
+        type: 'error',
+        text1: 'Lỗi',
+        text2: `Không thể đóng bàn: ${error.message}`
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleGoToReturnScreen = async () => {
@@ -1521,6 +1533,67 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
           </View>
         </Modal>
       )}
+
+      {/* Confirm Modal cho Hủy Món */}
+      <ConfirmModal
+        isVisible={cancelItemModal.visible}
+        title="Xác nhận Hủy Món"
+        message={`Bạn có chắc muốn hủy món "${cancelItemModal.item?.name}"?`}
+        onClose={() => setCancelItemModal({ visible: false, item: null })}
+        onConfirm={async () => {
+          if (!cancelItemModal.item) return;
+          const itemToRemove = cancelItemModal.item;
+          setCancelItemModal({ visible: false, item: null });
+          
+          // Action để thực hiện hủy món (logic giống action trong handleRemoveItem)
+          if (isOnline) {
+            try {
+              await supabase
+                .from(itemToRemove.isNew ? 'cart_items' : 'order_items')
+                .delete()
+                .eq('id', itemToRemove.id)
+                .throwOnError();
+              
+              Toast.show({ type: 'success', text1: 'Đã hủy món' });
+              await fetchAllData(false);
+            } catch (error: any) {
+              Toast.show({ type: 'error', text1: 'Lỗi hủy món', text2: error.message });
+            }
+          } else {
+            const tableName = itemToRemove.isNew ? 'cart_items' : 'order_items';
+            
+            offlineManager.addActionToQueue({
+              type: 'DELETE',
+              tableName: tableName,
+              where: { column: 'id', value: itemToRemove.id },
+              payload: {}
+            });
+
+            optimisticallyRemoveItem(itemToRemove.uniqueKey);
+            
+            Toast.show({
+              type: 'info',
+              text1: 'Đang offline',
+              text2: `Món "${itemToRemove.name}" sẽ được xóa khi có mạng.`,
+            });
+          }
+        }}
+        confirmText="Đồng ý"
+        cancelText="Không"
+        variant="danger"
+      />
+
+      {/* Confirm Modal cho Đóng Bàn */}
+      <ConfirmModal
+        isVisible={closeSessionModal}
+        title="Xác nhận Đóng Bàn"
+        message="Bạn có chắc muốn kết thúc phiên và dọn bàn này không?"
+        onClose={() => setCloseSessionModal(false)}
+        onConfirm={confirmCloseSession}
+        confirmText="Đồng ý"
+        cancelText="Hủy"
+        variant="warning"
+      />
     </View>
   );
 };

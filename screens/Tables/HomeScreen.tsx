@@ -20,6 +20,8 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppTabParamList, AppStackParamList, ROUTES } from '../../constants/routes';
 import { supabase } from '../../services/supabase';
 import OrderInfoBox from '../Menu/OrderInfoBox';
+import ConfirmModal from '../../components/ConfirmModal';
+import ActionSheetModal from '../../components/ActionSheetModal';
 type TableStatus = 'Trống' | 'Đang phục vụ' | 'Đặt trước';
 type TableItemData = { id: string; name: string; status: TableStatus };
 
@@ -79,6 +81,17 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
   // [PHỤC HỒI] State để quản lý OrderInfoBox
   const [isBoxVisible, setBoxVisible] = useState(false);
   const [selectedTable, setSelectedTable] = useState<{ id: string; name: string } | null>(null);
+  
+  // State cho modals
+  const [cancelReservationModal, setCancelReservationModal] = useState<{
+    visible: boolean;
+    table: TableItemData | null;
+  }>({ visible: false, table: null });
+  
+  const [actionSheetVisible, setActionSheetVisible] = useState<{
+    visible: boolean;
+    table: TableItemData | null;
+  }>({ visible: false, table: null });
 
   const fetchTables = React.useCallback(async () => {
     setLoading(true);
@@ -130,33 +143,13 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
       setSelectedTable({ id: table.id, name: table.name });
       setBoxVisible(true);
     } else if (table.status === 'Đặt trước') {
-      Alert.alert(`Bàn ${table.name} đã được đặt`, 'Hành động?', [
-        { text: 'Hủy' },
-        {
-          text: 'Hủy đặt',
-          style: 'destructive',
-          onPress: () => updateTableStatus(table.id, 'Trống'),
-        },
-        {
-          text: 'Bắt đầu phục vụ',
-          onPress: () =>
-            navigation.navigate(ROUTES.MENU, { tableId: table.id, tableName: table.name }),
-        },
-      ]);
+      setActionSheetVisible({ visible: true, table });
     }
   };
 
   const handleLongPressTable = (table: TableItemData) => {
     if (table.status === 'Trống') {
-      Alert.alert(`Tùy chọn cho ${table.name}`, 'Chọn một hành động:', [
-        { text: 'Hủy' },
-        {
-          text: 'Tạo Order',
-          onPress: () =>
-            navigation.navigate(ROUTES.MENU, { tableId: table.id, tableName: table.name }),
-        },
-        { text: 'Đặt trước', onPress: () => updateTableStatus(table.id, 'Đặt trước') },
-      ]);
+      setActionSheetVisible({ visible: true, table });
     }
   };
 
@@ -263,6 +256,95 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
           onActionPress={handleOrderAction}
         />
       )}
+
+      {/* Action Sheet cho bàn Đặt trước */}
+      <ActionSheetModal
+        visible={actionSheetVisible.visible && actionSheetVisible.table?.status === 'Đặt trước'}
+        onClose={() => setActionSheetVisible({ visible: false, table: null })}
+        title={`Bàn ${actionSheetVisible.table?.name} đã được đặt`}
+        actions={[
+          {
+            id: 'cancel_reservation',
+            icon: 'close-circle-outline',
+            text: 'Hủy đặt',
+            color: '#EF4444',
+            onPress: () => {
+              if (actionSheetVisible.table) {
+                setCancelReservationModal({ visible: true, table: actionSheetVisible.table });
+              }
+              setActionSheetVisible({ visible: false, table: null });
+            },
+          },
+          {
+            id: 'start_service',
+            icon: 'play-circle-outline',
+            text: 'Bắt đầu phục vụ',
+            color: '#10B981',
+            onPress: () => {
+              if (actionSheetVisible.table) {
+                navigation.navigate(ROUTES.MENU, {
+                  tableId: actionSheetVisible.table.id,
+                  tableName: actionSheetVisible.table.name,
+                });
+              }
+              setActionSheetVisible({ visible: false, table: null });
+            },
+          },
+        ]}
+      />
+
+      {/* Action Sheet cho bàn Trống (long press) */}
+      <ActionSheetModal
+        visible={actionSheetVisible.visible && actionSheetVisible.table?.status === 'Trống'}
+        onClose={() => setActionSheetVisible({ visible: false, table: null })}
+        title={`Tùy chọn cho ${actionSheetVisible.table?.name}`}
+        actions={[
+          {
+            id: 'create_order',
+            icon: 'restaurant-outline',
+            text: 'Tạo Order',
+            color: '#10B981',
+            onPress: () => {
+              if (actionSheetVisible.table) {
+                navigation.navigate(ROUTES.MENU, {
+                  tableId: actionSheetVisible.table.id,
+                  tableName: actionSheetVisible.table.name,
+                });
+              }
+              setActionSheetVisible({ visible: false, table: null });
+            },
+          },
+          {
+            id: 'reserve_table',
+            icon: 'bookmark-outline',
+            text: 'Đặt trước',
+            color: '#3B82F6',
+            onPress: () => {
+              if (actionSheetVisible.table) {
+                updateTableStatus(actionSheetVisible.table.id, 'Đặt trước');
+              }
+              setActionSheetVisible({ visible: false, table: null });
+            },
+          },
+        ]}
+      />
+
+      {/* Confirm Modal cho Hủy đặt */}
+      <ConfirmModal
+        isVisible={cancelReservationModal.visible}
+        title="Xác nhận Hủy Đặt"
+        message={`Bạn có chắc muốn hủy đặt ${cancelReservationModal.table?.name}?`}
+        onClose={() => setCancelReservationModal({ visible: false, table: null })}
+        onConfirm={() => {
+          if (cancelReservationModal.table) {
+            updateTableStatus(cancelReservationModal.table.id, 'Trống');
+          }
+          setCancelReservationModal({ visible: false, table: null });
+        }}
+        confirmText="Hủy đặt"
+        cancelText="Không"
+        variant="warning"
+      />
     </View>
   );
 };

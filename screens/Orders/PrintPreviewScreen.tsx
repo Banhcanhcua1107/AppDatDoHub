@@ -2,9 +2,9 @@
 
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, StatusBar } from 'react-native';
-import { RouteProp, useRoute, useNavigation, CommonActions } from '@react-navigation/native';
+import { RouteProp, useRoute, useNavigation, StackActions } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppStackParamList, ROUTES } from '../../constants/routes';
+import { AppStackParamList } from '../../constants/routes';
 import BillContent from '../../components/BillContent';
 
 type PrintPreviewScreenRouteProp = RouteProp<AppStackParamList, 'PrintPreview'>;
@@ -23,21 +23,9 @@ const PrintPreviewScreen = () => {
   // Hàm xử lý khi nhấn nút Đóng
   const handleClose = () => {
     if (shouldNavigateToHome) {
-      // Reset navigation về màn hình Home (Tab đầu tiên)
-      navigation.dispatch(
-        CommonActions.reset({
-          index: 0,
-          routes: [
-            {
-              name: ROUTES.APP_TABS,
-              state: {
-                routes: [{ name: ROUTES.HOME_TAB }],
-                index: 0,
-              },
-            },
-          ],
-        })
-      );
+      // Quay về màn hình Home: đóng tất cả màn hình và về màn hình đầu tiên (tabs)
+      // popToTop() sẽ đóng tất cả màn hình trừ màn hình root của stack
+      navigation.dispatch(StackActions.popToTop());
     } else {
       // Quay lại màn hình trước đó
       navigation.goBack();

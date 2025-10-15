@@ -1,6 +1,6 @@
 // --- START OF FILE CartDetailModal.tsx ---
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -9,10 +9,10 @@ import {
   Modal,
   FlatList,
   Image,
-  Alert,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { CartItemFromDB } from './MenuScreen'; // Import kiểu dữ liệu từ MenuScreen
+import ConfirmModal from '../../components/ConfirmModal';
 
 interface CartDetailModalProps {
   visible: boolean;
@@ -31,6 +31,8 @@ const CartDetailModal: React.FC<CartDetailModalProps> = ({
   onRemoveItem,
   onClearCart,
 }) => {
+  const [clearCartModalVisible, setClearCartModalVisible] = useState(false);
+
   const renderCartItem = ({ item }: { item: CartItemFromDB }) => {
     const { customizations } = item;
     return (
@@ -72,10 +74,7 @@ const CartDetailModal: React.FC<CartDetailModalProps> = ({
 
   const handleClearCart = () => {
     if (cartItems.length > 0) {
-      Alert.alert('Xóa tất cả?', 'Bạn có chắc muốn xóa tất cả các món trong giỏ hàng?', [
-        { text: 'Hủy', style: 'cancel' },
-        { text: 'Đồng ý', style: 'destructive', onPress: onClearCart },
-      ]);
+      setClearCartModalVisible(true);
     }
   };
 
@@ -105,6 +104,21 @@ const CartDetailModal: React.FC<CartDetailModalProps> = ({
           />
         </View>
       </View>
+
+      {/* Confirm Modal cho Xóa tất cả */}
+      <ConfirmModal
+        isVisible={clearCartModalVisible}
+        title="Xóa tất cả?"
+        message="Bạn có chắc muốn xóa tất cả các món trong giỏ hàng?"
+        onClose={() => setClearCartModalVisible(false)}
+        onConfirm={() => {
+          setClearCartModalVisible(false);
+          onClearCart();
+        }}
+        confirmText="Đồng ý"
+        cancelText="Hủy"
+        variant="danger"
+      />
     </Modal>
   );
 };
