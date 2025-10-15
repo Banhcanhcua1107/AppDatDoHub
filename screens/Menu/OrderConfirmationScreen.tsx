@@ -1089,7 +1089,13 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
       };
       
       // Navigate đến màn hình in với thông tin phương thức thanh toán
-      navigation.navigate('PrintPreview', { order, items, paymentMethod: 'cash' });
+      // Truyền shouldNavigateToHome = true để sau khi đóng sẽ quay về Home
+      navigation.navigate('PrintPreview', { 
+        order, 
+        items, 
+        paymentMethod: 'cash',
+        shouldNavigateToHome: true 
+      });
       
     } catch (error: any) {
       Toast.show({

@@ -86,7 +86,12 @@ export type CashierStackParamList = {
   ReturnNotifications: undefined;
   ServeStatus: any;
   ProvisionalBill: { orderId: string };
-  PrintPreview: { orderId: string };
+  PrintPreview: {
+    order: any;
+    items: any[];
+    paymentMethod?: string;
+    shouldNavigateToHome?: boolean;
+  };
 };
 
 const CashierStack = createNativeStackNavigator<CashierStackParamList>();

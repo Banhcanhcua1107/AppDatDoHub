@@ -2,9 +2,9 @@
 
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, StatusBar } from 'react-native';
-import { RouteProp, useRoute, useNavigation } from '@react-navigation/native';
+import { RouteProp, useRoute, useNavigation, CommonActions } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppStackParamList } from '../../constants/routes';
+import { AppStackParamList, ROUTES } from '../../constants/routes';
 import BillContent from '../../components/BillContent';
 
 type PrintPreviewScreenRouteProp = RouteProp<AppStackParamList, 'PrintPreview'>;
@@ -13,19 +13,43 @@ const PrintPreviewScreen = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const route = useRoute<PrintPreviewScreenRouteProp>();
-  const { order, items, paymentMethod } = route.params;
+  const { order, items, paymentMethod, shouldNavigateToHome } = route.params;
 
   const [copyCount, setCopyCount] = useState(1);
   
   // Chỉ hiển thị QR code khi KHÔNG phải thanh toán tiền mặt
   const shouldShowQR = paymentMethod !== 'cash';
 
+  // Hàm xử lý khi nhấn nút Đóng
+  const handleClose = () => {
+    if (shouldNavigateToHome) {
+      // Reset navigation về màn hình Home (Tab đầu tiên)
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [
+            {
+              name: ROUTES.APP_TABS,
+              state: {
+                routes: [{ name: ROUTES.HOME_TAB }],
+                index: 0,
+              },
+            },
+          ],
+        })
+      );
+    } else {
+      // Quay lại màn hình trước đó
+      navigation.goBack();
+    }
+  };
+
   return (
     <View style={[styles.container, { paddingTop: (insets.top || 0) + 20 }]}>
       <StatusBar barStyle="dark-content" />
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
+        <TouchableOpacity onPress={handleClose} style={styles.headerButton}>
           <Text style={styles.headerButtonText}>Đóng</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Xem trước</Text>

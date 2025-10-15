@@ -106,6 +106,7 @@ export type AppStackParamList = {
     order: ProvisionalOrder;
     items: BillItem[];
     paymentMethod?: string; // Thêm phương thức thanh toán
+    shouldNavigateToHome?: boolean; // Flag để biết có cần quay về Home sau khi đóng không
   };
   [ROUTES.CHANGE_PASSWORD]: undefined;
   [ROUTES.BILL_HISTORY]: undefined;
