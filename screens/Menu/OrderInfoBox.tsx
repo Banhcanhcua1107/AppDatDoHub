@@ -14,6 +14,8 @@ import {
 import Icon from 'react-native-vector-icons/Ionicons';
 import { BlurView } from 'expo-blur';
 import { supabase } from '../../services/supabase';
+import Toast from 'react-native-toast-message';
+import ConfirmModal from '../../components/ConfirmModal';
 
 interface OrderInfoBoxProps {
   isVisible: boolean;
@@ -33,6 +35,7 @@ interface OrderDetails {
   orderTime: string;
   totalItems: number;
   totalPrice: number;
+  is_provisional?: boolean;
 }
 
 const MenuActionItem: React.FC<{ item: MenuItemProps; onPress: (action: string) => void }> = ({
@@ -60,6 +63,8 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({
   const [menuVisible, setMenuVisible] = useState(false);
   const [loading, setLoading] = useState(true);
   const [orderDetails, setOrderDetails] = useState<OrderDetails | null>(null);
+  const [isCancelModalVisible, setCancelModalVisible] = useState(false);
+  const [isTogglingProvisional, setIsTogglingProvisional] = useState(false);
 
   const fetchOrderDetails = useCallback(async () => {
     if (!tableId) return;
@@ -67,10 +72,8 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({
     try {
       const { data, error } = await supabase
         .from('orders')
-        .select(`id, created_at, order_items(quantity, unit_price), order_tables!inner(table_id)`)
+        .select(`id, created_at, is_provisional, order_items(quantity, unit_price), order_tables!inner(table_id)`)
         .eq('order_tables.table_id', tableId)
-        // [SỬA LỖI] Tìm cả order 'pending' (chờ) và 'paid' (đã trả) để hỗ trợ "giữ phiên".
-        // Một phiên chỉ kết thúc khi trạng thái là 'closed'.
         .in('status', ['pending', 'paid'])
         .single();
 
@@ -84,7 +87,13 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({
           hour: '2-digit',
           minute: '2-digit',
         });
-        setOrderDetails({ orderId: data.id, totalItems, totalPrice, orderTime });
+        setOrderDetails({ 
+          orderId: data.id, 
+          totalItems, 
+          totalPrice, 
+          orderTime,
+          is_provisional: data.is_provisional 
+        });
       } else if (error && error.code === 'PGRST116') {
         const { data: cartData, error: cartError } = await supabase
           .from('cart_items')
@@ -122,6 +131,7 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({
   }, [isVisible, fetchOrderDetails]);
 
   const menuActions: MenuItemProps[] = [
+    { icon: 'notifications-outline', text: 'Kiểm tra lên món', action: 'check_served_status' },
     { icon: 'cash-outline', text: 'Thanh toán', action: 'go_to_payment' },
     {
       icon: 'swap-horizontal-outline',
@@ -129,15 +139,22 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({
       action: 'transfer_table',
       color: '#3B82F6',
     },
-    { icon: 'layers-outline', text: 'Ghép Order', action: 'merge_order' },
-    { icon: 'apps-outline', text: 'Gộp Bàn', action: 'group_tables', color: '#10B981' },
-    { icon: 'close-circle-outline', text: 'Hủy order', action: 'cancel_order', color: '#EF4444' },
+    { icon: 'layers-outline', text: 'Ghép Order (Thêm món)', action: 'merge_order' },
+    { icon: 'apps-outline', text: 'Gộp Bàn (Chung bill)', action: 'group_tables', color: '#10B981' },
     { icon: 'git-compare-outline', text: 'Tách order', action: 'split_order' },
-    { icon: 'print-outline', text: 'In phiếu kiểm đồ', action: 'print_check' },
+    { icon: 'close-circle-outline', text: 'Hủy order', action: 'cancel_order', color: '#EF4444' },
   ];
 
   const handleActionPress = (action: string) => {
     setMenuVisible(false);
+    
+    // Xử lý action cancel_order riêng với modal xác nhận
+    if (action === 'cancel_order') {
+      setTimeout(() => setCancelModalVisible(true), 200);
+      return;
+    }
+    
+    // Các action khác
     setTimeout(
       () => handleParentAction(action, { tableId, tableName, orderId: orderDetails?.orderId }),
       200
@@ -149,6 +166,104 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({
       () => handleParentAction(action, { tableId, tableName, orderId: orderDetails?.orderId }),
       200
     );
+  };
+
+  const handleConfirmCancelOrder = async () => {
+    setCancelModalVisible(false);
+    
+    if (!orderDetails?.orderId) {
+      Toast.show({
+        type: 'error',
+        text1: 'Lỗi',
+        text2: 'Không tìm thấy thông tin order để hủy'
+      });
+      return;
+    }
+
+    try {
+      const { error } = await supabase.rpc('cancel_order_and_reset_tables', {
+        p_order_id: orderDetails.orderId
+      });
+      
+      if (error) throw error;
+
+      Toast.show({
+        type: 'success',
+        text1: 'Đã hủy order',
+        text2: `Order cho ${tableName} đã được hủy thành công.`
+      });
+      
+      onClose();
+    } catch (err: any) {
+      Toast.show({
+        type: 'error',
+        text1: 'Lỗi hủy order',
+        text2: err.message
+      });
+    }
+  };
+
+  const handleToggleProvisionalBill = async () => {
+    if (!orderDetails?.orderId) {
+      Toast.show({
+        type: 'error',
+        text1: 'Lỗi',
+        text2: 'Không tìm thấy thông tin order'
+      });
+      return;
+    }
+
+    // Nếu đã bật tạm tính rồi thì REFRESH lại data
+    if (orderDetails.is_provisional) {
+      setIsTogglingProvisional(true);
+      try {
+        // Fetch lại dữ liệu mới nhất từ database
+        await fetchOrderDetails();
+        
+        Toast.show({
+          type: 'success',
+          text1: 'Đã cập nhật',
+          text2: `Dữ liệu bàn ${tableName} đã được làm mới.`
+        });
+      } catch (err: any) {
+        Toast.show({
+          type: 'error',
+          text1: 'Lỗi',
+          text2: 'Không thể cập nhật: ' + err.message
+        });
+      } finally {
+        setIsTogglingProvisional(false);
+      }
+      return;
+    }
+
+    setIsTogglingProvisional(true);
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({ is_provisional: true })
+        .eq('id', orderDetails.orderId);
+      
+      if (error) throw error;
+
+      Toast.show({
+        type: 'success',
+        text1: 'Đã thêm vào Tạm tính',
+        text2: `Bàn ${tableName} đã được thêm vào tab Tạm tính`
+      });
+
+      // Cập nhật lại orderDetails để UI phản ánh ngay
+      setOrderDetails(prev => prev ? { ...prev, is_provisional: true } : null);
+      
+    } catch (err: any) {
+      Toast.show({
+        type: 'error',
+        text1: 'Lỗi',
+        text2: 'Không thể thêm vào tạm tính: ' + err.message
+      });
+    } finally {
+      setIsTogglingProvisional(false);
+    }
   };
 
   const renderContent = () => {
@@ -174,7 +289,15 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({
         <View style={styles.infoContainer}>
           <View>
             <Text style={styles.orderTimeText}>Order: {orderDetails.orderTime}</Text>
-            <Text style={styles.statusText}>Đang phục vụ</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={styles.statusText}>Đang phục vụ</Text>
+              {orderDetails.is_provisional && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 8 }}>
+                  <Icon name="restaurant" size={16} color="#10B981" />
+                  <Text style={{ color: '#E0E0E0', fontSize: 12, marginLeft: 4 }}>Tạm tính</Text>
+                </View>
+              )}
+            </View>
           </View>
           <View style={styles.priceContainer}>
             <View style={styles.itemCountContainer}>
@@ -199,9 +322,18 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => handleQuickAction('print_check')}
+            onPress={handleToggleProvisionalBill}
+            disabled={isTogglingProvisional}
           >
-            <Icon name="receipt-outline" size={24} color="#555" />
+            {isTogglingProvisional ? (
+              <ActivityIndicator size="small" color="#3B82F6" />
+            ) : (
+              <Icon 
+                name={orderDetails.is_provisional ? "checkmark-done-outline" : "receipt-outline"}
+                size={24} 
+                color={orderDetails.is_provisional ? '#2E8540' : '#555'} 
+              />
+            )}
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionButton} onPress={() => setMenuVisible(true)}>
             <Icon name="ellipsis-horizontal" size={24} color="#555" />
@@ -243,6 +375,17 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({
           </View>
         </Pressable>
       </Modal>
+
+      {/* Modal xác nhận hủy order */}
+      <ConfirmModal
+        isVisible={isCancelModalVisible}
+        title="Xác nhận Hủy Order"
+        message={`Toàn bộ order cho bàn "${tableName}" sẽ bị xóa vĩnh viễn. Bạn có chắc chắn không?`}
+        confirmText="Hủy Order"
+        cancelText="Không"
+        onClose={() => setCancelModalVisible(false)}
+        onConfirm={handleConfirmCancelOrder}
+      />
     </Modal>
   );
 };

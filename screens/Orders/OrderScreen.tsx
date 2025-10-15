@@ -104,22 +104,34 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
       Toast.show({ type: 'error', text1: 'Không có kết nối mạng' });
       return;
     }
+
+    // Nếu đã bật tạm tính rồi thì chỉ show thông báo đã cập nhật
+    // (Realtime subscription sẽ tự động refresh)
+    if (item.is_provisional) {
+      Toast.show({
+        type: 'success',
+        text1: 'Đã cập nhật',
+        text2: `Dữ liệu sẽ được cập nhật tự động qua realtime.`
+      });
+      return;
+    }
+
     setIsToggling(true);
     try {
-        const { error } = await supabase.rpc('toggle_provisional_bill_status', {
-            p_order_id: item.orderId
-        });
+        const { error } = await supabase
+            .from('orders')
+            .update({ is_provisional: true })
+            .eq('id', item.orderId);
+        
         if (error) throw error;
         
-        // Hiển thị thông báo dựa trên trạng thái HIỆN TẠI (sẽ đổi ngược lại)
-        const newStatus = !item.is_provisional;
         Toast.show({
-            type: newStatus ? 'success' : 'info',
-            text1: newStatus ? 'Đã bật tạm tính' : 'Đã tắt tạm tính',
-            text2: `Bàn ${displayTableName} - ${newStatus ? 'Hiển thị trong tab Tạm tính' : 'Đã ẩn khỏi tab Tạm tính'}`
+            type: 'success',
+            text1: 'Đã thêm vào Tạm tính',
+            text2: `Bàn ${displayTableName} đã được thêm vào tab Tạm tính`
         });
     } catch (error: any) {
-        Alert.alert("Lỗi", "Không thể cập nhật trạng thái tạm tính: " + error.message);
+        Alert.alert("Lỗi", "Không thể thêm vào tạm tính: " + error.message);
     } finally {
         setIsToggling(false);
     }
@@ -194,7 +206,7 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
             <ActivityIndicator size="small" color="#3B82F6" />
           ) : (
             <Ionicons
-              name="receipt-outline"
+              name={item.is_provisional ? "checkmark-done-outline" : "receipt-outline"}
               size={24}
               color={item.is_provisional ? '#2E8540' : 'gray'}
             />

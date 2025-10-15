@@ -163,29 +163,77 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
     if (!data?.tableId) {
       return;
     }
-    // Chuyển thẳng đến OrderConfirmation cho mọi hành động chính
-    if (action === 'go_to_order_details' || action === 'go_to_payment') {
-      navigation.navigate(ROUTES.ORDER_CONFIRMATION, {
-        tableId: data.tableId,
-        tableName: data.tableName,
-        orderId: data.orderId,
-      });
-    } else if (action === 'add_new_order' || action === 'add_items') {
-      // [SỬA LỖI] Không truyền fromOrderConfirmation vì từ Home chưa qua OrderConfirmation
-      navigation.navigate(ROUTES.MENU, {
-        tableId: data.tableId,
-        tableName: data.tableName,
-        orderId: data.orderId,
-      });
-    } else if (action === 'transfer_table') {
-      navigation.navigate(ROUTES.TABLE_SELECTION, {
-        mode: 'single',
-        action: 'transfer',
-        sourceRoute: ROUTES.HOME_TAB,
-        sourceTable: { id: data.tableId, name: data.tableName, orderId: data.orderId },
-      });
-    } else {
-      Alert.alert('Thông báo', `Chức năng "${action}" đang được phát triển.`);
+    
+    // Xử lý từng action cụ thể
+    switch (action) {
+      case 'go_to_order_details':
+      case 'go_to_payment':
+        navigation.navigate(ROUTES.ORDER_CONFIRMATION, {
+          tableId: data.tableId,
+          tableName: data.tableName,
+          orderId: data.orderId,
+        });
+        break;
+        
+      case 'add_new_order':
+      case 'add_items':
+        navigation.navigate(ROUTES.MENU, {
+          tableId: data.tableId,
+          tableName: data.tableName,
+          orderId: data.orderId,
+        });
+        break;
+        
+      case 'check_served_status':
+        navigation.navigate(ROUTES.SERVE_STATUS, {
+          orderId: data.orderId,
+          tableName: data.tableName,
+        });
+        break;
+        
+      case 'transfer_table':
+        navigation.navigate(ROUTES.TABLE_SELECTION, {
+          mode: 'single',
+          action: 'transfer',
+          sourceRoute: ROUTES.HOME_TAB,
+          sourceTable: { id: data.tableId, name: data.tableName, orderId: data.orderId },
+        });
+        break;
+        
+      case 'merge_order':
+        navigation.navigate(ROUTES.TABLE_SELECTION, {
+          mode: 'multiple',
+          action: 'merge',
+          sourceRoute: ROUTES.HOME_TAB,
+          sourceTable: { id: data.tableId, name: data.tableName, orderId: data.orderId },
+        });
+        break;
+        
+      case 'group_tables':
+        navigation.navigate(ROUTES.TABLE_SELECTION, {
+          mode: 'multiple',
+          action: 'group',
+          sourceRoute: ROUTES.HOME_TAB,
+          sourceTable: { id: data.tableId, name: data.tableName, orderId: data.orderId },
+        });
+        break;
+        
+      case 'split_order':
+        navigation.navigate(ROUTES.TABLE_SELECTION, {
+          mode: 'single',
+          action: 'split',
+          sourceRoute: ROUTES.HOME_TAB,
+          sourceTable: { id: data.tableId, name: data.tableName, orderId: data.orderId },
+        });
+        break;
+        
+      case 'print_check':
+        Alert.alert('Thông báo', 'Chức năng in phiếu kiểm đồ đang được phát triển.');
+        break;
+        
+      // cancel_order sẽ được xử lý trực tiếp trong OrderInfoBox
+      default:
+        break;
     }
   };
 

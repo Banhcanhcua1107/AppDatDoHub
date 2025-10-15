@@ -32,17 +32,11 @@ const BillContent: React.FC<BillContentProps> = ({ order, items, title = 'PHIẾ
   const serverName = 'Hà Trang';
   const vatRate = 0.1;
 
-  // CÁCH 1: Giá đã bao gồm VAT (phổ biến ở VN)
-  const grandTotal = items.reduce((sum: number, item: BillItem) => sum + item.totalPrice, 0);
-  const discount = 0;
-  const subtotal = (grandTotal - discount) / (1 + vatRate); // Giá chưa thuế
-  const vatAmount = grandTotal - discount - subtotal; // Thuế VAT = Tổng - Giá chưa thuế
-
-  // CÁCH 2: Giá chưa có VAT, cộng thêm (nếu muốn dùng cách này thì comment dòng trên và uncomment dòng dưới)
-  // const subtotal = items.reduce((sum: number, item: BillItem) => sum + item.totalPrice, 0);
-  // const discount = 0;
-  // const vatAmount = subtotal * vatRate;
-  // const grandTotal = subtotal - discount + vatAmount;
+  // Tính toán: Giá món ăn CHƯA có VAT, phải CỘNG THÊM 10% VAT
+  const subtotal = items.reduce((sum: number, item: BillItem) => sum + item.totalPrice, 0); // Tổng tiền hàng (chưa VAT)
+  const discount = 0; // Chiết khấu
+  const vatAmount = Math.round((subtotal - discount) * vatRate); // VAT 10% = Tổng * 0.1
+  const grandTotal = subtotal - discount + vatAmount; // Tổng cộng = Tổng tiền hàng - Chiết khấu + VAT
 
   return (
     // Đây là phần giao diện của hóa đơn được lấy từ PrintPreviewScreen
