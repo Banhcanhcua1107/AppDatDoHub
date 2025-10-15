@@ -36,6 +36,7 @@ interface KitchenDetailItem {
   note: string | null;
   status: KitchenItemStatus;
   customizations: any;
+  is_available?: boolean; // [MỚI] Trạng thái còn hàng
 }
 
 // ---- COMPONENT CON (CẬP NHẬT UI ĐỂ KHỚP VỚI HÌNH ẢNH) ----
@@ -60,8 +61,18 @@ const KitchenDetailItemCard: React.FC<{
       );
     }
     
+    // [MỚI] Hiển thị badge cảnh báo nếu món hết
+    const isOutOfStock = item.is_available === false;
+    
     return (
       <View style={styles.footerActionsContainer}>
+        {isOutOfStock && status === STATUS.IN_PROGRESS && (
+          <View style={styles.outOfStockBadge}>
+            <Ionicons name="alert-circle" size={16} color="#DC2626" />
+            <Text style={styles.outOfStockText}>Hết món</Text>
+          </View>
+        )}
+        
         {status === STATUS.PENDING && (
           <TouchableOpacity
             style={styles.processButton}
@@ -72,7 +83,6 @@ const KitchenDetailItemCard: React.FC<{
           </TouchableOpacity>
         )}
         
-        {/* [CẬP NHẬT] Thay đổi lại thành "Xong" để khớp với UI trong ảnh */}
         {status === STATUS.IN_PROGRESS && (
           <TouchableOpacity
             style={styles.completeButton}
@@ -133,19 +143,32 @@ const KitchenDetailScreen = () => {
 
   const fetchOrderDetails = useCallback(async () => {
     try {
+      // [CẬP NHẬT] Thêm menu_items.is_available
       const { data, error } = await supabase
         .from('order_items')
-        .select('id, quantity, customizations, status')
+        .select('id, quantity, customizations, status, menu_items ( is_available )')
         .eq('order_id', orderId)
         .neq('status', STATUS.SERVED) // Loại bỏ các món đã served
         .order('created_at', { ascending: true });
 
       if (error) throw error;
-      const mappedItems = data.map((item: any) => ({
-        ...item,
-        name: item.customizations.name || 'Món không tên',
-        note: item.customizations.note || null,
-      }));
+      
+      // [CẬP NHẬT] Lọc bỏ món hết hàng + đang chờ
+      const mappedItems = data
+        .map((item: any) => ({
+          ...item,
+          name: item.customizations.name || 'Món không tên',
+          note: item.customizations.note || null,
+          is_available: item.menu_items?.is_available ?? true,
+        }))
+        .filter((item: any) => {
+          // Nếu món hết VÀ đang chờ → Bỏ qua
+          if (!item.is_available && item.status === STATUS.PENDING) {
+            return false;
+          }
+          return true;
+        });
+      
       setItems(mappedItems);
     } catch (err: any) {
       console.error('Lỗi tải chi tiết order:', err.message);
@@ -164,8 +187,19 @@ const KitchenDetailScreen = () => {
           () => fetchOrderDetails()
         )
         .subscribe();
+      
+      // [MỚI] Lắng nghe thay đổi menu_items
+      const menuItemsChannel = supabase
+        .channel('public:menu_items:kitchen_detail')
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'menu_items' }, () => {
+          console.log('[KitchenDetail] Món ăn thay đổi trạng thái');
+          fetchOrderDetails();
+        })
+        .subscribe();
+      
       return () => {
         supabase.removeChannel(channel);
+        supabase.removeChannel(menuItemsChannel);
       };
     }, [fetchOrderDetails, orderId])
   );
@@ -446,6 +480,21 @@ const styles = StyleSheet.create({
   completedText: {
     color: '#10B981',
     fontSize: 13,
+    fontWeight: '600',
+  },
+  outOfStockBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 4,
+    marginRight: 8,
+  },
+  outOfStockText: {
+    color: '#DC2626',
+    fontSize: 12,
     fontWeight: '600',
   },
   

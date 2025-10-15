@@ -34,6 +34,7 @@ interface SummaryDetailItem {
   status: StatusType;
   customizations: any;
   table_name: string;
+  is_available?: boolean; // [MỚI] Trạng thái còn hàng
 }
 
 // ---- COMPONENT CON (ĐÃ CẬP NHẬT NÚT "TRẢ MÓN") ----
@@ -70,8 +71,18 @@ const DetailItemCard: React.FC<{
       );
     }
     
+    // [MỚI] Hiển thị badge cảnh báo nếu món hết
+    const isOutOfStock = item.is_available === false;
+    
     return (
       <View style={styles.footerActionsContainer}>
+        {isOutOfStock && status === STATUS.IN_PROGRESS && (
+          <View style={styles.outOfStockBadge}>
+            <Ionicons name="alert-circle" size={16} color="#DC2626" />
+            <Text style={styles.outOfStockText}>Hết món</Text>
+          </View>
+        )}
+        
         {status === STATUS.PENDING && (
           <TouchableOpacity
             style={styles.processButton}
@@ -82,7 +93,6 @@ const DetailItemCard: React.FC<{
           </TouchableOpacity>
         )}
         
-        {/* [CẬP NHẬT] Thay đổi nút "Xong" thành "Trả món" với icon chuông */}
         {status === STATUS.IN_PROGRESS && (
           <TouchableOpacity
             style={styles.completeButton}
@@ -149,22 +159,33 @@ const KitchenSummaryDetailScreen = () => {
 
   const fetchDetails = useCallback(async () => {
     try {
+      // [CẬP NHẬT] Thêm menu_items.is_available
       const { data, error } = await supabase
         .from('order_items')
-        .select(`id, quantity, status, customizations, orders ( order_tables ( tables ( name ) ) )`)
-        .in('status', [STATUS.PENDING, STATUS.IN_PROGRESS, STATUS.COMPLETED])  // [SỬA] Thêm COMPLETED
+        .select(`id, quantity, status, customizations, menu_items ( is_available ), orders ( order_tables ( tables ( name ) ) )`)
+        .in('status', [STATUS.PENDING, STATUS.IN_PROGRESS, STATUS.COMPLETED])
         .eq('customizations->>name', itemName)
         .order('created_at', { referencedTable: 'orders', ascending: true });
 
       if (error) throw error;
       
-      const mappedItems = data.map((item: any) => ({
-        id: item.id,
-        quantity: item.quantity,
-        status: item.status as StatusType,
-        customizations: item.customizations,
-        table_name: item.orders?.order_tables[0]?.tables?.name || 'Mang về',
-      }));
+      // [CẬP NHẬT] Lọc bỏ món hết + đang chờ
+      const mappedItems = data
+        .map((item: any) => ({
+          id: item.id,
+          quantity: item.quantity,
+          status: item.status as StatusType,
+          customizations: item.customizations,
+          table_name: item.orders?.order_tables[0]?.tables?.name || 'Mang về',
+          is_available: item.menu_items?.is_available ?? true,
+        }))
+        .filter((item: any) => {
+          // Nếu món hết VÀ đang chờ → Bỏ qua
+          if (!item.is_available && item.status === STATUS.PENDING) {
+            return false;
+          }
+          return true;
+        });
 
       setDetailItems(mappedItems);
     } catch (err: any) {
@@ -182,7 +203,20 @@ const KitchenSummaryDetailScreen = () => {
         .channel(`public:order_items:summary_detail_v3:${itemName}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, () => fetchDetails())
         .subscribe();
-      return () => { supabase.removeChannel(channel); };
+      
+      // [MỚI] Lắng nghe thay đổi menu_items
+      const menuItemsChannel = supabase
+        .channel('public:menu_items:kitchen_summary_detail')
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'menu_items' }, () => {
+          console.log('[KitchenSummaryDetail] Món ăn thay đổi trạng thái');
+          fetchDetails();
+        })
+        .subscribe();
+      
+      return () => { 
+        supabase.removeChannel(channel);
+        supabase.removeChannel(menuItemsChannel);
+      };
     }, [fetchDetails, itemName])
   );
 
@@ -463,6 +497,21 @@ const styles = StyleSheet.create({
   completedText: {
     color: '#10B981',
     fontSize: 13,
+    fontWeight: '600',
+  },
+  outOfStockBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 4,
+    marginRight: 8,
+  },
+  outOfStockText: {
+    color: '#DC2626',
+    fontSize: 12,
     fontWeight: '600',
   },
   

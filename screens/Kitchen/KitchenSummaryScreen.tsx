@@ -59,11 +59,10 @@ const KitchenSummaryScreen = () => {
 
   const fetchSummaryData = useCallback(async () => {
     try {
-      // [SỬA LỖI] Xóa "!inner" để chuyển thành LEFT JOIN, giúp truy vấn ổn định hơn
-      // và không bỏ sót các món có thể bị thiếu liên kết tạm thời.
+      // [CẬP NHẬT] Thêm menu_items.is_available
       const { data, error } = await supabase
         .from('order_items')
-        .select('quantity, customizations, status, created_at, orders(order_tables(tables(name)))')
+        .select('quantity, customizations, status, created_at, menu_items ( is_available ), orders(order_tables(tables(name)))')
         .in('status', STATUS_TO_AGGREGATE);
 
       if (error) throw error;
@@ -86,8 +85,14 @@ const KitchenSummaryScreen = () => {
       const itemMap = data.reduce((acc, item) => {
         const itemName = item.customizations.name;
         const orders = item.orders as any;
-        // Logic xử lý tên bàn đã có fallback "Mang về" nên sẽ hoạt động tốt với left join
         const tableName = orders?.order_tables?.[0]?.tables?.name || 'Mang về';
+        
+        // [CẬP NHẬT] Bỏ qua món hết hàng + đang chờ
+        const menuItems = item.menu_items as any;
+        const isAvailable = menuItems?.is_available ?? true;
+        if (!isAvailable && item.status === 'waiting') {
+          return acc;
+        }
         
         if (!acc[itemName]) {
           acc[itemName] = {
@@ -149,8 +154,19 @@ const KitchenSummaryScreen = () => {
           () => fetchSummaryData()
         )
         .subscribe();
+      
+      // [MỚI] Lắng nghe thay đổi menu_items
+      const menuItemsChannel = supabase
+        .channel('public:menu_items:kitchen_summary')
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'menu_items' }, () => {
+          console.log('[KitchenSummary] Món ăn thay đổi trạng thái');
+          fetchSummaryData();
+        })
+        .subscribe();
+      
       return () => {
         supabase.removeChannel(channel);
+        supabase.removeChannel(menuItemsChannel);
       };
     }, [fetchSummaryData])
   );

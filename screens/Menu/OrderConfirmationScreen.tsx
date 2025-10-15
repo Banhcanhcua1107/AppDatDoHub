@@ -48,6 +48,7 @@ interface DisplayItem {
   returned_quantity: number;
   image_url: string | null;
   isReturnedItem?: boolean; // Cờ để đánh dấu đây là dòng hiển thị món đã trả
+  is_available?: boolean; // [MỚI] Trạng thái còn hàng của món từ menu_items
 }
 
 const NoteInputModal: React.FC<{
@@ -98,12 +99,15 @@ const OrderListItem: React.FC<{
   onUpdateQuantity: (newQuantity: number) => void;
   onOpenMenu: () => void;
 }> = ({ item, isExpanded, onPress, onUpdateQuantity, onOpenMenu }) => {
-  const { customizations, isNew, isPaid, isReturnedItem } = item;
+  const { customizations, isNew, isPaid, isReturnedItem, is_available } = item;
   const sizeText = customizations.size?.name || 'N/A';
   const sugarText = customizations.sugar?.name || 'N/A';
   const toppingsText =
     (customizations.toppings?.map((t: any) => t.name) || []).join(', ') || 'Không có';
   const noteText = customizations.note;
+  
+  // [MỚI] Kiểm tra món có còn hàng không
+  const isOutOfStock = is_available === false;
 
   const ExpandedView = () => (
     <View className="mt-4 pt-4 border-t border-gray-100">
@@ -141,7 +145,7 @@ const OrderListItem: React.FC<{
       <TouchableOpacity onPress={onPress} disabled={isPaid || isReturnedItem}>
         <View className="flex-row justify-between items-start">
           <View className="flex-1 pr-4">
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
               {item.status === 'served' && !isReturnedItem && (
               <Icon name="checkmark-circle" size={20} color="#3B82F6" style={{ marginRight: 6 }} />
               )}
@@ -156,6 +160,15 @@ const OrderListItem: React.FC<{
               >
                 {item.name}
               </Text>
+              {/* [MỚI] Badge cảnh báo món hết */}
+              {isOutOfStock && !isPaid && !isReturnedItem && (
+                <View className="bg-red-100 px-2 py-1 rounded-full ml-2">
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Icon name="alert-circle" size={14} color="#DC2626" style={{ marginRight: 4 }} />
+                    <Text className="text-red-800 text-xs font-bold">Hết món</Text>
+                  </View>
+                </View>
+              )}
             </View>
             <Text className="text-sm text-gray-500 mt-1">{`Size: ${sizeText}, Đường: ${sugarText}`}</Text>
             <Text className="text-sm text-gray-500">{`Topping: ${toppingsText}`}</Text>
@@ -286,7 +299,7 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
         let returnedItemsSectionData: DisplayItem[] = [];
 
         if (orderIdToFetch) {
-          // [SỬA LỖI 1] Sửa câu truy vấn để lấy cả thông tin từ bảng `menu_items`
+          // [CẬP NHẬT] Thêm is_available từ menu_items để biết món còn hay hết
           const { data: orderDetails, error: orderError } = await supabase
             .from('orders')
             .select(
@@ -295,7 +308,7 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
                         status, 
                         order_items(
                             id, quantity, unit_price, customizations, created_at, returned_quantity,
-                            status, menu_items(name, image_url)
+                            status, menu_items(name, image_url, is_available)
                         ), 
                         order_tables(tables(id, name))
                     `
@@ -311,6 +324,7 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
             (orderDetails.order_items || []).forEach((item: any) => {
               const name = item.menu_items?.name || item.customizations?.name || 'Món đã xóa';
               const image_url = item.menu_items?.image_url || null;
+              const is_available = item.menu_items?.is_available ?? true; // [MỚI] Lấy trạng thái còn hàng
 
               if (item.returned_quantity > 0) {
                 returnedItemsSectionData.push({
@@ -327,6 +341,7 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
                   returned_quantity: item.returned_quantity,
                   image_url,
                   isReturnedItem: true,
+                  is_available, // [MỚI]
                 });
               }
 
@@ -346,6 +361,7 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
                   status: item.status, // Chỗ này đã đúng từ trước
                   returned_quantity: item.returned_quantity,
                   image_url,
+                  is_available, // [MỚI] Thêm trạng thái còn hàng
                 };
                 if (displayItem.isPaid) paidItemsData.push(displayItem);
                 else pendingItems.push(displayItem);
@@ -354,12 +370,12 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
           }
         }
 
-        // Lấy dữ liệu từ giỏ hàng (cart_items), cần join với menu_items để có image_url
+        // Lấy dữ liệu từ giỏ hàng (cart_items), cần join với menu_items để có image_url và is_available
         const representativeTableId = freshTables[0]?.id || initialTableId;
         if (representativeTableId) {
           const { data: cartData, error: cartError } = await supabase
             .from('cart_items')
-            .select('*, menu_items(image_url)')
+            .select('*, menu_items(image_url, is_available)')
             .eq('table_id', representativeTableId);
 
           if (cartError) throw cartError;
@@ -378,6 +394,7 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
             status: 'new',
             returned_quantity: 0,
             image_url: item.menu_items?.image_url || null, // Lấy ảnh cho món mới
+            is_available: item.menu_items?.is_available ?? true, // [MỚI] Lấy trạng thái còn hàng
           }));
         }
 
@@ -429,8 +446,24 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
           fetchAllData(false);
         })
         .subscribe();
+      
+      // [MỚI] Lắng nghe thay đổi trên bảng menu_items (khi bếp báo hết món)
+      const menuItemsChannel = supabase
+        .channel('public:menu_items_availability')
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'menu_items' },
+          (payload) => {
+            console.log('[Realtime] Món ăn thay đổi trạng thái:', payload);
+            // Refresh lại dữ liệu để cập nhật is_available
+            fetchAllData(false);
+          }
+        )
+        .subscribe();
+      
       return () => {
         supabase.removeChannel(channel);
+        supabase.removeChannel(menuItemsChannel);
       };
     }, [fetchAllData, activeOrderId, initialTableId])
   );

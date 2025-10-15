@@ -24,6 +24,7 @@ interface KitchenItem {
   quantity: number;
   note: string | null;
   status: KitchenItemStatus;
+  is_available?: boolean; // [MỚI] Trạng thái còn hàng
 }
 
 interface OrderTicket {
@@ -120,9 +121,10 @@ const KitchenDisplayScreen = () => {
 
   const fetchKitchenOrders = useCallback(async () => {
     try {
+      // [CẬP NHẬT] Thêm menu_items.is_available để kiểm tra món còn hay hết
       const { data, error } = await supabase
         .from('order_items')
-        .select('id, quantity, customizations, status, orders ( id, created_at, order_tables ( tables ( name ) ) )')
+        .select('id, quantity, customizations, status, menu_items ( is_available ), orders ( id, created_at, order_tables ( tables ( name ) ) )')
         .neq('status', STATUS.SERVED)
         .order('created_at', { referencedTable: 'orders', ascending: true });
 
@@ -142,19 +144,30 @@ const KitchenDisplayScreen = () => {
           };
         }
 
+        // [CẬP NHẬT] Chỉ thêm món nếu món còn hàng HOẶC đang làm/đã xong
+        const isAvailable = item.menu_items?.is_available ?? true;
+        
+        // Logic: Nếu món hết VÀ đang chờ → Bỏ qua
+        if (!isAvailable && item.status === STATUS.PENDING) {
+          return acc;
+        }
+        
         acc[orderId].items.push({
           id: item.id,
           name: item.customizations.name,
           quantity: item.quantity,
           note: item.customizations.note || null,
           status: item.status as KitchenItemStatus,
+          is_available: isAvailable, // [MỚI]
         });
 
         return acc;
       }, {} as Record<string, OrderTicket>);
 
+      // [CẬP NHẬT] Lọc bỏ order không còn item nào (vì tất cả món hết và đang chờ)
       const finalOrders = Object.values(groupedOrders)
-        .map(order => ({ ...order, total_items: order.items.reduce((sum, item) => sum + item.quantity, 0) }));
+        .map(order => ({ ...order, total_items: order.items.reduce((sum, item) => sum + item.quantity, 0) }))
+        .filter(order => order.items.length > 0); // Chỉ giữ order có ít nhất 1 món
 
       setOrders(finalOrders);
     } catch (err: any) {
@@ -173,7 +186,20 @@ const KitchenDisplayScreen = () => {
         .channel('public:order_items:kitchen_v2')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, () => fetchKitchenOrders())
         .subscribe();
-      return () => { supabase.removeChannel(channel); };
+      
+      // [MỚI] Lắng nghe thay đổi trên menu_items (khi báo hết/còn món)
+      const menuItemsChannel = supabase
+        .channel('public:menu_items:kitchen_display')
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'menu_items' }, () => {
+          console.log('[KitchenDisplay] Món ăn thay đổi trạng thái');
+          fetchKitchenOrders();
+        })
+        .subscribe();
+      
+      return () => { 
+        supabase.removeChannel(channel);
+        supabase.removeChannel(menuItemsChannel);
+      };
     }, [fetchKitchenOrders])
   );
 
