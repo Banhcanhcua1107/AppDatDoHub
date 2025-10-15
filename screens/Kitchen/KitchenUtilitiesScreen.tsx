@@ -35,11 +35,17 @@ const KitchenUtilitiesScreen = () => {
           />
         </View>
 
+        {/* Khu vực quản lý món */}
         <View style={styles.section}>
           <UtilityItem
             icon="swap-horizontal-outline"
             title="Báo hết / Báo còn"
             onPress={() => navigation.navigate('ItemAvailability')}
+          />
+          <UtilityItem
+            icon="time-outline"
+            title="Lịch sử trả món"
+            onPress={() => navigation.navigate('ReturnHistory')}
           />
         </View>
 

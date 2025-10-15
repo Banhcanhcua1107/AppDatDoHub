@@ -34,6 +34,7 @@ import KitchenDetailScreen from '../screens/Kitchen/KitchenDetailScreen';
 import KitchenSummaryDetailScreen from '../screens/Kitchen/KitchenSummaryDetailScreen';
 import KitchenProcessingReportScreen from 'screens/Kitchen/KitchenProcessingReportScreen';
 import ItemAvailabilityScreen from 'screens/Kitchen/ItemAvailabilityScreen';
+import ReturnHistoryScreen from 'screens/Kitchen/ReturnHistoryScreen'; // [MỚI]
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const AppStack = createNativeStackNavigator<AppStackParamList>();
@@ -44,6 +45,7 @@ export type KitchenStackParamList = {
   KitchenSummaryDetail: { itemName: string }; 
   KitchenProcessingReport: undefined;
   ItemAvailability: undefined;
+  ReturnHistory: undefined; // [MỚI] Lịch sử trả món
 };
 
 const KitchenStack = createNativeStackNavigator<KitchenStackParamList>();
@@ -91,6 +93,7 @@ const KitchenNavigator = () => (
     <KitchenStack.Screen name="KitchenSummaryDetail" component={KitchenSummaryDetailScreen} />
     <KitchenStack.Screen name="KitchenProcessingReport" component={KitchenProcessingReportScreen} options={{ headerShown: false }} />
     <KitchenStack.Screen name="ItemAvailability" component={ItemAvailabilityScreen} options={{ headerShown: false }} />
+    <KitchenStack.Screen name="ReturnHistory" component={ReturnHistoryScreen} options={{ headerShown: false }} />
   </KitchenStack.Navigator>
 );
 
