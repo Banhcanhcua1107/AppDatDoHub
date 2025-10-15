@@ -35,6 +35,16 @@ import KitchenSummaryDetailScreen from '../screens/Kitchen/KitchenSummaryDetailS
 import KitchenProcessingReportScreen from 'screens/Kitchen/KitchenProcessingReportScreen';
 import ItemAvailabilityScreen from 'screens/Kitchen/ItemAvailabilityScreen';
 import ReturnHistoryScreen from 'screens/Kitchen/ReturnHistoryScreen'; // [MỚI]
+// --- [THÊM] Import CashierTabs và các màn hình Thu ngân ---
+import CashierTabs from './CashierTabs';
+import CashierReportScreen from '../screens/Cashier/CashierReportScreen';
+import PurchaseScreen from '../screens/Cashier/PurchaseScreen';
+import InventoryScreen from '../screens/Cashier/InventoryScreen';
+import CashFundScreen from '../screens/Cashier/CashFundScreen';
+import BankFundScreen from '../screens/Cashier/BankFundScreen';
+import ExpensesScreen from '../screens/Cashier/ExpensesScreen';
+import PromotionsScreen from '../screens/Cashier/PromotionsScreen';
+import MenuManagementScreen from '../screens/Cashier/MenuManagementScreen';
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const AppStack = createNativeStackNavigator<AppStackParamList>();
@@ -49,6 +59,24 @@ export type KitchenStackParamList = {
 };
 
 const KitchenStack = createNativeStackNavigator<KitchenStackParamList>();
+
+// --- [THÊM] Khai báo CashierStack cho Thu ngân ---
+export type CashierStackParamList = {
+  CashierRoot: undefined; // Màn hình chứa các tab
+  CashierReport: undefined;
+  Purchase: undefined;
+  Inventory: undefined;
+  CashFund: undefined;
+  BankFund: undefined;
+  Expenses: undefined;
+  Promotions: undefined;
+  MenuManagement: undefined;
+  // Thêm các màn hình dùng chung
+  ChangePassword: undefined;
+  BillHistory: undefined;
+};
+
+const CashierStack = createNativeStackNavigator<CashierStackParamList>();
 
 
 // --- Navigator cho luồng Xác thực (Giữ nguyên) ---
@@ -97,6 +125,24 @@ const KitchenNavigator = () => (
   </KitchenStack.Navigator>
 );
 
+// --- [THÊM] Navigator mới cho luồng Thu ngân ---
+const CashierNavigator = () => (
+  <CashierStack.Navigator screenOptions={{ headerShown: false }}>
+    <CashierStack.Screen name="CashierRoot" component={CashierTabs} />
+    <CashierStack.Screen name="CashierReport" component={CashierReportScreen} options={{ headerShown: true, title: 'Báo cáo' }} />
+    <CashierStack.Screen name="Purchase" component={PurchaseScreen} options={{ headerShown: true, title: 'Mua hàng' }} />
+    <CashierStack.Screen name="Inventory" component={InventoryScreen} options={{ headerShown: true, title: 'Kho' }} />
+    <CashierStack.Screen name="CashFund" component={CashFundScreen} options={{ headerShown: true, title: 'Quỹ tiền mặt' }} />
+    <CashierStack.Screen name="BankFund" component={BankFundScreen} options={{ headerShown: true, title: 'Quỹ tiền gửi' }} />
+    <CashierStack.Screen name="Expenses" component={ExpensesScreen} options={{ headerShown: true, title: 'Chi phí' }} />
+    <CashierStack.Screen name="Promotions" component={PromotionsScreen} options={{ headerShown: true, title: 'Khuyến mãi' }} />
+    <CashierStack.Screen name="MenuManagement" component={MenuManagementScreen} options={{ headerShown: true, title: 'Thực đơn' }} />
+    {/* Thêm các màn hình dùng chung */}
+    <CashierStack.Screen name="ChangePassword" component={ChangePasswordScreen} />
+    <CashierStack.Screen name="BillHistory" component={BillHistoryScreen} />
+  </CashierStack.Navigator>
+);
+
 
 // --- Component Navigator Chính (Đã được cập nhật) ---
 export default function AppNavigator() {
@@ -116,6 +162,7 @@ export default function AppNavigator() {
         <>
           {userProfile.role === 'bep' && <KitchenNavigator />}
           {userProfile.role === 'nhan_vien' && <MainAppStack />}
+          {userProfile.role === 'thu_ngan' && <CashierNavigator />}
         </>
       ) : (
         <AuthNavigator />
