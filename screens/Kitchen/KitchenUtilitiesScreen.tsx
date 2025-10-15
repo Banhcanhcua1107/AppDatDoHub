@@ -42,13 +42,14 @@ const KitchenUtilitiesScreen = () => {
             title="Báo hết / Báo còn"
             onPress={() => navigation.navigate('ItemAvailability')}
           />
+        </View>
+        <View style={styles.section}>
           <UtilityItem
             icon="time-outline"
             title="Lịch sử trả món"
             onPress={() => navigation.navigate('ReturnHistory')}
           />
-        </View>
-
+          </View>
         {/* Khu vực tài khoản */}
         <View style={styles.section}>
           <UtilityItem
