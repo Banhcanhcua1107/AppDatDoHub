@@ -58,43 +58,59 @@ const OrderTicketCard: React.FC<{
   }, [ticket.created_at]);
 
   const hasPendingItems = ticket.items.some(item => item.status === STATUS.PENDING);
+  
+  const waitingCount = ticket.items.filter(item => item.status === STATUS.PENDING).reduce((sum, item) => sum + item.quantity, 0);
+  const inProgressCount = ticket.items.filter(item => item.status === STATUS.IN_PROGRESS).reduce((sum, item) => sum + item.quantity, 0);
+  const completedCount = ticket.items.filter(item => item.status === STATUS.COMPLETED).reduce((sum, item) => sum + item.quantity, 0);
 
   return (
     <TouchableOpacity style={styles.card} onPress={onNavigate} activeOpacity={0.8}>
-      {/* Header xanh navy */}
-      <View style={styles.cardHeaderBlue}>
-        <Text style={styles.tableName}>{ticket.table_name}</Text>
-        <View style={styles.timeRow}>
-          <Ionicons name="time-outline" size={14} color="white" />
-          <Text style={[styles.timeText, { color: 'white' }]}>{elapsedTime}</Text>
-        </View>
-      </View>
-
-      {/* Body - Thông tin order */}
-      <View style={styles.cardBody}>
-        <View style={styles.centerSection}>
-          <Text style={styles.orderText}>{ticket.table_name} Order</Text>
-        </View>
-        
-        <View style={styles.verticalDivider} />
-        
-        <View style={styles.rightSection}>
-          <View style={styles.rightRow}>
-            <Text style={styles.completedNumber}>{ticket.total_items}</Text>
-            <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+      {/* Top row - Tên bàn + Badge tổng */}
+      <View style={styles.topRow}>
+        <View style={styles.tableInfo}>
+          <Text style={styles.tableName}>{ticket.table_name}</Text>
+          <View style={styles.timeRowInline}>
+            <Ionicons name="time-outline" size={12} color="#6B7280" />
+            <Text style={styles.elapsedTimeText}>{elapsedTime}</Text>
           </View>
         </View>
+        <View style={styles.totalBadge}>
+          <Text style={styles.totalText}>{ticket.total_items}</Text>
+        </View>
       </View>
 
-      {/* Action buttons row - 2 nút */}
+      {/* Status row - Hiển thị chi tiết trạng thái */}
+      <View style={styles.statusRow}>
+        <View style={styles.statusItem}>
+          <Text style={styles.statusLabel}>Chờ</Text>
+          <Text style={styles.statusValue}>{waitingCount}</Text>
+        </View>
+        
+        <View style={styles.dividerVertical} />
+        
+        <View style={styles.statusItem}>
+          <Text style={styles.statusLabel}>Đang làm</Text>
+          <Text style={styles.statusValue}>{inProgressCount}</Text>
+        </View>
+        
+        <View style={styles.dividerVertical} />
+        
+        <View style={styles.statusItem}>
+          <Text style={styles.statusLabel}>Xong</Text>
+          <Text style={[styles.statusValue, { color: '#10B981' }]}>{completedCount}</Text>
+        </View>
+      </View>
+
+      {/* Action buttons row */}
       <View style={styles.actionRow}>
         <TouchableOpacity 
           style={[styles.actionButton, styles.processButton, !hasPendingItems && styles.buttonDisabled]}
           onPress={(e) => { e.stopPropagation(); onProcessAll(); }}
           disabled={!hasPendingItems}
+          activeOpacity={0.7}
         >
           <Ionicons name="restaurant-outline" size={16} color="white" />
-          <Text style={styles.buttonText}>CHẾ BIẾN HẾT</Text>
+          <Text style={styles.buttonText}>Nhận chế biến</Text>
         </TouchableOpacity>
         
         <TouchableOpacity 
@@ -103,9 +119,10 @@ const OrderTicketCard: React.FC<{
             e.stopPropagation();
             onReturnOrder();
           }}
+          activeOpacity={0.7}
         >
           <Ionicons name="notifications-outline" size={16} color="white" />
-          <Text style={styles.buttonText}>TRẢ MÓN</Text>
+          <Text style={styles.buttonText}>Trả món</Text>
         </TouchableOpacity>
       </View>
     </TouchableOpacity>
@@ -317,27 +334,117 @@ const styles = StyleSheet.create({
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   loadingText: { marginTop: 10, fontSize: 16, color: '#4B5563' },
   emptyText: { marginTop: 16, fontSize: 18, color: '#6B7280', fontWeight: '500', textAlign: 'center' },
-  header: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1E3A8A', paddingHorizontal: 16, paddingVertical: 14, paddingTop: 20 },
+  header: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1E3A8A', paddingHorizontal: 16, paddingVertical: 12, paddingTop: 20 },
   headerTitle: { color: 'white', fontSize: 20, fontWeight: 'bold', marginLeft: 12 },
-  listContainer: { paddingHorizontal: 12, paddingVertical: 12 },
-  card: { backgroundColor: 'white', borderRadius: 10, marginBottom: 12, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 3, elevation: 2 },
-  cardHeaderBlue: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1E3A8A', paddingHorizontal: 12, paddingVertical: 6 },
-  tableName: { fontSize: 16, fontWeight: 'bold', color: 'white' },
-  timeRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  timeText: { fontSize: 12, fontWeight: '500' },
-  cardBody: { flexDirection: 'row', paddingVertical: 8, paddingHorizontal: 12, alignItems: 'center' },
-  centerSection: { flex: 2, justifyContent: 'center', alignItems: 'center' },
-  orderText: { fontSize: 15, fontWeight: '600', color: '#1E3A8A' },
-  verticalDivider: { width: 1.5, height: 30, backgroundColor: '#E5E7EB', marginHorizontal: 8 },
-  rightSection: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  rightRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  completedNumber: { fontSize: 22, fontWeight: 'bold', color: '#111827' },
-  actionRow: { flexDirection: 'row', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderTopWidth: 1, borderTopColor: '#E5E7EB', backgroundColor: '#F9FAFB' },
-  actionButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 6, paddingHorizontal: 8, borderRadius: 6, gap: 4 },
-  processButton: { backgroundColor: '#F97316' },
-  serveButton: { backgroundColor: '#10B981' },
+  listContainer: { paddingHorizontal: 16, paddingVertical: 12 },
+  
+  // Card styles
+  card: { 
+    backgroundColor: 'white', 
+    borderRadius: 10, 
+    marginBottom: 12, 
+    overflow: 'hidden', 
+    shadowColor: '#000', 
+    shadowOffset: { width: 0, height: 2 }, 
+    shadowOpacity: 0.06, 
+    shadowRadius: 4, 
+    elevation: 2 
+  },
+  
+  topRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  tableInfo: {
+    flex: 1,
+  },
+  tableName: { 
+    fontSize: 16, 
+    fontWeight: '700', 
+    color: '#1E3A8A',
+    marginBottom: 4,
+  },
+  timeRowInline: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 4 
+  },
+  elapsedTimeText: { 
+    fontSize: 12, 
+    fontWeight: '500',
+    color: '#6B7280'
+  },
+  totalBadge: {
+    backgroundColor: '#1E3A8A',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    minWidth: 40,
+    alignItems: 'center',
+    marginLeft: 12,
+  },
+  totalText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: 'white',
+  },
+  
+  statusRow: {
+    flexDirection: 'row',
+    backgroundColor: '#F9FAFB',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  statusItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  statusLabel: {
+    fontSize: 11,
+    color: '#6B7280',
+    marginBottom: 4,
+  },
+  statusValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  dividerVertical: {
+    width: 1,
+    backgroundColor: '#E5E7EB',
+    marginHorizontal: 8,
+    height: 24,
+  },
+  
+  actionRow: { 
+    flexDirection: 'row', 
+    gap: 8, 
+    paddingHorizontal: 12, 
+    paddingVertical: 8, 
+    backgroundColor: '#F9FAFB' 
+  },
+  actionButton: { 
+    flex: 1, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    paddingVertical: 8, 
+    paddingHorizontal: 10, 
+    borderRadius: 6, 
+    gap: 6
+  },
+  processButton: { backgroundColor: '#1E40AF' },
+  serveButton: { backgroundColor: '#F59E0B' },
   buttonDisabled: { backgroundColor: '#D1D5DB' },
-  buttonText: { color: 'white', fontSize: 12, fontWeight: 'bold' },
+  buttonText: { color: 'white', fontSize: 13, fontWeight: '600' },
 });
 
 export default KitchenDisplayScreen;
