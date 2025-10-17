@@ -24,6 +24,7 @@ const STATUS = {
   IN_PROGRESS: 'in_progress',
   COMPLETED: 'completed',
   SERVED: 'served',  // [THÊM]
+  RETURNED: 'returned' // [MỚI] Trạng thái đã trả món
 } as const;
 
 type StatusType = typeof STATUS[keyof typeof STATUS];
@@ -31,6 +32,7 @@ type StatusType = typeof STATUS[keyof typeof STATUS];
 interface SummaryDetailItem {
   id: number;
   quantity: number;
+  returned_quantity?: number; // [MỚI]
   status: StatusType;
   customizations: any;
   table_name: string;
@@ -159,28 +161,38 @@ const KitchenSummaryDetailScreen = () => {
 
   const fetchDetails = useCallback(async () => {
     try {
-      // [CẬP NHẬT] Thêm menu_items.is_available + lọc món đã trả (served)
+      // [CẬP NHẬT] Thêm returned_quantity để lọc món đã trả hết
       const { data, error } = await supabase
         .from('order_items')
-        .select(`id, quantity, status, customizations, created_at, menu_items ( is_available ), orders ( order_tables ( tables ( name ) ) )`)
+        .select(`id, quantity, returned_quantity, status, customizations, created_at, menu_items ( is_available ), orders ( order_tables ( tables ( name ) ) )`)
         .in('status', [STATUS.PENDING, STATUS.IN_PROGRESS, STATUS.COMPLETED])
         .eq('customizations->>name', itemName)
         .order('created_at', { referencedTable: 'orders', ascending: true });
 
       if (error) throw error;
       
-      // [CẬP NHẬT] Lọc bỏ món hết + đang chờ
+      // [FIX] Chỉ hiển thị món còn cần làm
       const mappedItems = data
-        .map((item: any) => ({
-          id: item.id,
-          quantity: item.quantity,
-          status: item.status as StatusType,
-          customizations: item.customizations,
-          table_name: item.orders?.order_tables[0]?.tables?.name || 'Mang về',
-          is_available: item.menu_items?.is_available ?? true,
-        }))
+        .map((item: any) => {
+          const returnedQty = item.returned_quantity || 0;
+          const remainingQty = item.quantity - returnedQty;
+          
+          return {
+            id: item.id,
+            quantity: remainingQty, // Số lượng còn lại
+            returned_quantity: returnedQty,
+            status: item.status as StatusType,
+            customizations: item.customizations,
+            table_name: item.orders?.order_tables[0]?.tables?.name || 'Mang về',
+            is_available: item.menu_items?.is_available ?? true,
+          };
+        })
         .filter((item: any) => {
-          // Nếu món hết VÀ đang chờ → Bỏ qua
+          // [FIX] Bỏ qua món đã trả hết
+          if (item.quantity <= 0) {
+            return false;
+          }
+          // Bỏ qua món hết hàng VÀ đang chờ
           if (!item.is_available && item.status === STATUS.PENDING) {
             return false;
           }
@@ -308,7 +320,9 @@ const KitchenSummaryDetailScreen = () => {
       if (updateError) throw updateError;
       
       // Tự động quay về màn hình trước
-      navigation.goBack();
+      if (navigation.canGoBack()) {
+        navigation.goBack();
+      }
 
     } catch (err: any) {
       Alert.alert('Lỗi', 'Không thể hoàn thành món: ' + err.message);
@@ -508,6 +522,22 @@ const styles = StyleSheet.create({
     color: '#10B981',
     fontSize: 13,
     fontWeight: '600',
+  },
+  returnedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+  },
+  returnedText: {
+    color: '#DC2626',
+    fontSize: 13,
+    fontWeight: '700',
   },
   outOfStockBadge: {
     flexDirection: 'row',

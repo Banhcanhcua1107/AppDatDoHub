@@ -26,6 +26,7 @@ const STATUS = {
   IN_PROGRESS: 'in_progress',
   COMPLETED: 'completed',
   SERVED: 'served',
+  RETURNED: 'returned' // [MỚI] Trạng thái đã trả món
 };
 type KitchenItemStatus = typeof STATUS[keyof typeof STATUS];
 
@@ -33,6 +34,7 @@ interface KitchenDetailItem {
   id: number;
   name: string;
   quantity: number;
+  returned_quantity?: number; // [MỚI]
   note: string | null;
   status: KitchenItemStatus;
   customizations: any;
@@ -143,30 +145,41 @@ const KitchenDetailScreen = () => {
 
   const fetchOrderDetails = useCallback(async () => {
     try {
-      // [CẬP NHẬT] Thêm menu_items.is_available + lọc món đã trả (served)
+      // [CẬP NHẬT] Thêm returned_quantity để lọc món đã trả hết
       const { data, error } = await supabase
         .from('order_items')
-        .select('id, quantity, customizations, status, created_at, menu_items ( is_available )')
+        .select('id, quantity, returned_quantity, customizations, status, created_at, menu_items ( is_available )')
         .eq('order_id', orderId)
         .neq('status', STATUS.SERVED) // Loại bỏ các món đã served (đã trả cho khách)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
       
-      // [CẬP NHẬT] Lọc bỏ món hết hàng + đang chờ
+      // [FIX] Chỉ hiển thị món còn cần làm (chưa trả hết)
       const mappedItems = data
-        .map((item: any) => ({
-          ...item,
-          name: item.customizations.name || 'Món không tên',
-          note: item.customizations.note || null,
-          is_available: item.menu_items?.is_available ?? true,
-        }))
+        .map((item: any) => {
+          const returnedQty = item.returned_quantity || 0;
+          const remainingQty = item.quantity - returnedQty;
+          
+          return {
+            ...item,
+            quantity: remainingQty, // Số lượng còn lại sau khi trừ đi số đã trả
+            returned_quantity: returnedQty,
+            name: item.customizations.name || 'Món không tên',
+            note: item.customizations.note || null,
+            is_available: item.menu_items?.is_available ?? true,
+          };
+        })
         .filter((item: any) => {
-          // Nếu món hết VÀ đang chờ → Bỏ qua
+          // [FIX] Bỏ qua món đã trả hết
+          if (item.quantity <= 0) {
+            return false;
+          }
+          // Bỏ qua món hết hàng VÀ đang chờ
           if (!item.is_available && item.status === STATUS.PENDING) {
             return false;
           }
-          return true;
+          return true; // Giữ món còn cần làm
         });
       
       setItems(mappedItems);
@@ -280,17 +293,26 @@ const KitchenDetailScreen = () => {
     setReturnModalVisible(false);
     
     try {
-      // [SỬA] Lấy TẤT CẢ món của order này (không filter theo status)
-      const { data: allOrderItems, error: fetchError } = await supabase
+      // [FIX] Chỉ lấy món đã hoàn thành (completed) để trả cho khách
+      const { data: completedItems, error: fetchError } = await supabase
         .from('order_items')
         .select('id, quantity, customizations')
-        .eq('order_id', orderId);
+        .eq('order_id', orderId)
+        .eq('status', STATUS.COMPLETED); // [FIX] Chỉ lấy món completed
 
       if (fetchError) throw fetchError;
 
-      const itemIds = allOrderItems.map(item => item.id);
+      if (!completedItems || completedItems.length === 0) {
+        console.log('[KitchenDetail] Không có món nào đã hoàn thành để trả');
+        if (navigation.canGoBack()) {
+          navigation.goBack();
+        }
+        return;
+      }
 
-      // Chuyển TẤT CẢ món sang 'served'
+      const itemIds = completedItems.map(item => item.id);
+
+      // [FIX] Chuyển CHỈ món completed sang 'served' (đã trả cho khách)
       const { error: updateError } = await supabase
         .from('order_items')
         .update({ status: STATUS.SERVED }) 
@@ -298,23 +320,14 @@ const KitchenDetailScreen = () => {
 
       if (updateError) throw updateError;
 
-      // [MỚI] Insert từng record riêng biệt cho mỗi món (thay vì 1 record với mảng)
-      const notificationsToInsert = allOrderItems.map(item => ({
-        order_id: orderId,
-        table_name: tableName,
-        item_name: `${item.customizations.name} (x${item.quantity})`, // Lưu ý: singular 'item_name'
-        status: 'pending'
-      }));
-
-      const { error: insertError } = await supabase
-        .from('return_notifications')
-        .insert(notificationsToInsert);
-
-      if (insertError) throw insertError;
+      // [XÓA] Không tạo return_notifications ở đây
+      // return_notifications chỉ được tạo khi NHÂN VIÊN gửi yêu cầu trả món
       
-      navigation.goBack();
+      if (navigation.canGoBack()) {
+        navigation.goBack();
+      }
     } catch (err: any) {
-      console.error("Error creating return notification:", err.message);
+      console.error("Error returning items to customer:", err.message);
     }
   };
 
@@ -493,6 +506,22 @@ const styles = StyleSheet.create({
     color: '#10B981',
     fontSize: 13,
     fontWeight: '600',
+  },
+  returnedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF2F2',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    gap: 4,
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+  },
+  returnedText: {
+    color: '#DC2626',
+    fontSize: 13,
+    fontWeight: '700',
   },
   outOfStockBadge: {
     flexDirection: 'row',

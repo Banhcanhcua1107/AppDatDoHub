@@ -6,7 +6,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { KitchenStackParamList } from '../../navigation/AppNavigator';
 import ConfirmModal from '../../components/ConfirmModal';
-import { startAutoReturnService, stopAutoReturnService } from '../../services/autoReturnService';
+// [TẮT] Không dùng autoReturnService nữa
+// import { startAutoReturnService, stopAutoReturnService } from '../../services/autoReturnService';
 
 type KitchenDisplayNavigationProp = NativeStackNavigationProp<KitchenStackParamList>;
 
@@ -14,7 +15,8 @@ const STATUS = {
   PENDING: 'waiting',
   IN_PROGRESS: 'in_progress',
   COMPLETED: 'completed',
-  SERVED: 'served'
+  SERVED: 'served',
+  RETURNED: 'returned' // [MỚI] Trạng thái đã trả món
 } as const;
 
 type KitchenItemStatus = typeof STATUS[keyof typeof STATUS];
@@ -23,6 +25,7 @@ interface KitchenItem {
   id: number;
   name: string;
   quantity: number;
+  returned_quantity?: number; // [MỚI] Số lượng đã trả
   note: string | null;
   status: KitchenItemStatus;
   is_available?: boolean; // [MỚI] Trạng thái còn hàng
@@ -140,10 +143,10 @@ const KitchenDisplayScreen = () => {
 
   const fetchKitchenOrders = useCallback(async () => {
     try {
-      // [CẬP NHẬT] Thêm menu_items.is_available để kiểm tra món còn hay hết
+      // [CẬP NHẬT] Thêm returned_quantity để lọc món đã trả hết
       const { data, error } = await supabase
         .from('order_items')
-        .select('id, quantity, customizations, status, menu_items ( is_available ), orders ( id, created_at, order_tables ( tables ( name ) ) )')
+        .select('id, quantity, returned_quantity, customizations, status, menu_items ( is_available ), orders ( id, created_at, order_tables ( tables ( name ) ) )')
         .neq('status', STATUS.SERVED)
         .order('created_at', { referencedTable: 'orders', ascending: true });
 
@@ -152,6 +155,15 @@ const KitchenDisplayScreen = () => {
       const groupedOrders = data.reduce((acc, item: any) => {
         const orderId = item.orders?.id;
         if (!orderId || !item.orders) return acc;
+
+        // [FIX] Tính số lượng còn lại
+        const returnedQty = item.returned_quantity || 0;
+        const remainingQty = item.quantity - returnedQty;
+        
+        // [FIX] Bỏ qua món đã trả hết
+        if (remainingQty <= 0) {
+          return acc;
+        }
 
         if (!acc[orderId]) {
           acc[orderId] = {
@@ -163,30 +175,31 @@ const KitchenDisplayScreen = () => {
           };
         }
 
-        // [CẬP NHẬT] Chỉ thêm món nếu món còn hàng HOẶC đang làm/đã xong
+        // [CẬP NHẬT] Chỉ bỏ qua món hết hàng VÀ đang chờ
         const isAvailable = item.menu_items?.is_available ?? true;
         
-        // Logic: Nếu món hết VÀ đang chờ → Bỏ qua
         if (!isAvailable && item.status === STATUS.PENDING) {
           return acc;
         }
         
+        // [MỚI] Thêm món với số lượng còn lại
         acc[orderId].items.push({
           id: item.id,
           name: item.customizations.name,
-          quantity: item.quantity,
+          quantity: remainingQty, // Chỉ hiển thị số lượng còn lại
+          returned_quantity: returnedQty,
           note: item.customizations.note || null,
           status: item.status as KitchenItemStatus,
-          is_available: isAvailable, // [MỚI]
+          is_available: isAvailable,
         });
 
         return acc;
       }, {} as Record<string, OrderTicket>);
 
-      // [CẬP NHẬT] Lọc bỏ order không còn item nào (vì tất cả món hết và đang chờ)
+      // [CẬP NHẬT] Lọc bỏ order không còn item nào
       const finalOrders = Object.values(groupedOrders)
         .map(order => ({ ...order, total_items: order.items.reduce((sum, item) => sum + item.quantity, 0) }))
-        .filter(order => order.items.length > 0); // Chỉ giữ order có ít nhất 1 món
+        .filter(order => order.items.length > 0);
 
       setOrders(finalOrders);
     } catch (err: any) {
@@ -214,8 +227,8 @@ const KitchenDisplayScreen = () => {
       fetchKitchenOrders();
       fetchPendingCancellations();
       
-      // [MỚI] Khởi động service tự động hủy món quá 5 phút
-      const autoReturnInterval = startAutoReturnService();
+      // [TẮT] Service tự động tạo request trả món sau 5 phút
+      // const autoReturnInterval = startAutoReturnService();
       
       const channel = supabase
         .channel('public:order_items:kitchen_v2')
@@ -250,8 +263,8 @@ const KitchenDisplayScreen = () => {
         .subscribe();
       
       return () => { 
-        // Dừng service tự động hủy
-        stopAutoReturnService(autoReturnInterval);
+        // [TẮT] Không cần stop vì đã không start
+        // stopAutoReturnService(autoReturnInterval);
         
         supabase.removeChannel(channel);
         supabase.removeChannel(menuItemsChannel);
@@ -283,38 +296,34 @@ const KitchenDisplayScreen = () => {
     const originalOrders = orders;
     const ticketToReturn = selectedTicket;
 
-    setOrders(prevOrders => prevOrders.filter(order => order.order_id !== ticketToReturn.order_id));
+    // [FIX] Chỉ lọc món đã hoàn thành để trả
+    const completedItems = ticketToReturn.items.filter(item => item.status === STATUS.COMPLETED);
+    
+    if (completedItems.length === 0) {
+      Alert.alert('Thông báo', 'Không có món nào đã hoàn thành để trả cho khách.');
+      setReturnModalVisible(false);
+      setSelectedTicket(null);
+      return;
+    }
+
     setReturnModalVisible(false);
     setSelectedTicket(null);
-    setReturnModalVisible(false);
     
     try {
-      const itemNames = ticketToReturn.items.map(item => `${item.name} (x${item.quantity})`);
-      const itemIds = ticketToReturn.items.map(item => item.id);
+      const itemIds = completedItems.map(item => item.id);
 
-      // [SỬA] Cập nhật status sang 'served' thay vì 'completed' để món biến mất khỏi tổng hợp
+      // [FIX] Chỉ update món completed sang 'served' (đã trả cho khách)
       const { error: updateError } = await supabase
         .from('order_items')
         .update({ status: STATUS.SERVED })
         .in('id', itemIds);
       if (updateError) throw updateError;
 
-      // Tạo thông báo trả món
-      const { error } = await supabase
-        .from('return_notifications')
-        .insert({
-          order_id: selectedTicket.order_id,
-          table_name: selectedTicket.table_name,
-          item_names: itemNames,
-          status: 'pending'
-        });
-
-      if (error) throw error;
+      // [XÓA] Không tạo return_notifications ở đây
+      // return_notifications chỉ được tạo khi NHÂN VIÊN gửi yêu cầu trả món
       
-      // Cập nhật danh sách để ẩn order này (không cần thiết vì real-time sẽ tự cập nhật)
-      // setOrders(prevOrders => prevOrders.filter(order => order.order_id !== selectedTicket.order_id));
     } catch (err: any) {
-      console.error("Error creating return notification:", err.message);
+      console.error("Error returning items to customer:", err.message);
       Alert.alert('Lỗi', 'Không thể trả món. Vui lòng thử lại.');
       setOrders(originalOrders);
     }

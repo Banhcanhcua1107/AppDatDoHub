@@ -57,7 +57,7 @@ export async function checkAndCreateAutoReturn() {
       const { data: existingRequest } = await supabase
         .from('cancellation_requests')
         .select('id, requested_items')
-        .eq('id', item.order_id)
+        .eq('order_id', item.order_id) // [FIX] Sửa từ 'id' thành 'order_id'
         .eq('status', 'pending')
         .single();
 
@@ -98,7 +98,7 @@ export async function checkAndCreateAutoReturn() {
         const { error: insertError } = await supabase
           .from('cancellation_requests')
           .insert({
-            id: item.order_id,
+            order_id: item.order_id, // [FIX] Sửa từ 'id' thành 'order_id'
             table_name: tableName,
             reason: reason,
             status: 'pending',

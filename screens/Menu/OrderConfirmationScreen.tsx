@@ -1187,14 +1187,16 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
     }
   };
 
-  // [SỬA LỖI TẠI ĐÂY]
+  // [SỬA LỖI] Truyền đủ thông tin cần thiết cho logic 5 phút
   const navigateToReturn = () => {
     const returnableItems = billableItems.map((item) => ({
       id: item.id,
       name: item.name,
       quantity: item.quantity,
       unit_price: item.unit_price,
-      image_url: item.image_url, // <-- LẤY TỪ `item.image_url` ĐÃ LƯU
+      image_url: item.image_url,
+      status: item.status, // [THÊM] Truyền status để kiểm tra món đang ở trạng thái nào
+      created_at: item.created_at, // [THÊM] Truyền thời gian tạo để tính toán 5 phút
     }));
 
     if (returnableItems.length === 0) {
@@ -1204,6 +1206,7 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
     if (activeOrderId) {
       navigation.navigate(ROUTES.RETURN_SELECTION, {
         orderId: activeOrderId,
+        tableName: currentTableNameForDisplay, // [THÊM] Truyền tên bàn để hiển thị trong modal
         items: returnableItems,
       });
     }

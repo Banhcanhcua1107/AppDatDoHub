@@ -59,10 +59,10 @@ const KitchenSummaryScreen = () => {
 
   const fetchSummaryData = useCallback(async () => {
     try {
-      // [CẬP NHẬT] Thêm menu_items.is_available + chỉ lấy món chưa trả (served)
+      // [CẬP NHẬT] Thêm returned_quantity để tính số lượng còn lại
       const { data, error } = await supabase
         .from('order_items')
-        .select('quantity, customizations, status, created_at, menu_items ( is_available ), orders(order_tables(tables(name)))')
+        .select('quantity, returned_quantity, customizations, status, created_at, menu_items ( is_available ), orders(order_tables(tables(name)))')
         .in('status', STATUS_TO_AGGREGATE);
 
       if (error) throw error;
@@ -77,12 +77,21 @@ const KitchenSummaryScreen = () => {
         total_quantity: number;
         waiting_quantity: number;
         in_progress_quantity: number;
-        completed_quantity: number;  // [THÊM]
+        completed_quantity: number;
         tables: Set<string>;
         oldest_time: string | null;
       }
 
       const itemMap = data.reduce((acc, item) => {
+        // [FIX] Tính số lượng còn lại
+        const returnedQty = item.returned_quantity || 0;
+        const remainingQty = item.quantity - returnedQty;
+        
+        // [FIX] Bỏ qua món đã trả hết
+        if (remainingQty <= 0) {
+          return acc;
+        }
+        
         const itemName = item.customizations.name;
         const orders = item.orders as any;
         const tableName = orders?.order_tables?.[0]?.tables?.name || 'Mang về';
@@ -99,20 +108,21 @@ const KitchenSummaryScreen = () => {
             total_quantity: 0,
             waiting_quantity: 0,
             in_progress_quantity: 0,
-            completed_quantity: 0,  // [THÊM]
+            completed_quantity: 0,
             tables: new Set<string>(),
             oldest_time: null,
           };
         }
         
-        acc[itemName].total_quantity += item.quantity;
+        // [FIX] Cộng số lượng còn lại
+        acc[itemName].total_quantity += remainingQty;
         
         if (item.status === 'waiting') {
-          acc[itemName].waiting_quantity += item.quantity;
+          acc[itemName].waiting_quantity += remainingQty;
         } else if (item.status === 'in_progress') {
-          acc[itemName].in_progress_quantity += item.quantity;
-        } else if (item.status === 'completed') {  // [THÊM]
-          acc[itemName].completed_quantity += item.quantity;
+          acc[itemName].in_progress_quantity += remainingQty;
+        } else if (item.status === 'completed') {
+          acc[itemName].completed_quantity += remainingQty;
         }
         
         acc[itemName].tables.add(tableName);

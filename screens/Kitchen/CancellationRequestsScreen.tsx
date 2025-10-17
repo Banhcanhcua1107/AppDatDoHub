@@ -9,6 +9,7 @@ import Toast from 'react-native-toast-message';
 
 interface CancellationRequest {
   id: string;
+  order_id: string; // [THÊM] Foreign key trỏ đến bảng orders
   table_name: string;
   reason: string;
   created_at: string;
@@ -77,12 +78,15 @@ const CancellationRequestsScreen = () => {
       const request = requests.find(r => r.id === requestId);
       if (!request) return;
 
+      // [OPTIMISTIC UPDATE] Xóa box ngay lập tức
+      setRequests(prev => prev.filter(r => r.id !== requestId));
+
       try {
         // Tạo return slip trước
         const { data: returnSlipData, error: slipError } = await supabase
           .from('return_slips')
           .insert({
-            order_id: request.id,
+            order_id: request.order_id, // [FIX] Sửa từ request.id thành request.order_id
             reason: request.reason,
             type: 'approved_cancellation',
             created_at: new Date().toISOString()
@@ -92,25 +96,44 @@ const CancellationRequestsScreen = () => {
 
         if (slipError) throw slipError;
 
-        // Tạo return_slip_items cho mỗi món
-        const returnSlipItems = request.requested_items.map(item => ({
-          return_slip_id: returnSlipData.id,
-          order_item_id: item.order_item_id,
-          quantity: item.quantity
-        }));
-
+        // [FIX] Cập nhật returned_quantity và tạo return_slip_items với unit_price
+        // Cần update từng món một và lấy unit_price
+        const returnSlipItemsToInsert = [];
+        
+        for (const item of request.requested_items) {
+          // Lấy thông tin order_item hiện tại để lấy unit_price và returned_quantity
+          const { data: currentItem, error: fetchError } = await supabase
+            .from('order_items')
+            .select('returned_quantity, unit_price')
+            .eq('id', item.order_item_id)
+            .single();
+          
+          if (fetchError) throw fetchError;
+          
+          // Tăng returned_quantity
+          const newReturnedQuantity = (currentItem.returned_quantity || 0) + item.quantity;
+          
+          const { error: updateError } = await supabase
+            .from('order_items')
+            .update({ returned_quantity: newReturnedQuantity })
+            .eq('id', item.order_item_id);
+          
+          if (updateError) throw updateError;
+          
+          // Thêm vào mảng return_slip_items với unit_price
+          returnSlipItemsToInsert.push({
+            return_slip_id: returnSlipData.id,
+            order_item_id: item.order_item_id,
+            quantity: item.quantity,
+            unit_price: currentItem.unit_price
+          });
+        }
+        
+        // Insert tất cả return_slip_items
         const { error: itemsError } = await supabase
           .from('return_slip_items')
-          .insert(returnSlipItems);
+          .insert(returnSlipItemsToInsert);
         if (itemsError) throw itemsError;
-
-        // Update quantity về 0
-        const itemIds = request.requested_items.map(item => item.order_item_id);
-        const { error: updateError } = await supabase
-          .from('order_items')
-          .update({ quantity: 0 })
-          .in('id', itemIds);
-        if (updateError) throw updateError;
 
         // Cập nhật status của cancellation_request
         const { error: requestError } = await supabase
@@ -122,13 +145,23 @@ const CancellationRequestsScreen = () => {
         Toast.show({type: 'success', text1: 'Đã duyệt yêu cầu thành công.'});
       } catch (error: any) {
         Alert.alert('Lỗi', 'Không thể duyệt yêu cầu: ' + error.message);
+        // [ROLLBACK] Khôi phục lại nếu lỗi
+        fetchRequests();
       }
   };
   
   const handleReject = async (requestId: string) => {
+      // [OPTIMISTIC UPDATE] Xóa box ngay lập tức
+      setRequests(prev => prev.filter(r => r.id !== requestId));
+      
       const { error } = await supabase.from('cancellation_requests').update({ status: 'rejected' }).eq('id', requestId);
-      if (error) Alert.alert('Lỗi', 'Không thể từ chối yêu cầu.');
-      else Toast.show({type: 'info', text1: 'Đã từ chối yêu cầu.'})
+      if (error) {
+        Alert.alert('Lỗi', 'Không thể từ chối yêu cầu.');
+        // [ROLLBACK] Khôi phục lại nếu lỗi
+        fetchRequests();
+      } else {
+        Toast.show({type: 'info', text1: 'Đã từ chối yêu cầu.'});
+      }
   };
 
   if (loading) return <View style={styles.center}><ActivityIndicator size="large" /></View>;

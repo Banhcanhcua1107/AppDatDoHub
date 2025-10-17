@@ -85,15 +85,18 @@ export type AppStackParamList = {
     sourceTableNames: string;
     targetTable: { id: string; name: string };
   };
-  // [SỬA LỖI] Đổi tên 'ReturnSelection' thành ROUTES.RETURN_SELECTION để nhất quán
+  // [CẬP NHẬT] Thêm các trường cần thiết cho logic 5 phút và hiển thị modal
   [ROUTES.RETURN_SELECTION]: {
     orderId: string;
+    tableName?: string; // [THÊM] Tên bàn để hiển thị trong ConfirmModal
     items: {
       id: number;
       name: string;
       quantity: number;
       unit_price: number;
       image_url: string | null;
+      status?: string; // [THÊM] Trạng thái món (waiting, in_progress, completed, served)
+      created_at?: string; // [THÊM] Thời gian tạo món để tính logic 5 phút
     }[];
     source?: string;
   };
