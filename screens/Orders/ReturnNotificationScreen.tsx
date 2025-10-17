@@ -19,7 +19,7 @@ interface ReturnNotification {
   id: number;
   order_id: string;
   table_name: string;
-  item_names: string[];
+  item_name: string; // Thay từ item_names (mảng) sang item_name (singular)
   status: 'pending' | 'acknowledged';
   created_at: string;
 }
@@ -197,7 +197,7 @@ const ReturnNotificationScreen = () => {
         </View>
 
         <Text style={styles.itemsText}>
-          {item.item_names.join(', ')}
+          {item.item_name}
         </Text>
 
         {item.status === 'pending' && (

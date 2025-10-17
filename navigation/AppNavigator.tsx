@@ -46,6 +46,7 @@ import BankFundScreen from '../screens/Cashier/BankFundScreen';
 import ExpensesScreen from '../screens/Cashier/ExpensesScreen';
 import PromotionsScreen from '../screens/Cashier/PromotionsScreen';
 import MenuManagementScreen from '../screens/Cashier/MenuManagementScreen';
+import CancellationRequestsScreen from '../screens/Kitchen/CancellationRequestsScreen';
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const AppStack = createNativeStackNavigator<AppStackParamList>();
@@ -57,6 +58,7 @@ export type KitchenStackParamList = {
   KitchenProcessingReport: undefined;
   ItemAvailability: undefined;
   ReturnHistory: undefined; // [MỚI] Lịch sử trả món
+  CancellationRequests: undefined;
 };
 
 const KitchenStack = createNativeStackNavigator<KitchenStackParamList>();
@@ -140,6 +142,7 @@ const KitchenNavigator = () => (
     <KitchenStack.Screen name="KitchenProcessingReport" component={KitchenProcessingReportScreen} options={{ headerShown: false }} />
     <KitchenStack.Screen name="ItemAvailability" component={ItemAvailabilityScreen} options={{ headerShown: false }} />
     <KitchenStack.Screen name="ReturnHistory" component={ReturnHistoryScreen} options={{ headerShown: false }} />
+    <KitchenStack.Screen name="CancellationRequests" component={CancellationRequestsScreen} />
   </KitchenStack.Navigator>
 );
 

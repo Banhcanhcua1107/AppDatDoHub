@@ -134,6 +134,7 @@ const KitchenDisplayScreen = () => {
   const [orders, setOrders] = useState<OrderTicket[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<OrderTicket | null>(null);
   const [isReturnModalVisible, setReturnModalVisible] = useState(false);
+  const [pendingCancellations, setPendingCancellations] = useState(0);
   const navigation = useNavigation<KitchenDisplayNavigationProp>();
 
   const fetchKitchenOrders = useCallback(async () => {
@@ -194,11 +195,23 @@ const KitchenDisplayScreen = () => {
     }
   }, []);
 
+  const fetchPendingCancellations = useCallback(async () => {
+    const { count, error } = await supabase
+      .from('cancellation_requests')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'pending');
+    
+    if (!error) {
+      setPendingCancellations(count || 0);
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       setOrders([]);
       setLoading(true);
       fetchKitchenOrders();
+      fetchPendingCancellations(); 
       const channel = supabase
         .channel('public:order_items:kitchen_v2')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, () => fetchKitchenOrders())
@@ -213,11 +226,32 @@ const KitchenDisplayScreen = () => {
         })
         .subscribe();
       
+      // [THÊM] Lắng nghe return_slips - khi nhân viên trả món
+      const returnSlipsChannel = supabase
+        .channel('public:return_slips:kitchen_display')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'return_slips' }, () => {
+          console.log('[KitchenDisplay] Có trả món mới');
+          fetchKitchenOrders();
+        })
+        .subscribe();
+      
+      // [THÊM] Lắng nghe cancellation_requests - khi nhân viên yêu cầu hủy
+      const cancellationChannel = supabase
+        .channel('public:cancellation_requests:kitchen_display')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'cancellation_requests' }, () => {
+          console.log('[KitchenDisplay] Có thay đổi trên yêu cầu hủy.');
+          fetchPendingCancellations();
+        })
+        .subscribe();
+      
       return () => { 
         supabase.removeChannel(channel);
         supabase.removeChannel(menuItemsChannel);
+        supabase.removeChannel(returnSlipsChannel);
+        supabase.removeChannel(cancellationChannel);
+        supabase.removeChannel(cancellationChannel);
       };
-    }, [fetchKitchenOrders])
+    }, [fetchKitchenOrders, fetchPendingCancellations])
   );
 
   const handleProcessAllOrder = async (ticket: OrderTicket) => {
@@ -294,6 +328,17 @@ const KitchenDisplayScreen = () => {
       <View style={styles.header}>
         <Ionicons name="close" size={28} color="white" />
         <Text style={styles.headerTitle}>Bếp & Bar</Text>
+        <TouchableOpacity 
+            style={styles.notificationButton} 
+            onPress={() => navigation.navigate('CancellationRequests')}
+        >
+            <Ionicons name="notifications-outline" size={28} color="white" />
+            {pendingCancellations > 0 && (
+                <View style={styles.badgeContainer}>
+                    <Text style={styles.badgeText}>{pendingCancellations}</Text>
+                </View>
+            )}
+        </TouchableOpacity>
       </View>
       <FlatList
         data={orders}
@@ -335,7 +380,7 @@ const styles = StyleSheet.create({
   loadingText: { marginTop: 10, fontSize: 16, color: '#4B5563' },
   emptyText: { marginTop: 16, fontSize: 18, color: '#6B7280', fontWeight: '500', textAlign: 'center' },
   header: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1E3A8A', paddingHorizontal: 16, paddingVertical: 12, paddingTop: 20 },
-  headerTitle: { color: 'white', fontSize: 20, fontWeight: 'bold', marginLeft: 12 },
+  headerTitle: { flex: 1,color: 'white', fontSize: 20, fontWeight: 'bold', marginLeft: 12 },
   listContainer: { paddingHorizontal: 16, paddingVertical: 12 },
   
   // Card styles
@@ -445,6 +490,29 @@ const styles = StyleSheet.create({
   serveButton: { backgroundColor: '#F59E0B' },
   buttonDisabled: { backgroundColor: '#D1D5DB' },
   buttonText: { color: 'white', fontSize: 13, fontWeight: '600' },
+
+
+  notificationButton: {
+      padding: 4,
+  },
+  badgeContainer: {
+      position: 'absolute',
+      top: 0,
+      right: 0,
+      backgroundColor: '#EF4444',
+      borderRadius: 10,
+      width: 20,
+      height: 20,
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: '#1E3A8A'
+  },
+  badgeText: {
+      color: 'white',
+      fontSize: 11,
+      fontWeight: 'bold',
+  },
 });
 
 export default KitchenDisplayScreen;

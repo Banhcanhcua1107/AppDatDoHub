@@ -278,7 +278,6 @@ const KitchenDetailScreen = () => {
 
       if (fetchError) throw fetchError;
 
-      const itemNames = allOrderItems.map(item => `${item.customizations.name} (x${item.quantity})`);
       const itemIds = allOrderItems.map(item => item.id);
 
       // Chuyển TẤT CẢ món sang 'served'
@@ -289,14 +288,17 @@ const KitchenDetailScreen = () => {
 
       if (updateError) throw updateError;
 
+      // [MỚI] Insert từng record riêng biệt cho mỗi món (thay vì 1 record với mảng)
+      const notificationsToInsert = allOrderItems.map(item => ({
+        order_id: orderId,
+        table_name: tableName,
+        item_name: `${item.customizations.name} (x${item.quantity})`, // Lưu ý: singular 'item_name'
+        status: 'pending'
+      }));
+
       const { error: insertError } = await supabase
         .from('return_notifications')
-        .insert({
-          order_id: orderId,
-          table_name: tableName,
-          item_names: itemNames,
-          status: 'pending'
-        });
+        .insert(notificationsToInsert);
 
       if (insertError) throw insertError;
       

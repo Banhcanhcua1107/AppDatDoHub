@@ -1,4 +1,4 @@
-// --- START OF FILE screens/Orders/ReturnSelectionScreen.tsx (ĐÃ SỬA LỖI ĐIỀU HƯỚNG) ---
+// --- START OF FILE screens/Orders/ReturnSelectionScreen.tsx (PHIÊN BẢN HOÀN CHỈNH) ---
 
 import React, { useState } from 'react';
 import {
@@ -11,6 +11,7 @@ import {
   Alert,
   TextInput,
   Image,
+  ActivityIndicator, // [THÊM MỚI]
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -19,22 +20,28 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import { supabase } from '../../services/supabase';
 import Toast from 'react-native-toast-message';
 import { useNetwork } from '../../context/NetworkContext';
-// Interface cho món hàng cần trả, bao gồm cả image_url
+import ConfirmModal from '../../components/ConfirmModal';
+
+// [THAY ĐỔI] Interface cần thêm status và created_at để xử lý logic
 interface ItemToReturn {
-  id: number;
+  id: number; // Đây là order_item_id
   name: string;
-  quantity: number; // Số lượng đã gọi ban đầu
+  quantity: number;
   unit_price: number;
   image_url: string | null;
+  status: 'waiting' | 'in_progress' | 'completed' | 'served';
+  created_at: string;
 }
 
 type Props = NativeStackScreenProps<AppStackParamList, 'ReturnSelection'>;
 
+// Component ReturnItemCard không thay đổi
 const ReturnItemCard: React.FC<{
   item: ItemToReturn;
   returnQuantity: number;
   onUpdateQuantity: (amount: number) => void;
 }> = ({ item, returnQuantity, onUpdateQuantity }) => {
+  // ... code của component này giữ nguyên ...
   const placeholderImage = 'https://via.placeholder.com/150';
 
   return (
@@ -59,15 +66,28 @@ const ReturnItemCard: React.FC<{
   );
 };
 
+
 const ReturnSelectionScreen = ({ route, navigation }: Props) => {
-  const { orderId, items, source } = route.params;
+  // [THÊM MỚI] Giả sử `tableName` được truyền từ màn hình Order
+  const { orderId, items: rawItems } = route.params; 
+  const tableName = (route.params as any).tableName || 'Không rõ';
+  
+  // Chuyển đổi items thành ItemToReturn format
+  const items = (rawItems as any[]).map(item => ({
+    ...item,
+    status: item.status || 'waiting',
+    created_at: item.created_at || new Date().toISOString(),
+  })) as ItemToReturn[];
+  
   const { isOnline } = useNetwork();
   const insets = useSafeAreaInsets();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [reason, setReason] = useState('');
   const [itemsToReturn, setItemsToReturn] = useState<{ [itemId: number]: number }>({});
+  const [isModalVisible, setModalVisible] = useState(false);
 
   const handleUpdateQuantity = (itemId: number, amount: number) => {
+    // ... code của hàm này giữ nguyên ...
     const originalItem = items.find((i) => i.id === itemId);
     if (!originalItem) return;
 
@@ -80,272 +100,180 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
     setItemsToReturn((prev) => ({ ...prev, [itemId]: newQty }));
   };
 
-  const processItemReturns = async () => {
-    const itemsToReturnList = Object.entries(itemsToReturn)
-      .map(([itemId, quantity]) => {
-        const originalItem = items.find((i) => i.id === Number(itemId));
-        return {
-          order_item_id: Number(itemId),
-          quantity,
-          unit_price: originalItem?.unit_price || 0,
-        };
-      })
-      .filter((i) => i.quantity > 0);
-
-    if (itemsToReturnList.length === 0) {
-      return { success: true };
-    }
-
-    if (!reason.trim()) {
-      Alert.alert('Thiếu lý do', 'Vui lòng nhập lý do trả món.');
-      return { success: false };
-    }
-
-    try {
-      const { data: newSlip, error: slipError } = await supabase
-        .from('return_slips')
-        .insert({ order_id: orderId, reason: reason.trim() })
-        .select('id')
-        .single();
-
-      if (slipError) throw slipError;
-      if (!newSlip) throw new Error('Không thể tạo phiếu trả hàng.');
-      const newSlipId = newSlip.id;
-
-      const slipItemsToInsert = itemsToReturnList.map((item) => ({
-        return_slip_id: newSlipId,
-        order_item_id: item.order_item_id,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-      }));
-      const { error: slipItemsError } = await supabase
-        .from('return_slip_items')
-        .insert(slipItemsToInsert);
-      if (slipItemsError) throw slipItemsError;
-
-      // [THÊM MỚI] Lấy thông tin bàn từ order để insert vào return_notifications
-      const { data: orderData, error: orderError } = await supabase
-        .from('orders')
-        .select(`
-          id,
-          order_tables (
-            tables (
-              name
-            )
-          )
-        `)
-        .eq('id', orderId)
-        .single();
-
-      let tableNames = 'Không xác định';
-      if (orderData && orderData.order_tables && orderData.order_tables.length > 0) {
-        tableNames = orderData.order_tables.map((ot: any) => ot.tables.name).join(', ');
-      }
-
-      // Lấy tên món từ items ban đầu
-      const itemNames = itemsToReturnList.map(returnItem => {
-        const originalItem = items.find(i => i.id === returnItem.order_item_id);
-        return originalItem?.name || 'Món không xác định';
-      });
-
-      // Insert vào return_notifications để bếp có thể xem lịch sử
-      const { error: notificationError } = await supabase
-        .from('return_notifications')
-        .insert({
-          order_id: orderId,
-          table_name: tableNames,
-          item_names: itemNames,
-          status: 'pending',
-        });
-      
-      if (notificationError) {
-        console.error('Error creating return notification:', notificationError);
-        // Không throw error vì đây chỉ là notification, không ảnh hưởng chính
-      }
-
-      const updatePromises = itemsToReturnList.map((itemToReturn) => {
-        return supabase.rpc('update_returned_quantity', {
-          p_order_item_id: itemToReturn.order_item_id,
-          p_quantity_to_return: itemToReturn.quantity,
-        });
-      });
-
-      const results = await Promise.all(updatePromises);
-      const updateError = results.find((res) => res.error);
-      if (updateError) throw updateError.error;
-
-      return { success: true };
-    } catch (error: any) {
-      Alert.alert('Lỗi', 'Đã xảy ra lỗi khi trả món: ' + error.message);
-      return { success: false };
-    }
-  };
-
+  // [THAY ĐỔI LỚN] Viết lại hoàn toàn hàm xử lý logic hủy/trả món
   const handleConfirmReturn = async () => {
     if (!isOnline) {
       Toast.show({ type: 'error', text1: 'Không có kết nối mạng' });
       return;
     }
     setIsSubmitting(true);
-    const { success } = await processItemReturns();
-    if (success) {
+
+    const itemsToProcess = Object.entries(itemsToReturn)
+    .map(([itemId, quantity]) => {
+      const originalItem = items.find((i) => i.id === Number(itemId));
+      return {
+        order_item_id: Number(itemId),
+        quantity,
+        name: originalItem?.name || 'Không rõ',
+        status: originalItem?.status,
+        created_at: originalItem?.created_at,
+        unit_price: originalItem?.unit_price || 0, // <-- THÊM DÒNG NÀY
+      };
+    })
+    .filter((i) => i.quantity > 0 && i.status && i.created_at);
+
+    if (itemsToProcess.length === 0) {
+      setIsSubmitting(false);
+      return;
+    }
+
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+
+    const itemsToCancelDirectly = itemsToProcess.filter(
+      (item) => item.status === 'waiting' && item.created_at && new Date(item.created_at) > fiveMinutesAgo
+    );
+
+    const itemsToRequestCancellation = itemsToProcess.filter(
+      (item) => !itemsToCancelDirectly.some(directItem => directItem.order_item_id === item.order_item_id)
+    );
+
+    try {
+      let successMessage = '';
+      let requestMessage = '';
+
+      // 1. Xử lý các món cần gửi yêu cầu
+      if (itemsToRequestCancellation.length > 0) {
+        if (!reason.trim()) {
+          Alert.alert('Thiếu lý do', 'Vui lòng nhập lý do cho các món cần bếp xác nhận (món đã chế biến hoặc gọi quá 5 phút).');
+          setIsSubmitting(false);
+          return;
+        }
+
+        const requestPayload = {
+          order_id: orderId,
+          table_name: tableName || 'Không rõ',
+          reason: reason.trim(),
+          requested_items: itemsToRequestCancellation.map(item => ({
+            order_item_id: item.order_item_id,
+            name: item.name,
+            quantity: item.quantity,
+          })),
+        };
+        
+        const { error } = await supabase.from('cancellation_requests').insert(requestPayload);
+        if (error) throw new Error(`Gửi yêu cầu thất bại: ${error.message}`);
+        
+        requestMessage = `Đã gửi yêu cầu trả ${itemsToRequestCancellation.length} món tới bếp.`;
+      }
+
+      // 2. Xử lý các món được hủy trực tiếp
+      if (itemsToCancelDirectly.length > 0) {
+        const itemIdsToCancel = itemsToCancelDirectly.map(item => item.order_item_id);
+        
+        // Tạo return slip trước
+        const { data: returnSlipData, error: slipError } = await supabase
+          .from('return_slips')
+          .insert({
+            order_id: orderId,
+            reason: 'Hủy trực tiếp',
+            type: 'cancel',
+            created_at: new Date().toISOString()
+          })
+          .select('id')
+          .single();
+
+        if (slipError) throw new Error(`Tạo phiếu trả thất bại: ${slipError.message}`);
+        
+        // Tạo return_slip_items cho mỗi món
+        const returnSlipItems = itemsToCancelDirectly.map(item => ({
+          return_slip_id: returnSlipData.id,
+          order_item_id: item.order_item_id,
+          quantity: item.quantity,
+          unit_price: item.unit_price, // <-- THÊM DÒNG NÀY
+        }));
+        
+        const { error: itemsError } = await supabase
+          .from('return_slip_items')
+          .insert(returnSlipItems);
+
+        if (itemsError) throw new Error(`Tạo chi tiết phiếu trả thất bại: ${itemsError.message}`);
+        
+        // Update quantity về 0 để món biến mất khỏi danh sách
+        const { error: updateError } = await supabase
+          .from('order_items')
+          .update({ quantity: 0 })
+          .in('id', itemIdsToCancel);
+
+        if (updateError) throw new Error(`Cập nhật quantity thất bại: ${updateError.message}`);
+        
+        successMessage = `Đã hủy thành công ${itemsToCancelDirectly.length} món.`;
+      }
+
       Toast.show({
         type: 'success',
-        text1: 'Trả món thành công',
-        text2: 'Thông tin order đã được cập nhật.'
+        text1: 'Hoàn tất xử lý',
+        text2: [successMessage, requestMessage].filter(Boolean).join('\n'),
+        visibilityTime: 4000
       });
       navigation.goBack();
+
+    } catch (error: any) {
+      Alert.alert('Lỗi', error.message);
+    } finally {
+      setIsSubmitting(false);
     }
-    setIsSubmitting(false);
   };
 
-  const handleProvisionalBill = async () => {
-    setIsSubmitting(true);
-    const { success: returnSuccess } = await processItemReturns();
+  const handleSubmit = () => {
+    // Logic lấy danh sách các món cần xử lý (copy từ hàm cũ)
+    const itemsToProcess = Object.entries(itemsToReturn)
+      .map(([itemId, quantity]) => {
+        const originalItem = items.find((i) => i.id === Number(itemId));
+        return {
+          order_item_id: Number(itemId),
+          quantity,
+          status: originalItem?.status,
+          created_at: originalItem?.created_at,
+        };
+      })
+      .filter((i) => i.quantity > 0 && i.status && i.created_at);
 
-    if (returnSuccess) {
-      try {
-        const { error } = await supabase
-          .from('orders')
-          .update({ is_provisional: true })
-          .eq('id', orderId);
+    if (itemsToProcess.length === 0) {
+      return; // Không có món nào được chọn thì không làm gì
+    }
+    
+    // Logic phân loại (copy từ hàm cũ)
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const itemsToRequestCancellation = itemsToProcess.filter(
+      (item) => !(item.status === 'waiting' && item.created_at && new Date(item.created_at) > fiveMinutesAgo)
+    );
 
-        if (error) throw error;
-
-        Alert.alert('Thành công', 'Đã tạm tính và xử lý trả món (nếu có).');
-        // [ĐÃ SỬA] Sử dụng goBack() để quay lại màn hình trước đó (OrderScreen)
-        navigation.goBack();
-      } catch (error: any) {
-        Alert.alert('Lỗi', 'Không thể cập nhật trạng thái tạm tính: ' + error.message);
+    // QUYẾT ĐỊNH HIỂN THỊ MODAL
+    if (itemsToRequestCancellation.length > 0) {
+      // Nếu có ít nhất 1 món cần GỬI YÊU CẦU -> Hiển thị Modal
+      if (!reason.trim()) {
+        Alert.alert('Thiếu lý do', 'Vui lòng nhập lý do cho các món cần bếp xác nhận (món đã chế biến hoặc gọi quá 5 phút).');
+        return;
       }
+      setModalVisible(true);
+    } else {
+      // Nếu tất cả các món đều được HỦY TRỰC TIẾP -> Chạy luôn không cần hỏi
+      handleConfirmReturn();
     }
-    setIsSubmitting(false);
-  };
-
-  const handlePayment = async () => {
-    setIsSubmitting(true);
-    const { success: returnSuccess } = await processItemReturns();
-    if (returnSuccess) {
-      Alert.alert(
-        'Chuyển đến thanh toán',
-        'Đã xử lý trả món (nếu có). Sẵn sàng chuyển đến màn hình thanh toán.'
-      );
-      // Sắp tới: navigation.navigate(ROUTES.PAYMENT_SCREEN, { orderId });
-    }
-    setIsSubmitting(false);
   };
 
   const totalReturnQuantity = Object.values(itemsToReturn).reduce((sum, qty) => sum + qty, 0);
-
-  const renderBottomBar = () => {
-    const isActionDisabled = isSubmitting;
-
-    if (source === 'OrderScreen') {
-      return (
-        <View style={[styles.bottomBar, { paddingBottom: insets.bottom > 0 ? insets.bottom : 20 }]}>
-          <View style={styles.summaryContainer}>
-            <Text style={styles.summaryText}>Tổng số món trả</Text>
-            <Text style={styles.summaryQuantity}>{totalReturnQuantity}</Text>
-          </View>
-          <View style={styles.bottomActionsContainer}>
-            <TouchableOpacity
-              style={styles.actionButton}
-              onPress={handleProvisionalBill}
-              disabled={isActionDisabled}
-            >
-              <View
-                style={[
-                  styles.iconCircle,
-                  { backgroundColor: isActionDisabled ? '#E5E7EB' : '#F3E8FF' },
-                ]}
-              >
-                <Icon
-                  name="receipt-outline"
-                  size={26}
-                  color={isActionDisabled ? '#9CA3AF' : '#8B5CF6'}
-                />
-              </View>
-              <Text
-                style={[styles.actionText, { color: isActionDisabled ? '#9CA3AF' : '#8B5CF6' }]}
-              >
-                Tạm tính
-              </Text>
-            </TouchableOpacity>
-            {/* [ĐÃ SỬA] Thêm style `marginLeft` để tạo khoảng cách giữa 2 nút */}
-            <TouchableOpacity
-              style={[styles.actionButton, { marginLeft: 16 }]}
-              onPress={handlePayment}
-              disabled={isActionDisabled}
-            >
-              <View
-                style={[
-                  styles.iconCircle,
-                  { backgroundColor: isActionDisabled ? '#E5E7EB' : '#D1FAE5' },
-                ]}
-              >
-                <Icon
-                  name="cash-outline"
-                  size={26}
-                  color={isActionDisabled ? '#9CA3AF' : '#10B981'}
-                />
-              </View>
-              <Text
-                style={[styles.actionText, { color: isActionDisabled ? '#9CA3AF' : '#10B981' }]}
-              >
-                Thanh toán
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      );
-    }
-
-    const isReturnDisabled = totalReturnQuantity === 0 || isSubmitting;
-    return (
-      <View style={[styles.bottomBar, { paddingBottom: insets.bottom > 0 ? insets.bottom : 20 }]}>
-        <View style={styles.summaryContainer}>
-          <Text style={styles.summaryText}>Tổng số món trả</Text>
-          <Text style={styles.summaryQuantity}>{totalReturnQuantity}</Text>
-        </View>
-        {/* [ĐÃ SỬA] Bỏ justifyContent: 'center' để style mặc định (flex-end) được áp dụng */}
-        <View style={styles.bottomActionsContainer}>
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={handleConfirmReturn}
-            disabled={isReturnDisabled}
-          >
-            <View
-              style={[
-                styles.iconCircle,
-                { backgroundColor: isReturnDisabled ? '#E5E7EB' : '#FFE4E6' },
-              ]}
-            >
-              <Icon
-                name="return-up-back-outline"
-                size={26}
-                color={isReturnDisabled ? '#9CA3AF' : '#F43F5E'}
-              />
-            </View>
-            <Text style={[styles.actionText, { color: isReturnDisabled ? '#9CA3AF' : '#F43F5E' }]}>
-              Xác nhận trả
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  };
+  const isReturnDisabled = totalReturnQuantity === 0 || isSubmitting;
 
   return (
     <View style={styles.flex1}>
       <StatusBar barStyle="dark-content" />
       <View style={[styles.headerContainer, { paddingTop: insets.top }]}>
-        <View style={styles.headerContent}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
-            <Icon name="arrow-back-outline" size={26} color="#1F2937" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Chọn món cần trả</Text>
-          <View style={styles.headerSpacer} />
-        </View>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
+          <Icon name="arrow-back-outline" size={26} color="#1F2937" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Chọn món cần trả/hủy</Text>
+        <View style={{width: 30}}/>
       </View>
 
       <FlatList
@@ -358,158 +286,71 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
           />
         )}
         keyExtractor={(item) => item.id.toString()}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 200 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 150 }}
         ListFooterComponent={
-          totalReturnQuantity > 0 ? (
             <TextInput
               value={reason}
               onChangeText={setReason}
-              placeholder="Nhập lý do trả món (bắt buộc nếu có trả món)"
+              placeholder="Nhập lý do (bắt buộc nếu trả món đã chế biến/gọi quá 5 phút)"
               style={styles.reasonInput}
               multiline
             />
-          ) : null
         }
       />
 
-      {renderBottomBar()}
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom > 0 ? insets.bottom : 20 }]}>
+        <View style={styles.summaryContainer}>
+          <Text style={styles.summaryText}>Tổng số món trả/hủy</Text>
+          <Text style={styles.summaryQuantity}>{totalReturnQuantity}</Text>
+        </View>
+        <TouchableOpacity
+          style={[styles.confirmButton, isReturnDisabled && styles.disabledButton]}
+          onPress={handleSubmit}
+          disabled={isReturnDisabled}
+        >
+          {isSubmitting ? <ActivityIndicator color="white" /> : 
+            <Text style={styles.confirmButtonText}>Xác nhận</Text>
+          }
+        </TouchableOpacity>
+      </View>
+      <ConfirmModal
+        isVisible={isModalVisible}
+        onClose={() => setModalVisible(false)}
+        onConfirm={() => {
+          setModalVisible(false); // Đóng modal
+          handleConfirmReturn(); // Rồi mới chạy hàm xử lý
+        }}
+        title="Gửi yêu cầu trả món?"
+        message="Một hoặc nhiều món bạn chọn đã được gửi đến bếp hoặc gọi quá 5 phút. Hành động này sẽ gửi một yêu cầu để bếp xem xét. Bạn có chắc chắn muốn tiếp tục?"
+        confirmText="Gửi yêu cầu"
+        cancelText="Để sau"
+        variant="warning" // Dùng màu cam để cảnh báo
+      />
     </View>
   );
 };
 
-// [ĐÃ SỬA] Cập nhật StyleSheet
 const styles = StyleSheet.create({
   flex1: { flex: 1, backgroundColor: '#F8F9FA' },
-  headerContainer: {
-    backgroundColor: '#F8F9FA',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-  },
-  headerContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
+  headerContainer: { backgroundColor: '#F8F9FA', paddingHorizontal: 16, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   headerButton: { padding: 8, marginLeft: -8 },
-  headerTitle: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1F2937',
-  },
-  headerSpacer: { width: 32 },
-  card: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 16,
-    elevation: 3,
-    shadowColor: '#475569',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-  },
-  itemImage: {
-    width: 70,
-    height: 70,
-    borderRadius: 12,
-    marginRight: 12,
-  },
+  headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#1F2937', textAlign: 'center' },
+  card: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', borderRadius: 16, padding: 12, marginBottom: 16, elevation: 3 },
+  itemImage: { width: 70, height: 70, borderRadius: 12, marginRight: 12 },
   itemInfo: { flex: 1, justifyContent: 'center' },
-  itemName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 4,
-  },
+  itemName: { fontSize: 16, fontWeight: '600', color: '#1F2937', marginBottom: 4 },
   itemQuantity: { fontSize: 14, color: '#6B7280' },
-  quantityContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F3F4F6',
-    borderRadius: 20,
-  },
-  quantityButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  quantityText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    minWidth: 35,
-    textAlign: 'center',
-    color: '#111827',
-  },
-  reasonInput: {
-    backgroundColor: 'white',
-    borderColor: '#E5E7EB',
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 16,
-    minHeight: 100,
-    textAlignVertical: 'top',
-    fontSize: 16,
-    marginTop: 8,
-    marginBottom: 16,
-    color: '#1F2937',
-  },
-  bottomBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    backgroundColor: 'white',
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    elevation: 10,
-  },
-  summaryContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  summaryText: {
-    fontSize: 16,
-    color: '#4B5563',
-    fontWeight: '500',
-  },
-  summaryQuantity: {
-    fontSize: 20,
-    color: '#1F2937',
-    fontWeight: 'bold',
-  },
-  bottomActionsContainer: {
-    flexDirection: 'row',
-    // [ĐÃ SỬA] Đổi từ 'space-around' thành 'flex-end' để căn phải
-    justifyContent: 'flex-end',
-    alignItems: 'flex-start',
-  },
-  actionButton: {
-    alignItems: 'center',
-    width: 90,
-  },
-  iconCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  actionText: {
-    fontSize: 13,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
+  quantityContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', borderRadius: 20 },
+  quantityButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
+  quantityText: { fontSize: 18, fontWeight: 'bold', minWidth: 35, textAlign: 'center', color: '#111827' },
+  reasonInput: { backgroundColor: 'white', borderColor: '#E5E7EB', borderWidth: 1, borderRadius: 12, padding: 16, minHeight: 100, textAlignVertical: 'top', fontSize: 16, marginTop: 16, color: '#1F2937' },
+  bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 20, paddingTop: 16, backgroundColor: 'white', borderTopWidth: 1, borderTopColor: '#E5E7EB', borderTopLeftRadius: 24, borderTopRightRadius: 24, elevation: 10 },
+  summaryContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  summaryText: { fontSize: 16, color: '#4B5563', fontWeight: '500' },
+  summaryQuantity: { fontSize: 20, color: '#1F2937', fontWeight: 'bold' },
+  confirmButton: { backgroundColor: '#F43F5E', paddingVertical: 16, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  confirmButtonText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
+  disabledButton: { backgroundColor: '#9CA3AF' },
 });
+
 export default ReturnSelectionScreen;
