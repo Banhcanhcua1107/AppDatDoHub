@@ -159,10 +159,10 @@ const KitchenSummaryDetailScreen = () => {
 
   const fetchDetails = useCallback(async () => {
     try {
-      // [CẬP NHẬT] Thêm menu_items.is_available
+      // [CẬP NHẬT] Thêm menu_items.is_available + lọc món đã trả (served)
       const { data, error } = await supabase
         .from('order_items')
-        .select(`id, quantity, status, customizations, menu_items ( is_available ), orders ( order_tables ( tables ( name ) ) )`)
+        .select(`id, quantity, status, customizations, created_at, menu_items ( is_available ), orders ( order_tables ( tables ( name ) ) )`)
         .in('status', [STATUS.PENDING, STATUS.IN_PROGRESS, STATUS.COMPLETED])
         .eq('customizations->>name', itemName)
         .order('created_at', { referencedTable: 'orders', ascending: true });
@@ -213,9 +213,19 @@ const KitchenSummaryDetailScreen = () => {
         })
         .subscribe();
       
+      // [MỚI] Lắng nghe khi nhân viên trả món
+      const returnSlipsChannel = supabase
+        .channel('public:return_slips:kitchen_summary_detail')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'return_slips' }, () => {
+          console.log('[KitchenSummaryDetail] Có món được trả');
+          fetchDetails();
+        })
+        .subscribe();
+      
       return () => { 
         supabase.removeChannel(channel);
         supabase.removeChannel(menuItemsChannel);
+        supabase.removeChannel(returnSlipsChannel);
       };
     }, [fetchDetails, itemName])
   );

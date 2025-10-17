@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { KitchenStackParamList } from '../../navigation/AppNavigator';
 import ConfirmModal from '../../components/ConfirmModal';
+import { startAutoReturnService, stopAutoReturnService } from '../../services/autoReturnService';
 
 type KitchenDisplayNavigationProp = NativeStackNavigationProp<KitchenStackParamList>;
 
@@ -211,7 +212,11 @@ const KitchenDisplayScreen = () => {
       setOrders([]);
       setLoading(true);
       fetchKitchenOrders();
-      fetchPendingCancellations(); 
+      fetchPendingCancellations();
+      
+      // [MỚI] Khởi động service tự động hủy món quá 5 phút
+      const autoReturnInterval = startAutoReturnService();
+      
       const channel = supabase
         .channel('public:order_items:kitchen_v2')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, () => fetchKitchenOrders())
@@ -245,10 +250,12 @@ const KitchenDisplayScreen = () => {
         .subscribe();
       
       return () => { 
+        // Dừng service tự động hủy
+        stopAutoReturnService(autoReturnInterval);
+        
         supabase.removeChannel(channel);
         supabase.removeChannel(menuItemsChannel);
         supabase.removeChannel(returnSlipsChannel);
-        supabase.removeChannel(cancellationChannel);
         supabase.removeChannel(cancellationChannel);
       };
     }, [fetchKitchenOrders, fetchPendingCancellations])

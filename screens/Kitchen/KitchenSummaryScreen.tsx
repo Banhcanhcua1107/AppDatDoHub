@@ -26,7 +26,7 @@ import { KitchenTabParamList } from '../../navigation/KitchenTabs';
 
 
 // [SỬA] Thêm 'completed' để hiển thị món đã hoàn thành trong tổng hợp
-// Chỉ khi nào chuyển sang 'served' thì món mới biến mất
+// Chỉ khi nào chuyển sang 'served' thì món mới biến mất (đã trả cho khách)
 const STATUS_TO_AGGREGATE = ['waiting', 'in_progress', 'completed'];
 
 interface SummarizedItem {
@@ -59,7 +59,7 @@ const KitchenSummaryScreen = () => {
 
   const fetchSummaryData = useCallback(async () => {
     try {
-      // [CẬP NHẬT] Thêm menu_items.is_available
+      // [CẬP NHẬT] Thêm menu_items.is_available + chỉ lấy món chưa trả (served)
       const { data, error } = await supabase
         .from('order_items')
         .select('quantity, customizations, status, created_at, menu_items ( is_available ), orders(order_tables(tables(name)))')
@@ -164,9 +164,19 @@ const KitchenSummaryScreen = () => {
         })
         .subscribe();
       
+      // [MỚI] Lắng nghe khi nhân viên trả món
+      const returnSlipsChannel = supabase
+        .channel('public:return_slips:kitchen_summary')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'return_slips' }, () => {
+          console.log('[KitchenSummary] Có món được trả');
+          fetchSummaryData();
+        })
+        .subscribe();
+      
       return () => {
         supabase.removeChannel(channel);
         supabase.removeChannel(menuItemsChannel);
+        supabase.removeChannel(returnSlipsChannel);
       };
     }, [fetchSummaryData])
   );

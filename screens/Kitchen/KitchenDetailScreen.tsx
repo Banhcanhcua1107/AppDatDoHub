@@ -143,12 +143,12 @@ const KitchenDetailScreen = () => {
 
   const fetchOrderDetails = useCallback(async () => {
     try {
-      // [CẬP NHẬT] Thêm menu_items.is_available
+      // [CẬP NHẬT] Thêm menu_items.is_available + lọc món đã trả (served)
       const { data, error } = await supabase
         .from('order_items')
-        .select('id, quantity, customizations, status, menu_items ( is_available )')
+        .select('id, quantity, customizations, status, created_at, menu_items ( is_available )')
         .eq('order_id', orderId)
-        .neq('status', STATUS.SERVED) // Loại bỏ các món đã served
+        .neq('status', STATUS.SERVED) // Loại bỏ các món đã served (đã trả cho khách)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
@@ -197,9 +197,19 @@ const KitchenDetailScreen = () => {
         })
         .subscribe();
       
+      // [MỚI] Lắng nghe khi nhân viên trả món
+      const returnSlipsChannel = supabase
+        .channel('public:return_slips:kitchen_detail')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'return_slips' }, () => {
+          console.log('[KitchenDetail] Có món được trả');
+          fetchOrderDetails();
+        })
+        .subscribe();
+      
       return () => {
         supabase.removeChannel(channel);
         supabase.removeChannel(menuItemsChannel);
+        supabase.removeChannel(returnSlipsChannel);
       };
     }, [fetchOrderDetails, orderId])
   );
