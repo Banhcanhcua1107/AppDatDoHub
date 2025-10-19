@@ -100,7 +100,7 @@ const OrderListItem: React.FC<{
   onUpdateQuantity: (newQuantity: number) => void;
   onOpenMenu: () => void;
 }> = ({ item, isExpanded, onPress, onUpdateQuantity, onOpenMenu }) => {
-  const { customizations, isNew, isPaid, isReturnedItem, is_available } = item;
+  const { customizations, isNew, isPaid, isReturnedItem, is_available, status } = item;
   const sizeText = customizations.size?.name || 'N/A';
   const sugarText = customizations.sugar?.name || 'N/A';
   const toppingsText =
@@ -109,6 +109,8 @@ const OrderListItem: React.FC<{
   
   // [MỚI] Kiểm tra món có còn hàng không
   const isOutOfStock = is_available === false;
+  // [MỚI] Kiểm tra món đang được làm
+  const isInProgress = status === 'in_progress';
 
   const ExpandedView = () => (
     <View className="mt-4 pt-4 border-t border-gray-100">
@@ -117,21 +119,21 @@ const OrderListItem: React.FC<{
           <Text className="text-gray-600 mr-4">Số lượng:</Text>
           <TouchableOpacity
             onPress={() => onUpdateQuantity(item.quantity - 1)}
-            disabled={!isNew}
-            className={`w-8 h-8 items-center justify-center rounded-full ${!isNew ? 'bg-gray-100' : 'bg-gray-200'}`}
+            disabled={!isNew || isOutOfStock}
+            className={`w-8 h-8 items-center justify-center rounded-full ${(!isNew || isOutOfStock) ? 'bg-gray-100' : 'bg-gray-200'}`}
           >
-            <Icon name="remove" size={18} color={!isNew ? '#ccc' : '#333'} />
+            <Icon name="remove" size={18} color={(!isNew || isOutOfStock) ? '#ccc' : '#333'} />
           </TouchableOpacity>
           <Text className="text-lg font-bold mx-4">{item.quantity}</Text>
           <TouchableOpacity
             onPress={() => onUpdateQuantity(item.quantity + 1)}
-            disabled={!isNew}
-            className={`w-8 h-8 items-center justify-center rounded-full ${!isNew ? 'bg-gray-100' : 'bg-blue-500'}`}
+            disabled={!isNew || isOutOfStock}
+            className={`w-8 h-8 items-center justify-center rounded-full ${(!isNew || isOutOfStock) ? 'bg-gray-100' : 'bg-blue-500'}`}
           >
-            <Icon name="add" size={18} color={!isNew ? '#ccc' : 'white'} />
+            <Icon name="add" size={18} color={(!isNew || isOutOfStock) ? '#ccc' : 'white'} />
           </TouchableOpacity>
         </View>
-        <TouchableOpacity onPress={onOpenMenu} className="p-2">
+        <TouchableOpacity onPress={onOpenMenu} disabled={isOutOfStock} className="p-2" style={{ opacity: isOutOfStock ? 0.5 : 1 }}>
           <Icon name="ellipsis-horizontal" size={24} color="gray" />
         </TouchableOpacity>
       </View>
@@ -140,24 +142,24 @@ const OrderListItem: React.FC<{
 
   return (
     <View
-      style={[styles.shadow, (isPaid || isReturnedItem) && styles.paidItem]}
+      style={[styles.shadow, (isPaid || isReturnedItem || isOutOfStock) && styles.paidItem]}
       className="bg-white rounded-2xl p-4 mb-4"
     >
-      <TouchableOpacity onPress={onPress} disabled={isPaid || isReturnedItem}>
+      <TouchableOpacity onPress={onPress} disabled={isPaid || isReturnedItem || isOutOfStock}>
         <View className="flex-row justify-between items-start">
           <View className="flex-1 pr-4">
             <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
               {item.status === 'served' && !isReturnedItem && (
               <Icon name="checkmark-circle" size={20} color="#3B82F6" style={{ marginRight: 6 }} />
               )}
-              {item.status === 'in_progress' && (
+              {item.status === 'in_progress' && !isOutOfStock && (
                 <Icon name="flame-outline" size={20} color="#F97316" style={{ marginRight: 6 }} />
               )}
               {item.status === 'completed' && (
                 <Icon name="restaurant-outline" size={20} color="#10B981" style={{ marginRight: 6 }} />
               )}
               <Text
-                className={`text-lg font-bold ${isPaid || isReturnedItem ? 'text-gray-500' : 'text-gray-800'} ${isReturnedItem ? 'line-through' : ''}`}
+                className={`text-lg font-bold ${(isPaid || isReturnedItem || isOutOfStock) ? 'text-gray-500' : 'text-gray-800'} ${(isReturnedItem || isOutOfStock) ? 'line-through' : ''}`}
               >
                 {item.name}
               </Text>
@@ -195,8 +197,18 @@ const OrderListItem: React.FC<{
                 <Text className="text-red-800 text-xs font-bold">Đã trả lại</Text>
               </View>
             )}
+            {isOutOfStock && !isPaid && !isReturnedItem && (
+              <View className="bg-red-100 px-2 py-1 rounded-full mb-1">
+                <Text className="text-red-800 text-xs font-bold">Hết món</Text>
+              </View>
+            )}
+            {isInProgress && !isOutOfStock && (
+              <View className="bg-orange-100 px-2 py-1 rounded-full mb-1">
+                <Text className="text-orange-800 text-xs font-bold">Đang làm</Text>
+              </View>
+            )}
             <Text
-              className={`text-lg font-semibold ${isPaid || isReturnedItem ? 'text-gray-500 line-through' : 'text-gray-900'}`}
+              className={`text-lg font-semibold ${(isPaid || isReturnedItem || isOutOfStock) ? 'text-gray-500 line-through' : 'text-gray-900'}`}
             >
               {item.totalPrice.toLocaleString('vi-VN')}đ
             </Text>
@@ -204,11 +216,11 @@ const OrderListItem: React.FC<{
         </View>
         <View className="border-t border-dashed border-gray-200 mt-3 pt-2 flex-row justify-between items-center">
           <Text
-            className={`text-base ${isPaid || isReturnedItem ? 'text-gray-500' : 'text-gray-600'}`}
+            className={`text-base ${(isPaid || isReturnedItem || isOutOfStock) ? 'text-gray-500' : 'text-gray-600'}`}
           >
             {item.quantity} x {item.unit_price.toLocaleString('vi-VN')}đ
           </Text>
-          {!isNew && !isPaid && !isReturnedItem && (
+          {!isNew && !isPaid && !isReturnedItem && !isOutOfStock && (
             <Icon name="flame-outline" size={20} color="#F97316" />
           )}
         </View>
@@ -759,7 +771,12 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
   const representativeTable = currentTables[0] || { id: initialTableId, name: initialTableName };
   const currentTableNameForDisplay = currentTables.map((t) => t.name).join(', ');
   const newItemsFromCart = allItems.filter((item) => item.isNew);
-  const billableItems = allItems.filter((item) => !item.isPaid && !item.isReturnedItem);
+  // [CẬP NHẬT] Exclude items hết hàng (is_available === false)
+  const billableItems = allItems.filter((item) => 
+    !item.isPaid && 
+    !item.isReturnedItem && 
+    item.is_available !== false
+  );
   const paidItems = allItems.filter((item) => item.isPaid);
   const hasNewItems = newItemsFromCart.length > 0;
   const totalBill = billableItems.reduce((sum, item) => sum + item.totalPrice, 0);
