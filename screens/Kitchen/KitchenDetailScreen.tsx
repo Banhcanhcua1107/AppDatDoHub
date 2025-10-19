@@ -142,6 +142,7 @@ const KitchenDetailScreen = () => {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<KitchenDetailItem[]>([]);
   const [isReturnModalVisible, setReturnModalVisible] = useState(false);
+  const [pendingCancellationsCount, setPendingCancellationsCount] = useState(0); // [MỚI]
 
   const fetchOrderDetails = useCallback(async () => {
     try {
@@ -190,10 +191,29 @@ const KitchenDetailScreen = () => {
     }
   }, [orderId]);
 
+  // [MỚI] Fetch pending cancellations cho order này
+  const fetchPendingCancellationsCount = useCallback(async () => {
+    try {
+      const { count, error } = await supabase
+        .from('cancellation_requests')
+        .select('*', { count: 'exact', head: true })
+        .eq('order_id', orderId)
+        .eq('status', 'pending');
+      
+      if (!error) {
+        setPendingCancellationsCount(count || 0);
+      }
+    } catch (err: any) {
+      console.error('Error fetching cancellations count:', err.message);
+    }
+  }, [orderId]);
+
   useFocusEffect(
     useCallback(() => {
       setLoading(true);
       fetchOrderDetails();
+      fetchPendingCancellationsCount(); // [MỚI]
+      
       const channel = supabase
         .channel(`public:order_items:detail:${orderId}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items', filter: `order_id=eq.${orderId}` },
@@ -219,12 +239,22 @@ const KitchenDetailScreen = () => {
         })
         .subscribe();
       
+      // [MỚI] Lắng nghe cancellation requests thay đổi
+      const cancellationChannel = supabase
+        .channel(`public:cancellation_requests:detail:${orderId}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'cancellation_requests' }, () => {
+          console.log('[KitchenDetail] Có thay đổi cancellation requests');
+          fetchPendingCancellationsCount();
+        })
+        .subscribe();
+      
       return () => {
         supabase.removeChannel(channel);
         supabase.removeChannel(menuItemsChannel);
         supabase.removeChannel(returnSlipsChannel);
+        supabase.removeChannel(cancellationChannel); // [MỚI]
       };
-    }, [fetchOrderDetails, orderId])
+    }, [fetchOrderDetails, fetchPendingCancellationsCount, orderId])
   );
 
   const handleProcessItem = async (itemId: number) => {
@@ -345,7 +375,18 @@ const KitchenDetailScreen = () => {
           <Ionicons name="arrow-back-outline" size={26} color="#1F2937" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{tableName}</Text>
-        <View style={styles.backButton} />
+        {pendingCancellationsCount > 0 && (
+          <TouchableOpacity 
+            style={styles.headerNotificationButton}
+            onPress={() => navigation.navigate('CancellationRequestsDetail', { orderId, tableName })}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="notifications-outline" size={25} color="#1E40AF" />
+            <View style={styles.headerBadgeContainer}>
+              <Text style={styles.headerBadgeText}>{pendingCancellationsCount}</Text>
+            </View>
+          </TouchableOpacity>
+        )}
       </View>
       <FlatList
         data={items}
@@ -406,6 +447,36 @@ const styles = StyleSheet.create({
     borderBottomColor: '#E5E7EB',
   },
   backButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center', marginLeft: -10 },
+  headerNotificationButton: { // [MỚI]
+    position: 'relative',
+    width: 36,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerNotificationButtonActive: { // [XÓA - không dùng nữa]
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+  },
+  headerBadgeContainer: { // [MỚI]
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    backgroundColor: '#EF4444',
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+  },
+  headerBadgeText: { // [MỚI]
+    color: 'white',
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
   headerTitle: { fontSize: 20, fontWeight: 'bold' },
   listContainer: { padding: 16 },
   

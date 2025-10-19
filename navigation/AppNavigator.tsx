@@ -35,6 +35,8 @@ import KitchenSummaryDetailScreen from '../screens/Kitchen/KitchenSummaryDetailS
 import KitchenProcessingReportScreen from 'screens/Kitchen/KitchenProcessingReportScreen';
 import ItemAvailabilityScreen from 'screens/Kitchen/ItemAvailabilityScreen';
 import ReturnHistoryScreen from 'screens/Kitchen/ReturnHistoryScreen'; // [MỚI]
+import CancellationRequestsScreen from '../screens/Kitchen/CancellationRequestsScreen';
+import CancellationRequestsDetailScreen from '../screens/Kitchen/CancellationRequestsDetailScreen'; // [MỚI]
 // --- [THÊM] Import CashierTabs và các màn hình Thu ngân ---
 import CashierTabs from './CashierTabs';
 import DashboardScreen from '../screens/Cashier/DashboardScreen';
@@ -46,7 +48,6 @@ import BankFundScreen from '../screens/Cashier/BankFundScreen';
 import ExpensesScreen from '../screens/Cashier/ExpensesScreen';
 import PromotionsScreen from '../screens/Cashier/PromotionsScreen';
 import MenuManagementScreen from '../screens/Cashier/MenuManagementScreen';
-import CancellationRequestsScreen from '../screens/Kitchen/CancellationRequestsScreen';
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const AppStack = createNativeStackNavigator<AppStackParamList>();
@@ -59,6 +60,7 @@ export type KitchenStackParamList = {
   ItemAvailability: undefined;
   ReturnHistory: undefined; // [MỚI] Lịch sử trả món
   CancellationRequests: undefined;
+  CancellationRequestsDetail: { orderId: string; tableName: string }; // [MỚI] Danh sách yêu cầu hủy/trả cho từng bàn
 };
 
 const KitchenStack = createNativeStackNavigator<KitchenStackParamList>();
@@ -143,6 +145,7 @@ const KitchenNavigator = () => (
     <KitchenStack.Screen name="ItemAvailability" component={ItemAvailabilityScreen} options={{ headerShown: false }} />
     <KitchenStack.Screen name="ReturnHistory" component={ReturnHistoryScreen} options={{ headerShown: false }} />
     <KitchenStack.Screen name="CancellationRequests" component={CancellationRequestsScreen} />
+    <KitchenStack.Screen name="CancellationRequestsDetail" component={CancellationRequestsDetailScreen} />
   </KitchenStack.Navigator>
 );
 
@@ -150,7 +153,6 @@ const KitchenNavigator = () => (
 const CashierNavigator = () => (
   <CashierStack.Navigator screenOptions={{ headerShown: false }}>
     <CashierStack.Screen name="CashierRoot" component={CashierTabs} />
-    {/* Màn hình Thu ngân riêng */}
     <CashierStack.Screen name="Dashboard" component={DashboardScreen} options={{ headerShown: true, title: 'Tổng quan' }} />
     <CashierStack.Screen name="CashierReport" component={CashierReportScreen} options={{ headerShown: true, title: 'Báo cáo' }} />
     <CashierStack.Screen name="Purchase" component={PurchaseScreen} options={{ headerShown: true, title: 'Mua hàng' }} />
@@ -160,10 +162,8 @@ const CashierNavigator = () => (
     <CashierStack.Screen name="Expenses" component={ExpensesScreen} options={{ headerShown: true, title: 'Chi phí' }} />
     <CashierStack.Screen name="Promotions" component={PromotionsScreen} options={{ headerShown: true, title: 'Khuyến mãi' }} />
     <CashierStack.Screen name="MenuManagement" component={MenuManagementScreen} options={{ headerShown: true, title: 'Thực đơn' }} />
-    {/* Màn hình dùng chung */}
     <CashierStack.Screen name="ChangePassword" component={ChangePasswordScreen} />
     <CashierStack.Screen name="BillHistory" component={BillHistoryScreen} />
-    {/* Màn hình Menu và Order (giống nhân viên) */}
     <CashierStack.Screen name="Menu" component={MenuScreen} />
     <CashierStack.Screen name="OrderConfirmation" component={OrderConfirmationScreen} />
     <CashierStack.Screen name="TableSelection" component={TableSelectionScreen as any} options={{ headerShown: true }} />

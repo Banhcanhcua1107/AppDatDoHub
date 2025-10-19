@@ -37,14 +37,18 @@ interface OrderTicket {
   created_at: string;
   items: KitchenItem[];
   total_items: number;
+  hasPendingCancellation?: boolean
 }
 
 const OrderTicketCard: React.FC<{
   ticket: OrderTicket;
   onNavigate: () => void;
+  
   onProcessAll: () => void;
   onReturnOrder: () => void;
-}> = ({ ticket, onNavigate, onProcessAll, onReturnOrder }) => {
+  pendingCancellationsCount: number; // [MỚI] Số lượng yêu cầu hủy/trả đang chờ
+  onCheckCancellations: () => void; // [MỚI] Callback để xem chi tiết yêu cầu hủy/trả
+}> = ({ ticket, onNavigate, onProcessAll, onReturnOrder, pendingCancellationsCount, onCheckCancellations }) => {
   const [elapsedTime, setElapsedTime] = useState('');
 
   useEffect(() => {
@@ -69,7 +73,7 @@ const OrderTicketCard: React.FC<{
 
   return (
     <TouchableOpacity style={styles.card} onPress={onNavigate} activeOpacity={0.8}>
-      {/* Top row - Tên bàn + Badge tổng */}
+      {/* Top row - Tên bàn + Badge tổng + Nút thông báo */}
       <View style={styles.topRow}>
         <View style={styles.tableInfo}>
           <Text style={styles.tableName}>{ticket.table_name}</Text>
@@ -78,8 +82,23 @@ const OrderTicketCard: React.FC<{
             <Text style={styles.elapsedTimeText}>{elapsedTime}</Text>
           </View>
         </View>
-        <View style={styles.totalBadge}>
-          <Text style={styles.totalText}>{ticket.total_items}</Text>
+        <View style={styles.topRightContainer}>
+          <View style={styles.totalBadge}>
+            <Text style={styles.totalText}>{ticket.total_items}</Text>
+          </View>
+          {/* [MỚI] Nút notification kế bên badge */}
+          {pendingCancellationsCount > 0 && (
+            <TouchableOpacity 
+              style={styles.notificationIconButton}
+              onPress={(e) => { e.stopPropagation(); onCheckCancellations(); }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="notifications-outline" size={25} color="#1E40AF" />
+              <View style={styles.notificationBadge}>
+                <Text style={styles.notificationBadgeText}>{pendingCancellationsCount}</Text>
+              </View>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -138,7 +157,7 @@ const KitchenDisplayScreen = () => {
   const [orders, setOrders] = useState<OrderTicket[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<OrderTicket | null>(null);
   const [isReturnModalVisible, setReturnModalVisible] = useState(false);
-  const [pendingCancellations, setPendingCancellations] = useState(0);
+  const [cancellationsByOrder, setCancellationsByOrder] = useState<Record<string, number>>({}); // [CẬP NHẬT] Map order_id -> count
   const navigation = useNavigation<KitchenDisplayNavigationProp>();
 
   const fetchKitchenOrders = useCallback(async () => {
@@ -210,13 +229,24 @@ const KitchenDisplayScreen = () => {
   }, []);
 
   const fetchPendingCancellations = useCallback(async () => {
-    const { count, error } = await supabase
-      .from('cancellation_requests')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'pending');
-    
-    if (!error) {
-      setPendingCancellations(count || 0);
+    try {
+      // [CẬP NHẬT] Lấy tất cả pending cancellations
+      const { data, error } = await supabase
+        .from('cancellation_requests')
+        .select('order_id')
+        .eq('status', 'pending');
+      
+      if (error) throw error;
+      
+      // Group by order_id
+      const countByOrder = (data || []).reduce((acc, item: any) => {
+        acc[item.order_id] = (acc[item.order_id] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+      
+      setCancellationsByOrder(countByOrder);
+    } catch (err: any) {
+      console.error('Error fetching pending cancellations:', err.message);
     }
   }, []);
 
@@ -343,18 +373,8 @@ const KitchenDisplayScreen = () => {
       <StatusBar barStyle="light-content" backgroundColor="#1E3A8A" />
       <View style={styles.header}>
         <Ionicons name="close" size={28} color="white" />
-        <Text style={styles.headerTitle}>Bếp & Bar</Text>
-        <TouchableOpacity 
-            style={styles.notificationButton} 
-            onPress={() => navigation.navigate('CancellationRequests')}
-        >
-            <Ionicons name="notifications-outline" size={28} color="white" />
-            {pendingCancellations > 0 && (
-                <View style={styles.badgeContainer}>
-                    <Text style={styles.badgeText}>{pendingCancellations}</Text>
-                </View>
-            )}
-        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Bep & Bar</Text>
+        <View style={{ width: 28 }} />
       </View>
       <FlatList
         data={orders}
@@ -365,6 +385,8 @@ const KitchenDisplayScreen = () => {
             onNavigate={() => navigation.navigate('KitchenDetail', { orderId: item.order_id, tableName: item.table_name })}
             onProcessAll={() => handleProcessAllOrder(item)}
             onReturnOrder={() => handleReturnOrder(item)}
+            pendingCancellationsCount={cancellationsByOrder[item.order_id] || 0} // [MỚI]
+            onCheckCancellations={() => navigation.navigate('CancellationRequestsDetail', { orderId: item.order_id, tableName: item.table_name })} // [MỚI]
           />
         )}
         contentContainerStyle={styles.listContainer}
@@ -454,6 +476,34 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: 'white',
   },
+  topRightContainer: { // [MỚI]
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  notificationIconButton: { // [MỚI]
+    position: 'relative',
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  notificationBadge: { // [MỚI]
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: '#EF4444',
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  notificationBadgeText: { // [MỚI]
+    color: 'white',
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
   
   statusRow: {
     flexDirection: 'row',
@@ -506,29 +556,6 @@ const styles = StyleSheet.create({
   serveButton: { backgroundColor: '#F59E0B' },
   buttonDisabled: { backgroundColor: '#D1D5DB' },
   buttonText: { color: 'white', fontSize: 13, fontWeight: '600' },
-
-
-  notificationButton: {
-      padding: 4,
-  },
-  badgeContainer: {
-      position: 'absolute',
-      top: 0,
-      right: 0,
-      backgroundColor: '#EF4444',
-      borderRadius: 10,
-      width: 20,
-      height: 20,
-      justifyContent: 'center',
-      alignItems: 'center',
-      borderWidth: 1,
-      borderColor: '#1E3A8A'
-  },
-  badgeText: {
-      color: 'white',
-      fontSize: 11,
-      fontWeight: 'bold',
-  },
 });
 
 export default KitchenDisplayScreen;
