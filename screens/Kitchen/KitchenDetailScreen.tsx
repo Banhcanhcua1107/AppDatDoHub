@@ -403,7 +403,7 @@ const KitchenDetailScreen = () => {
       />
       <View style={styles.footer}>
           <FooterActionButton
-              icon="flame-outline"
+              icon="flame"
               label="Chế biến tất cả"
               onPress={handleProcessAll}
               color="#F97316"

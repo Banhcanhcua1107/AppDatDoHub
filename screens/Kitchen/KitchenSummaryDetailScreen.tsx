@@ -54,7 +54,7 @@ const DetailItemCard: React.FC<{
   const getStatusInfo = () => {
     switch (status) {
       case STATUS.IN_PROGRESS:
-        return { text: 'Đang làm', color: '#F97316', icon: 'flame-outline' };
+        return { text: 'Đang làm', color: '#F97316', icon: 'flame' };
       case STATUS.PENDING:
         return { text: 'Chờ bếp', color: '#F97316', icon: 'time-outline' };
       default:
@@ -371,7 +371,7 @@ const KitchenSummaryDetailScreen = () => {
       />
       <View style={styles.footer}>
           <FooterActionButton
-              icon="flame-outline"
+              icon="flame"
               label="Chế biến hết"
               onPress={handleProcessAllPending}
               color="#F97316"

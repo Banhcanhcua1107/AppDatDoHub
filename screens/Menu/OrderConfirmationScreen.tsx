@@ -153,7 +153,7 @@ const OrderListItem: React.FC<{
               <Icon name="checkmark-circle" size={20} color="#3B82F6" style={{ marginRight: 6 }} />
               )}
               {item.status === 'in_progress' && !isOutOfStock && (
-                <Icon name="flame-outline" size={20} color="#F97316" style={{ marginRight: 6 }} />
+                <Icon name="flame" size={20} color="#F97316" style={{ marginRight: 6 }} />
               )}
               {item.status === 'completed' && (
                 <Icon name="restaurant-outline" size={20} color="#10B981" style={{ marginRight: 6 }} />
@@ -221,7 +221,7 @@ const OrderListItem: React.FC<{
             {item.quantity} x {item.unit_price.toLocaleString('vi-VN')}đ
           </Text>
           {!isNew && !isPaid && !isReturnedItem && !isOutOfStock && (
-            <Icon name="flame-outline" size={20} color="#F97316" />
+            <Icon name="flame" size={20} color="#F97316" />
           )}
         </View>
       </TouchableOpacity>

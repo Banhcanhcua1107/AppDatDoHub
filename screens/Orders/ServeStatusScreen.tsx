@@ -46,7 +46,7 @@ const ServeItemRow: React.FC<{
       case 'waiting':
         return { text: 'Chờ bếp', color: '#6B7280', icon: 'time-outline' };
       case 'in_progress':
-        return { text: 'Đang làm', color: '#F97316', icon: 'flame-outline' };
+        return { text: 'Đang làm', color: '#F97316', icon: 'flame' };
       case 'completed':
         return { text: 'Sẵn sàng', color: '#10B981', icon: 'restaurant-outline' };
       case 'served':
