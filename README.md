@@ -1024,6 +1024,5 @@ Nếu bạn có:
 **Version:** 1.0.0  
 **Status:** 🚀 Active Development
 
-[⬆ Back to Top](#-appdatdohub)
 
 </div>
