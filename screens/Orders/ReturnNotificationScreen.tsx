@@ -10,10 +10,11 @@ import {
   Vibration,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../../services/supabase';
 import Toast from 'react-native-toast-message';
+import { AppStackParamList } from '../../constants/routes';
 
 interface ReturnNotification {
   id: number;
@@ -25,12 +26,18 @@ interface ReturnNotification {
   notification_type?: 'return_item' | 'item_ready' | 'out_of_stock'; // [MỚI] Loại thông báo
 }
 
+type ReturnNotificationScreenRouteProp = RouteProp<AppStackParamList, 'ReturnNotifications'>;
+
 const ReturnNotificationScreen = () => {
   const navigation = useNavigation();
+  const route = useRoute<ReturnNotificationScreenRouteProp>();
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState<ReturnNotification[]>([]);
   const previousCountRef = useRef(0);
+  
+  // [THÊM MỚI] Lấy orderId từ route params
+  const filteredOrderId = route.params?.orderId;
 
   // Phát rung khi có thông báo mới
   const playNotificationAlert = () => {
@@ -40,10 +47,17 @@ const ReturnNotificationScreen = () => {
 
   const fetchNotifications = useCallback(async () => {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('return_notifications')
         .select('*')
         .order('created_at', { ascending: false });
+
+      // [THÊM MỚI] Filter theo orderId nếu có
+      if (filteredOrderId) {
+        query = query.eq('order_id', filteredOrderId);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
 
@@ -62,7 +76,7 @@ const ReturnNotificationScreen = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [filteredOrderId]);
 
   useFocusEffect(
     useCallback(() => {

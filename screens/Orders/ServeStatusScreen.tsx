@@ -16,7 +16,6 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppStackParamList } from '../../constants/routes';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { supabase } from '../../services/supabase';
-import ConfirmModal from '../../components/ConfirmModal';
 
 type ItemStatus = 'waiting' | 'in_progress' | 'completed' | 'served';
 
@@ -96,7 +95,6 @@ const ServeStatusScreen = ({ route, navigation }: Props) => {
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<ServeItem[]>([]);
-  const [isCompleteModalVisible, setCompleteModalVisible] = useState(false);
 
   const fetchItems = useCallback(async () => {
     try {
@@ -133,11 +131,6 @@ const ServeStatusScreen = ({ route, navigation }: Props) => {
         ...formattedItems.filter(item => !item.isReturnedItem && item.is_available !== false),
         ...formattedItems.filter(item => item.isReturnedItem || item.is_available === false),
       ];
-      
-      const allServed = sortedItems.every(item => item.status === 'served');
-      if (allServed && sortedItems.length > 0) {
-        setCompleteModalVisible(true);
-      }
       
       setItems(sortedItems);
     } catch (err: any) {
@@ -220,21 +213,6 @@ const ServeStatusScreen = ({ route, navigation }: Props) => {
             <Text style={{ color: 'gray' }}>Chưa có món nào trong order này.</Text>
           </View>
         }
-      />
-      
-      {/* Modal thông báo hoàn thành */}
-      <ConfirmModal
-        isVisible={isCompleteModalVisible}
-        title="Hoàn thành phục vụ"
-        message="Tất cả món đã được phục vụ xong! Bạn có muốn quay lại không?"
-        confirmText="Quay lại"
-        cancelText="Ở lại"
-        variant="success"
-        onClose={() => setCompleteModalVisible(false)}
-        onConfirm={() => {
-          setCompleteModalVisible(false);
-          navigation.goBack();
-        }}
       />
     </View>
   );

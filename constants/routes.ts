@@ -66,7 +66,7 @@ export type AppTabParamList = {
   [ROUTES.HOME_TAB]: undefined;
   [ROUTES.ORDER_TAB]: undefined;
   [ROUTES.RETURN_ITEMS_TAB]: undefined;
-  [ROUTES.RETURN_NOTIFICATIONS]: undefined;
+  [ROUTES.RETURN_NOTIFICATIONS]: { orderId?: string };
   [ROUTES.PROVISIONAL_BILL_TAB]: undefined;
   [ROUTES.UTILITIES_TAB]: { screenName: string };
 };
@@ -103,7 +103,7 @@ export type AppStackParamList = {
   [ROUTES.SERVE_STATUS]: { orderId: string; tableName: string };
   // [SỬA LỖI] Đổi tên 'ReturnedItemsDetail' thành ROUTES.RETURNED_ITEMS_DETAIL
   [ROUTES.RETURNED_ITEMS_DETAIL]: { orderId: string };
-  [ROUTES.RETURN_NOTIFICATIONS]: undefined;
+  [ROUTES.RETURN_NOTIFICATIONS]: { orderId?: string };
   [ROUTES.PROVISIONAL_BILL]: undefined;
   [ROUTES.PRINT_PREVIEW]: {
     order: ProvisionalOrder;

@@ -259,7 +259,7 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
         </TouchableOpacity>
         {/* [MỚI] Nút thông báo riêng cho bàn */}
         <TouchableOpacity
-          onPress={() => navigation.navigate(ROUTES.RETURN_NOTIFICATIONS)}
+          onPress={() => navigation.navigate(ROUTES.RETURN_NOTIFICATIONS, { orderId: item.orderId })}
           className="py-3 items-center justify-center flex-1 relative"
           style={{ position: 'relative' }}
         >
