@@ -86,19 +86,19 @@ const OrderTicketCard: React.FC<{
           <View style={styles.totalBadge}>
             <Text style={styles.totalText}>{ticket.total_items}</Text>
           </View>
-          {/* [MỚI] Nút notification kế bên badge */}
-          {pendingCancellationsCount > 0 && (
-            <TouchableOpacity 
-              style={styles.notificationIconButton}
-              onPress={(e) => { e.stopPropagation(); onCheckCancellations(); }}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="notifications-outline" size={25} color="#1E40AF" />
+          {/* [CẬP NHẬT] Nút notification luôn hiển thị, có badge nếu có thông báo */}
+          <TouchableOpacity 
+            style={styles.notificationIconButton}
+            onPress={(e) => { e.stopPropagation(); onCheckCancellations(); }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="notifications-outline" size={25} color="#1E40AF" />
+            {pendingCancellationsCount > 0 && (
               <View style={styles.notificationBadge}>
                 <Text style={styles.notificationBadgeText}>{pendingCancellationsCount}</Text>
               </View>
-            </TouchableOpacity>
-          )}
+            )}
+          </TouchableOpacity>
         </View>
       </View>
 

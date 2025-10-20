@@ -82,15 +82,6 @@ const KitchenDetailItemCard: React.FC<{
       return null;
     }
     
-    if (isCompleted) {
-      return (
-        <View style={styles.completedBadge}>
-          <Ionicons name="checkmark-circle" size={18} color="#10B981" />
-          <Text style={styles.completedText}>Hoàn thành</Text>
-        </View>
-      );
-    }
-    
     return (
       <View style={styles.footerActionsContainer}>
         {status === STATUS.PENDING && (
@@ -198,6 +189,7 @@ const KitchenDetailScreen = () => {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<KitchenDetailItem[]>([]);
   const [isReturnModalVisible, setReturnModalVisible] = useState(false);
+  const [isCompleteModalVisible, setCompleteModalVisible] = useState(false); // [THÊM] Modal xác nhận hoàn thành
   const [pendingCancellationsCount, setPendingCancellationsCount] = useState(0); // [MỚI]
 
   const fetchOrderDetails = useCallback(async () => {
@@ -347,6 +339,10 @@ const KitchenDetailScreen = () => {
   };
 
   const handleCompleteItem = async (itemId: number) => {
+    // [CẬP NHẬT] Chỉ chuyển IN_PROGRESS → COMPLETED
+    const currentItem = items.find(item => item.id === itemId);
+    if (!currentItem) return;
+
     setItems(currentItems =>
       currentItems.map(item =>
         item.id === itemId ? { ...item, status: STATUS.COMPLETED } : item
@@ -358,7 +354,7 @@ const KitchenDetailScreen = () => {
       console.error('Lỗi hoàn thành món:', err.message);
       setItems(currentItems =>
         currentItems.map(item =>
-          item.id === itemId ? { ...item, status: STATUS.IN_PROGRESS } : item
+          item.id === itemId ? { ...item, status: currentItem.status } : item
         )
       );
     }
@@ -433,42 +429,62 @@ const KitchenDetailScreen = () => {
     }
   };
 
-  // [MỚI] Hàm xử lý khi bấm "Hoàn thành"
+  // [MỚI] Hàm xử lý khi bấm "Hoàn thành tất cả"
   const handleCompleteAllClicked = async () => {
+    // [CẬP NHẬT] Chỉ mở modal, không execute trực tiếp
+    setCompleteModalVisible(true);
+  };
+
+  // [THÊM] Hàm xử lý xác nhận hoàn thành
+  const handleConfirmCompleteAll = async () => {
+    setCompleteModalVisible(false);
+
+    const inProgressItems = items.filter(item => item.status === STATUS.IN_PROGRESS);
+    
+    if (inProgressItems.length === 0) {
+      console.log('[KitchenDetail] Không có món nào đang làm để hoàn thành');
+      return;
+    }
+
+    const itemIds = inProgressItems.map(item => item.id);
+
+    // [CẬP NHẬT] Cập nhật UI trước: chuyển IN_PROGRESS → SERVED
+    setItems(currentItems =>
+      currentItems.map(item =>
+        itemIds.includes(item.id) ? { ...item, status: STATUS.SERVED } : item
+      )
+    );
+
     try {
-      // [MỚI] Lấy TẤT CẢ items ở IN_PROGRESS để chuyển sang COMPLETED
-      const inProgressItems = items.filter(item => item.status === STATUS.IN_PROGRESS);
-      
-      if (inProgressItems.length === 0) {
-        console.log('[KitchenDetail] Không có món nào đang làm để hoàn thành');
-        return;
-      }
-
-      const itemIds = inProgressItems.map(item => item.id);
-
-      // [MỚI] Cập nhật UI trước (optimistic update)
-      setItems(currentItems =>
-        currentItems.map(item =>
-          itemIds.includes(item.id) ? { ...item, status: STATUS.COMPLETED } : item
-        )
-      );
-
-      // [MỚI] Cập nhật database
+      // [CẬP NHẬT] Cập nhật database trực tiếp sang SERVED
       const { error: updateError } = await supabase
         .from('order_items')
-        .update({ status: STATUS.COMPLETED })
+        .update({ status: STATUS.SERVED })
         .in('id', itemIds);
 
       if (updateError) throw updateError;
 
-      // [MỚI] Hiển thị modal xác nhận trả món
-      setReturnModalVisible(true);
+      // [MỚI] Gửi thông báo cho nhân viên cho TẤT CẢ items
+      for (const item of inProgressItems) {
+        await supabase
+          .from('return_notifications')
+          .insert({
+            order_id: orderId,
+            table_name: tableName,
+            item_name: item.name,
+            status: 'pending',
+            created_at: new Date().toISOString(),
+          });
+      }
+
+      // Hiển thị toast thành công
+      console.log('[KitchenDetail] Đã gửi thông báo phục vụ cho tất cả món');
     } catch (err: any) {
-      console.error('Lỗi hoàn thành món:', err.message);
+      console.error('Lỗi hoàn thành tất cả:', err.message);
       // [MỚI] Revert UI khi lỗi
       setItems(currentItems =>
         currentItems.map(item =>
-          item.status === STATUS.COMPLETED && item.status !== STATUS.SERVED
+          itemIds.includes(item.id)
             ? { ...item, status: STATUS.IN_PROGRESS }
             : item
         )
@@ -521,18 +537,19 @@ const KitchenDetailScreen = () => {
           <Ionicons name="arrow-back-outline" size={26} color="#1F2937" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{tableName}</Text>
-        {pendingCancellationsCount > 0 && (
-          <TouchableOpacity 
-            style={styles.headerNotificationButton}
-            onPress={() => navigation.navigate('CancellationRequestsDetail', { orderId, tableName })}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="notifications-outline" size={25} color="#1E40AF" />
+        {/* [CẬP NHẬT] Luôn hiển thị nút thông báo, có badge nếu có thông báo */}
+        <TouchableOpacity 
+          style={styles.headerNotificationButton}
+          onPress={() => navigation.navigate('CancellationRequestsDetail', { orderId, tableName })}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="notifications-outline" size={25} color="#1E40AF" />
+          {pendingCancellationsCount > 0 && (
             <View style={styles.headerBadgeContainer}>
               <Text style={styles.headerBadgeText}>{pendingCancellationsCount}</Text>
             </View>
-          </TouchableOpacity>
-        )}
+          )}
+        </TouchableOpacity>
       </View>
       <SectionList
         sections={groupedItems}
@@ -581,6 +598,18 @@ const KitchenDetailScreen = () => {
         cancelText="Hủy"
         onClose={() => setReturnModalVisible(false)}
         onConfirm={handleConfirmReturnItems}
+      />
+
+      {/* [THÊM] Modal xác nhận hoàn thành */}
+      <ConfirmModal
+        isVisible={isCompleteModalVisible}
+        title="Xác nhận hoàn thành"
+        message="Bạn có chắc chắn muốn gửi thông báo phục vụ cho tất cả các món đang làm?"
+        confirmText="Xác nhận"
+        cancelText="Hủy"
+        variant="success"
+        onClose={() => setCompleteModalVisible(false)}
+        onConfirm={handleConfirmCompleteAll}
       />
     </SafeAreaView>
   );

@@ -36,6 +36,7 @@ interface SummaryDetailItem {
   status: StatusType;
   customizations: any;
   table_name: string;
+  order_id: string; // [THÊM] Để gửi thông báo
   is_available?: boolean; // [MỚI] Trạng thái còn hàng
   isReturnedItem?: boolean; // [MỚI] Cờ để đánh dấu món đã trả lại
 }
@@ -71,15 +72,6 @@ const DetailItemCard: React.FC<{
     // [MỚI] Nếu đã trả lại, không hiển thị gì - chỉ có badge ở trên
     if (item.isReturnedItem) {
       return null;
-    }
-    
-    if (isCompleted) {
-      return (
-        <View style={styles.completedBadge}>
-          <Ionicons name="checkmark-circle" size={18} color="#10B981" />
-          <Text style={styles.completedText}>Hoàn thành</Text>
-        </View>
-      );
     }
     
     return (
@@ -195,7 +187,7 @@ const KitchenSummaryDetailScreen = () => {
       // [CẬP NHẬT] Lấy tất cả món (kể cả đã trả)
       const { data, error } = await supabase
         .from('order_items')
-        .select(`id, quantity, returned_quantity, status, customizations, created_at, menu_items ( is_available ), orders ( order_tables ( tables ( name ) ) )`)
+        .select(`id, order_id, quantity, returned_quantity, status, customizations, created_at, menu_items ( is_available ), orders ( order_tables ( tables ( name ) ) )`)
         .in('status', [STATUS.PENDING, STATUS.IN_PROGRESS, STATUS.COMPLETED])
         .eq('customizations->>name', itemName)
         .order('created_at', { referencedTable: 'orders', ascending: true });
@@ -214,6 +206,7 @@ const KitchenSummaryDetailScreen = () => {
         if (returnedQty > 0) {
           allItems.push({
             id: item.id,
+            order_id: item.order_id,
             quantity: returnedQty,
             returned_quantity: returnedQty,
             status: STATUS.COMPLETED,
@@ -233,6 +226,7 @@ const KitchenSummaryDetailScreen = () => {
           
           allItems.push({
             id: item.id,
+            order_id: item.order_id,
             quantity: remainingQty,
             returned_quantity: returnedQty,
             status: item.status as StatusType,
@@ -297,14 +291,16 @@ const KitchenSummaryDetailScreen = () => {
   };
 
   const handleCompleteItem = async (itemId: number) => {
+    // [CẬP NHẬT] Chỉ chuyển IN_PROGRESS → COMPLETED
+    const currentItem = detailItems.find(item => item.id === itemId);
+    if (!currentItem) return;
+
     setDetailItems(current => current.map(item => item.id === itemId ? { ...item, status: STATUS.COMPLETED } : item));
     try {
       await supabase.from('order_items').update({ status: STATUS.COMPLETED }).eq('id', itemId).throwOnError();
-      // [XÓA] Không filter ra nữa, để món vẫn hiển thị với status completed
-      // setDetailItems(current => current.filter(item => item.id !== itemId));
     } catch (err: any) {
       Alert.alert('Lỗi', 'Không thể hoàn thành món: ' + err.message);
-      setDetailItems(current => current.map(item => item.id === itemId ? { ...item, status: STATUS.IN_PROGRESS } : item));
+      setDetailItems(current => current.map(item => item.id === itemId ? { ...item, status: currentItem.status } : item));
     }
   };
 
@@ -330,7 +326,7 @@ const KitchenSummaryDetailScreen = () => {
     setIsCompleting(true);
     
     try {
-      // [MỚI] Lấy TẤT CẢ items ở IN_PROGRESS để chuyển sang COMPLETED
+      // [CẬP NHẬT] Lấy TẤT CẢ items ở IN_PROGRESS để chuyển sang SERVED (trực tiếp)
       const inProgressItems = detailItems.filter(item => item.status === STATUS.IN_PROGRESS);
       
       if (inProgressItems.length === 0) {
@@ -341,35 +337,28 @@ const KitchenSummaryDetailScreen = () => {
 
       const itemIds = inProgressItems.map(item => item.id);
 
-      // [MỚI] Cập nhật UI trước (optimistic update)
+      // [CẬP NHẬT] Cập nhật UI trước: chuyển IN_PROGRESS → SERVED
       setDetailItems(currentItems =>
         currentItems.map(item =>
-          itemIds.includes(item.id) ? { ...item, status: STATUS.COMPLETED } : item
+          itemIds.includes(item.id) ? { ...item, status: STATUS.SERVED } : item
         )
       );
 
-      // [MỚI] Cập nhật database
+      // [CẬP NHẬT] Cập nhật database trực tiếp sang SERVED
       const { error: updateError } = await supabase
         .from('order_items')
-        .update({ status: STATUS.COMPLETED })
+        .update({ status: STATUS.SERVED })
         .in('id', itemIds);
 
       if (updateError) throw updateError;
 
-      // [MỚI] Hiển thị modal xác nhận trả món
-      // Note: Bạn có thể thêm state isReturnModalVisible nếu cần
-      // setIsReturnModalVisible(true);
-      
-      // Hoặc tự động trả về màn hình trước
-      // if (navigation.canGoBack()) {
-      //   navigation.goBack();
-      // }
+      console.log('[KitchenSummaryDetail] Đã hoàn thành tất cả món đang làm');
       
     } catch (err: any) {
       Alert.alert('Lỗi', 'Không thể hoàn thành món: ' + err.message);
       // [MỚI] Revert UI khi lỗi
       setDetailItems(current => current.map(item => 
-        item.status === STATUS.COMPLETED ? { ...item, status: STATUS.IN_PROGRESS } : item
+        item.status === STATUS.SERVED ? { ...item, status: STATUS.IN_PROGRESS } : item
       ));
     } finally {
       setIsCompleting(false);
@@ -388,14 +377,10 @@ const KitchenSummaryDetailScreen = () => {
     [detailItems, hasPendingItems, hasInProgressItems]
   );
 
-  if (loading) {
-    return <View style={styles.centerContainer}><ActivityIndicator size="large" color="#1E3A8A" /></View>;
-  }
-
-  // [MỚI] Phân chia items thành các section
-  const groupedItems = (() => {
-    const returnedItems = detailItems.filter(item => item.isReturnedItem);
+  // [CẬP NHẬT] Tách items thành 2 section: bình thường ở trên, trả lại ở dưới
+  const groupedItems = useMemo(() => {
     const normalItems = detailItems.filter(item => !item.isReturnedItem);
+    const returnedItems = detailItems.filter(item => item.isReturnedItem);
     
     const sections = [];
     
@@ -416,7 +401,11 @@ const KitchenSummaryDetailScreen = () => {
     }
     
     return sections;
-  })();
+  }, [detailItems]);
+
+  if (loading) {
+    return <View style={styles.centerContainer}><ActivityIndicator size="large" color="#1E3A8A" /></View>;
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -426,7 +415,6 @@ const KitchenSummaryDetailScreen = () => {
           <Ionicons name="arrow-back-outline" size={26} color="#1F2937" />
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>{itemName}</Text>
-        <View style={{ width: 40 }} />
       </View>
       <SectionList
         sections={groupedItems}
@@ -484,15 +472,16 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     paddingHorizontal: 16,
     paddingVertical: 12,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
+    gap: 12,
   },
-  backButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'flex-start' },
-  headerTitle: { fontSize: 20, fontWeight: 'bold', flex: 1, textAlign: 'center' },
+  backButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
+  headerTitle: { fontSize: 20, fontWeight: 'bold', textAlign: 'left' },
   listContainer: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 },
   
   // [CẬP NHẬT] Card styling giống OrderConfirmationScreen - GỌN HƠN
@@ -516,7 +505,7 @@ const styles = StyleSheet.create({
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderBottomWidth: 1,
