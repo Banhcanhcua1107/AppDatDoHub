@@ -184,7 +184,7 @@ const KitchenSummaryDetailScreen = () => {
 
   const fetchDetails = useCallback(async () => {
     try {
-      // [CẬP NHẬT] Lấy tất cả món (kể cả đã trả)
+      // [CẬP NHẬT] Lấy tất cả món (kể cả đã trả), loại bỏ những món đã gửi cho phục vụ
       const { data, error } = await supabase
         .from('order_items')
         .select(`id, order_id, quantity, returned_quantity, status, customizations, created_at, menu_items ( is_available ), orders ( order_tables ( tables ( name ) ) )`)
@@ -202,22 +202,7 @@ const KitchenSummaryDetailScreen = () => {
         const remainingQty = item.quantity - returnedQty;
         const tableName = item.orders?.order_tables[0]?.tables?.name || 'Mang về';
         
-        // [MỚI] Nếu có số lượng đã trả, tạo item riêng
-        if (returnedQty > 0) {
-          allItems.push({
-            id: item.id,
-            order_id: item.order_id,
-            quantity: returnedQty,
-            returned_quantity: returnedQty,
-            status: STATUS.COMPLETED,
-            customizations: item.customizations,
-            table_name: tableName,
-            is_available: item.menu_items?.is_available ?? true,
-            isReturnedItem: true, // [MỚI] Cờ để đánh dấu món đã trả lại
-          });
-        }
-        
-        // [MỚI] Nếu còn số lượng chưa trả, tạo item chính
+        // [CẬP NHẬT] Nếu còn số lượng chưa trả, tạo item chính
         if (remainingQty > 0) {
           // Bỏ qua món hết hàng VÀ đang chờ
           if (item.is_available === false && item.status === STATUS.PENDING) {
@@ -234,6 +219,22 @@ const KitchenSummaryDetailScreen = () => {
             table_name: tableName,
             is_available: item.menu_items?.is_available ?? true,
           });
+          
+          // [CẬP NHẬT] Chỉ tạo item trả lại nếu item chính còn chưa gửi phục vụ
+          // Nếu có số lượng đã trả, tạo item riêng
+          if (returnedQty > 0) {
+            allItems.push({
+              id: item.id,
+              order_id: item.order_id,
+              quantity: returnedQty,
+              returned_quantity: returnedQty,
+              status: STATUS.COMPLETED,
+              customizations: item.customizations,
+              table_name: tableName,
+              is_available: item.menu_items?.is_available ?? true,
+              isReturnedItem: true, // [MỚI] Cờ để đánh dấu món đã trả lại
+            });
+          }
         }
       });
       
@@ -281,26 +282,40 @@ const KitchenSummaryDetailScreen = () => {
   );
 
   const handleProcessItem = async (itemId: number) => {
+    // [CẬP NHẬT] Cập nhật UI ngay trước khi gửi request
+    const currentItem = detailItems.find(item => item.id === itemId);
+    if (!currentItem) return;
+    
     setDetailItems(current => current.map(item => item.id === itemId ? { ...item, status: STATUS.IN_PROGRESS } : item));
     try {
       await supabase.from('order_items').update({ status: STATUS.IN_PROGRESS }).eq('id', itemId).throwOnError();
     } catch (err: any) {
       Alert.alert('Lỗi', 'Không thể cập nhật trạng thái: ' + err.message);
+      // Khôi phục UI khi lỗi
       setDetailItems(current => current.map(item => item.id === itemId ? { ...item, status: STATUS.PENDING } : item));
     }
   };
 
   const handleCompleteItem = async (itemId: number) => {
-    // [CẬP NHẬT] Chỉ chuyển IN_PROGRESS → COMPLETED
+    // [CẬP NHẬT] Loại bỏ item ngay (cả items trả lại và IN_PROGRESS)
     const currentItem = detailItems.find(item => item.id === itemId);
     if (!currentItem) return;
 
-    setDetailItems(current => current.map(item => item.id === itemId ? { ...item, status: STATUS.COMPLETED } : item));
+    // Loại bỏ item từ UI - cũng loại bỏ items trả lại của cùng order_item
+    setDetailItems(current => current.filter(item => {
+      // Loại bỏ item được bấm
+      if (item.id === itemId) return false;
+      // Loại bỏ item trả lại của cùng order_item nếu nó là item trả lại
+      if (item.isReturnedItem && item.id === currentItem.id) return false;
+      return true;
+    }));
+    
     try {
       await supabase.from('order_items').update({ status: STATUS.COMPLETED }).eq('id', itemId).throwOnError();
     } catch (err: any) {
       Alert.alert('Lỗi', 'Không thể hoàn thành món: ' + err.message);
-      setDetailItems(current => current.map(item => item.id === itemId ? { ...item, status: currentItem.status } : item));
+      // Khôi phục item khi lỗi
+      setDetailItems(current => [...current, { ...currentItem, status: STATUS.IN_PROGRESS }]);
     }
   };
 
@@ -310,12 +325,14 @@ const KitchenSummaryDetailScreen = () => {
     const itemIdsToUpdate = itemsToUpdate.map(item => item.id);
 
     setIsProcessing(true);
+    // [CẬP NHẬT] Cập nhật UI ngay
     setDetailItems(current => current.map(item => itemIdsToUpdate.includes(item.id) ? { ...item, status: STATUS.IN_PROGRESS } : item));
     
     try {
       await supabase.from('order_items').update({ status: STATUS.IN_PROGRESS }).in('id', itemIdsToUpdate).throwOnError();
     } catch (err: any) {
       Alert.alert('Lỗi', 'Không thể cập nhật trạng thái: ' + err.message);
+      // Khôi phục UI khi lỗi
       setDetailItems(current => current.map(item => itemIdsToUpdate.includes(item.id) ? { ...item, status: STATUS.PENDING } : item));
     } finally {
       setIsProcessing(false);
@@ -326,55 +343,59 @@ const KitchenSummaryDetailScreen = () => {
     setIsCompleting(true);
     
     try {
-      // [CẬP NHẬT] Lấy TẤT CẢ items ở IN_PROGRESS để chuyển sang SERVED (trực tiếp)
+
       const inProgressItems = detailItems.filter(item => item.status === STATUS.IN_PROGRESS);
+      const returnedItems = detailItems.filter(item => item.isReturnedItem);
       
-      if (inProgressItems.length === 0) {
-        console.log('[KitchenSummaryDetail] Không có món nào đang làm để hoàn thành');
+      const itemsToRemove = [...inProgressItems, ...returnedItems];
+      
+      if (itemsToRemove.length === 0) {
+        console.log('[KitchenSummaryDetail] Không có món nào để hoàn thành');
         setIsCompleting(false);
         return;
       }
 
-      const itemIds = inProgressItems.map(item => item.id);
+      const inProgressIds = inProgressItems.map(item => item.id);
+      const itemIdsToRemove = itemsToRemove.map(item => item.id);
 
-      // [CẬP NHẬT] Cập nhật UI trước: chuyển IN_PROGRESS → SERVED
+      // [CẬP NHẬT] Loại bỏ tất cả items khỏi danh sách NGAY (UI cập nhật trực tiếp)
       setDetailItems(currentItems =>
-        currentItems.map(item =>
-          itemIds.includes(item.id) ? { ...item, status: STATUS.SERVED } : item
-        )
+        currentItems.filter(item => !itemIdsToRemove.includes(item.id))
       );
 
-      // [CẬP NHẬT] Cập nhật database trực tiếp sang SERVED
-      const { error: updateError } = await supabase
-        .from('order_items')
-        .update({ status: STATUS.SERVED })
-        .in('id', itemIds);
+      // [CẬP NHẬT] Cập nhật database: chỉ IN_PROGRESS chuyển sang SERVED
+      if (inProgressIds.length > 0) {
+        const { error: updateError } = await supabase
+          .from('order_items')
+          .update({ status: STATUS.SERVED })
+          .in('id', inProgressIds);
 
-      if (updateError) throw updateError;
+        if (updateError) throw updateError;
+      }
 
       console.log('[KitchenSummaryDetail] Đã hoàn thành tất cả món đang làm');
       
     } catch (err: any) {
       Alert.alert('Lỗi', 'Không thể hoàn thành món: ' + err.message);
-      // [MỚI] Revert UI khi lỗi
-      setDetailItems(current => current.map(item => 
-        item.status === STATUS.SERVED ? { ...item, status: STATUS.IN_PROGRESS } : item
-      ));
+      // [CẬP NHẬT] Revert UI khi lỗi - tải lại dữ liệu
+      await fetchDetails();
     } finally {
       setIsCompleting(false);
     }
   };
 
   const hasPendingItems = useMemo(() => detailItems.some(item => item.status === STATUS.PENDING), [detailItems]);
-  // [UPDATED] Nút "Hoàn thành" enable khi:
-  // 1. Không có item PENDING
-  // 2. Có ít nhất 1 item ở IN_PROGRESS (để chuyển sang COMPLETED)
   const hasInProgressItems = useMemo(() => detailItems.some(item => item.status === STATUS.IN_PROGRESS), [detailItems]);
+  const hasReturnedItems = useMemo(() => detailItems.some(item => item.isReturnedItem), [detailItems]);
+  
+  // [CẬP NHẬT] Nút "Hoàn thành" enable khi:
+  // 1. Không có item PENDING
+  // 2. Có ít nhất 1 item ở IN_PROGRESS HOẶC có items trả lại
   const allItemsCompleted = useMemo(() => 
     detailItems.length > 0 && 
     !hasPendingItems && 
-    hasInProgressItems, 
-    [detailItems, hasPendingItems, hasInProgressItems]
+    (hasInProgressItems || hasReturnedItems), 
+    [detailItems, hasPendingItems, hasInProgressItems, hasReturnedItems]
   );
 
   // [CẬP NHẬT] Tách items thành 2 section: bình thường ở trên, trả lại ở dưới
