@@ -163,15 +163,6 @@ const OrderListItem: React.FC<{
               >
                 {item.name}
               </Text>
-              {/* [MỚI] Badge cảnh báo món hết */}
-              {isOutOfStock && !isPaid && !isReturnedItem && (
-                <View className="bg-red-100 px-2 py-1 rounded-full ml-2">
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Icon name="alert-circle" size={14} color="#DC2626" style={{ marginRight: 4 }} />
-                    <Text className="text-red-800 text-xs font-bold">Hết món</Text>
-                  </View>
-                </View>
-              )}
             </View>
             <Text className="text-sm text-gray-500 mt-1">{`Size: ${sizeText}, Đường: ${sugarText}`}</Text>
             <Text className="text-sm text-gray-500">{`Topping: ${toppingsText}`}</Text>
@@ -419,10 +410,26 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
           }));
         }
 
-        const sections: OrderSection[] = [];
-        if (newItems.length > 0) sections.push({ title: 'Món mới chờ gửi bếp', data: newItems });
+        // [CẬP NHẬT] Tách items hết hàng ra khỏi newItems
+        const availableNewItems = newItems.filter(item => item.is_available !== false);
+        const outOfStockNewItems = newItems.filter(item => item.is_available === false);
+        
+        // [CẬP NHẬT] Tách items hết hàng từ pendingItems
+        const availablePendingItems = pendingItems.filter(item => item.is_available !== false);
+        const outOfStockPendingItems = pendingItems.filter(item => item.is_available === false);
+        
+        // [CẬP NHẬT] Tách items hết hàng từ paidItems
+        const availablePaidItems = paidItemsData.filter(item => item.is_available !== false);
+        const outOfStockPaidItems = paidItemsData.filter(item => item.is_available === false);
+        
+        // [CẬP NHẬT] Tách items hết hàng từ returnedItems
+        const availableReturnedItems = returnedItemsSectionData.filter(item => item.is_available !== false);
+        const outOfStockReturnedItems = returnedItemsSectionData.filter(item => item.is_available === false);
 
-        const groupedPendingItems = pendingItems.reduce(
+        const sections: OrderSection[] = [];
+        if (availableNewItems.length > 0) sections.push({ title: 'Món mới chờ gửi bếp', data: availableNewItems });
+
+        const groupedPendingItems = availablePendingItems.reduce(
           (acc, item) => {
             const timestamp = item.created_at || new Date().toISOString();
             if (!acc[timestamp]) acc[timestamp] = [];
@@ -441,11 +448,17 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
 
         sections.push(...pendingSections);
 
-        if (returnedItemsSectionData.length > 0) {
-          sections.push({ title: 'Món đã trả lại', data: returnedItemsSectionData });
+        if (availableReturnedItems.length > 0) {
+          sections.push({ title: 'Món đã trả lại', data: availableReturnedItems });
         }
-        if (paidItemsData.length > 0)
-          sections.push({ title: 'Món đã thanh toán', data: paidItemsData });
+        if (availablePaidItems.length > 0)
+          sections.push({ title: 'Món đã thanh toán', data: availablePaidItems });
+        
+        // [CẬP NHẬT] Thêm section Món đã hết
+        if (outOfStockNewItems.length > 0 || outOfStockPendingItems.length > 0 || outOfStockReturnedItems.length > 0 || outOfStockPaidItems.length > 0) {
+          const outOfStockItems = [...outOfStockNewItems, ...outOfStockPendingItems, ...outOfStockReturnedItems, ...outOfStockPaidItems];
+          sections.push({ title: 'Món đã hết', data: outOfStockItems });
+        }
 
         setDisplayedSections(sections);
       } catch (error: any) {
@@ -1333,7 +1346,9 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
           />
         )}
         renderSectionHeader={({ section: { title } }) => (
-          <Text style={styles.sectionHeader}>{title}</Text>
+          <Text style={[styles.sectionHeader, title === 'Món đã hết' && styles.outOfStockSectionHeader]}>
+            {title}
+          </Text>
         )}
         ListHeaderComponent={
           // Đảm bảo bạn truyền đúng activeOrderId
@@ -1636,6 +1651,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8F9FA',
     paddingTop: 20,
     paddingBottom: 8,
+  },
+  outOfStockSectionHeader: {
+    // Giữ style bình thường, không đỏ
   },
   bottomBar: {
     position: 'absolute',

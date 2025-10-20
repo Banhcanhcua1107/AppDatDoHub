@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { KitchenStackParamList } from '../../navigation/AppNavigator';
 import ConfirmModal from '../../components/ConfirmModal';
+import { sendItemReadyNotification } from '../../services/notificationService';
 
 type KitchenDetailScreenNavigationProp = NativeStackNavigationProp<KitchenStackParamList, 'KitchenDetail'>;
 type KitchenDetailScreenRouteProp = RouteProp<KitchenStackParamList, 'KitchenDetail'>;
@@ -47,7 +48,10 @@ const KitchenDetailItemCard: React.FC<{
   item: KitchenDetailItem;
   onProcess: (itemId: number) => void;
   onComplete: (itemId: number) => void;
-}> = ({ item, onProcess, onComplete }) => {
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+  onReportOutOfStock: (itemId: number, menuItemId?: number) => void;
+}> = ({ item, onProcess, onComplete, isExpanded, onToggleExpand, onReportOutOfStock }) => {
   const { customizations, status } = item;
   const sizeText = customizations.size?.name || 'Mặc định';
   const sugarText = customizations.sugar?.name || 'Mặc định';
@@ -79,6 +83,11 @@ const KitchenDetailItemCard: React.FC<{
   const renderFooterContent = () => {
     // [MỚI] Nếu đã trả lại, chỉ hiển thị badge - không có nút nào
     if (item.isReturnedItem) {
+      return null;
+    }
+    
+    // [MỚI] Nếu hết món, không hiển thị nút Chế biến hoặc Xong
+    if (isOutOfStock) {
       return null;
     }
     
@@ -114,7 +123,11 @@ const KitchenDetailItemCard: React.FC<{
       style={[styles.cardShadow, (item.isReturnedItem || isOutOfStock) && styles.disabledItem]}
       className="bg-white rounded-2xl mb-3"
     >
-      <View style={styles.cardHeader}>
+      <TouchableOpacity 
+        onPress={onToggleExpand}
+        style={styles.cardHeader}
+        activeOpacity={0.7}
+      >
         <View style={styles.cardHeaderLeft}>
           {/* [CẬP NHẬT] Gạch ngang tên khi đã trả lại */}
           <Text 
@@ -141,8 +154,14 @@ const KitchenDetailItemCard: React.FC<{
               <Text style={[styles.statusText, { color: statusInfo.color }]}>{statusInfo.text}</Text>
             </View>
           )}
+          {/* [THÊM] Nút expand/collapse */}
+          <Ionicons 
+            name={isExpanded ? "chevron-up" : "chevron-down"} 
+            size={20} 
+            color="#6B7280"
+          />
         </View>
-      </View>
+      </TouchableOpacity>
 
       <View style={styles.cardDivider} />
 
@@ -151,6 +170,37 @@ const KitchenDetailItemCard: React.FC<{
         <Text style={styles.itemCustomization}>{`Topping: ${toppingsText}`}</Text>
         {noteText && <Text style={styles.itemNote}>Ghi chú: {noteText}</Text>}
       </View>
+
+      {/* [THÊM] Dropdown Content - Báo hết món */}
+      {isExpanded && (
+        <>
+          <View style={styles.cardDivider} />
+          <View style={styles.dropdownContent}>
+            <TouchableOpacity
+              style={[
+                styles.dropdownButton,
+                isOutOfStock ? styles.dropdownButtonActive : styles.dropdownButtonInactive
+              ]}
+              onPress={() => onReportOutOfStock(item.id)}
+              activeOpacity={0.7}
+            >
+              <Ionicons 
+                name={isOutOfStock ? "checkmark-circle" : "alert-circle"} 
+                size={18} 
+                color={isOutOfStock ? "#10B981" : "#DC2626"}
+              />
+              <Text 
+                style={[
+                  styles.dropdownButtonText,
+                  isOutOfStock ? styles.dropdownButtonTextActive : styles.dropdownButtonTextInactive
+                ]}
+              >
+                {isOutOfStock ? "Báo còn" : "Báo hết"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      )}
 
       <View style={styles.cardDivider} />
 
@@ -191,6 +241,12 @@ const KitchenDetailScreen = () => {
   const [isReturnModalVisible, setReturnModalVisible] = useState(false);
   const [isCompleteModalVisible, setCompleteModalVisible] = useState(false); // [THÊM] Modal xác nhận hoàn thành
   const [pendingCancellationsCount, setPendingCancellationsCount] = useState(0); // [MỚI]
+  const [expandedItemId, setExpandedItemId] = useState<number | null>(null); // [THÊM] Theo dõi item được expand
+  const [reportOutOfStockModal, setReportOutOfStockModal] = useState<{ visible: boolean; itemId: number | null; itemName: string }>({
+    visible: false,
+    itemId: null,
+    itemName: '',
+  }); // [THÊM] Modal confirm báo hết
 
   const fetchOrderDetails = useCallback(async () => {
     try {
@@ -350,6 +406,13 @@ const KitchenDetailScreen = () => {
     );
     try {
       await supabase.from('order_items').update({ status: STATUS.COMPLETED }).eq('id', itemId).throwOnError();
+      
+      // [MỚI] Gửi notification khi hoàn thành
+      await sendItemReadyNotification(
+        orderId,
+        tableName,
+        currentItem.name
+      );
     } catch (err: any) {
       console.error('Lỗi hoàn thành món:', err.message);
       setItems(currentItems =>
@@ -383,6 +446,69 @@ const KitchenDetailScreen = () => {
           itemIdsToProcess.includes(item.id) ? { ...item, status: STATUS.PENDING } : item
         )
       );
+    }
+  };
+  
+  // [THÊM] Hàm báo hết/còn món
+  const handleReportOutOfStock = async (itemId: number) => {
+    const currentItem = items.find(item => item.id === itemId);
+    if (!currentItem) return;
+
+    const menuItemName = currentItem.customizations?.name || 'Món không tên';
+    
+    // [CẬP NHẬT] Mở modal xác nhận thay vì execute ngay
+    setReportOutOfStockModal({
+      visible: true,
+      itemId,
+      itemName: menuItemName,
+    });
+  };
+
+  // [THÊM] Hàm xác nhận báo hết/còn
+  const handleConfirmReportOutOfStock = async () => {
+    const { itemId } = reportOutOfStockModal;
+    if (!itemId) return;
+
+    const currentItem = items.find(item => item.id === itemId);
+    if (!currentItem) return;
+
+    const menuItemName = currentItem.customizations?.name;
+    if (!menuItemName) return;
+
+    setReportOutOfStockModal({ visible: false, itemId: null, itemName: '' });
+
+    try {
+      // Lấy menu_item_id từ customizations
+      const { data: menuItem, error: menuError } = await supabase
+        .from('menu_items')
+        .select('id')
+        .eq('name', menuItemName)
+        .single();
+
+      if (menuError) throw menuError;
+
+      const newStatus = !currentItem.is_available;
+
+      // Cập nhật trạng thái hết/còn của món
+      const { error: updateError } = await supabase
+        .from('menu_items')
+        .update({ is_available: newStatus })
+        .eq('id', menuItem.id);
+
+      if (updateError) throw updateError;
+
+      // Cập nhật UI local
+      setItems(currentItems =>
+        currentItems.map(item =>
+          item.id === itemId ? { ...item, is_available: newStatus } : item
+        )
+      );
+
+      setExpandedItemId(null); // Đóng dropdown
+      console.log(`[KitchenDetail] Báo ${newStatus ? 'còn' : 'hết'} món: ${menuItemName}`);
+      
+    } catch (err: any) {
+      console.error('Lỗi báo hết/còn món:', err.message);
     }
   };
   
@@ -466,15 +592,11 @@ const KitchenDetailScreen = () => {
 
       // [MỚI] Gửi thông báo cho nhân viên cho TẤT CẢ items
       for (const item of inProgressItems) {
-        await supabase
-          .from('return_notifications')
-          .insert({
-            order_id: orderId,
-            table_name: tableName,
-            item_name: item.name,
-            status: 'pending',
-            created_at: new Date().toISOString(),
-          });
+        await sendItemReadyNotification(
+          orderId,
+          tableName,
+          item.name
+        );
       }
 
       // Hiển thị toast thành công
@@ -503,18 +625,19 @@ const KitchenDetailScreen = () => {
   const hasInProgressItems = items.some(item => item.status === STATUS.IN_PROGRESS);
   const allItemsCompleted = items.length > 0 && !hasPendingItems && hasInProgressItems;
 
-  // [MỚI] Phân chia items thành các section
+  // [MỚI] Phân chia items thành 3 section: Món còn, Món đã trả lại, Món đã hết
   const groupedItems = (() => {
+    const availableItems = items.filter(item => !item.isReturnedItem && item.is_available !== false);
     const returnedItems = items.filter(item => item.isReturnedItem);
-    const normalItems = items.filter(item => !item.isReturnedItem);
+    const outOfStockItems = items.filter(item => !item.isReturnedItem && item.is_available === false);
     
     const sections = [];
     
-    if (normalItems.length > 0) {
+    if (availableItems.length > 0) {
       sections.push({
-        title: 'Đợt chế biến',
-        data: normalItems,
-        isReturnedSection: false
+        title: 'Món còn',
+        data: availableItems,
+        sectionType: 'available'
       });
     }
     
@@ -522,7 +645,15 @@ const KitchenDetailScreen = () => {
       sections.push({
         title: 'Món đã trả lại',
         data: returnedItems,
-        isReturnedSection: true
+        sectionType: 'returned'
+      });
+    }
+    
+    if (outOfStockItems.length > 0) {
+      sections.push({
+        title: 'Món đã hết',
+        data: outOfStockItems,
+        sectionType: 'outOfStock'
       });
     }
     
@@ -559,11 +690,26 @@ const KitchenDetailScreen = () => {
             item={item}
             onProcess={handleProcessItem}
             onComplete={handleCompleteItem}
+            isExpanded={expandedItemId === item.id}
+            onToggleExpand={() => setExpandedItemId(expandedItemId === item.id ? null : item.id)}
+            onReportOutOfStock={handleReportOutOfStock}
           />
         )}
-        renderSectionHeader={({ section: { title, isReturnedSection } }) => (
-          <View style={[styles.sectionHeader, isReturnedSection && styles.returnedSectionHeader]}>
-            <Text style={[styles.sectionTitle, isReturnedSection && styles.returnedSectionTitle]}>
+        renderSectionHeader={({ section: { title, sectionType } }) => (
+          <View 
+            style={[
+              styles.sectionHeader,
+              sectionType === 'returned' && styles.returnedSectionHeader,
+              sectionType === 'outOfStock' && styles.outOfStockSectionHeader
+            ]}
+          >
+            <Text 
+              style={[
+                styles.sectionTitle,
+                sectionType === 'returned' && styles.returnedSectionTitle,
+                sectionType === 'outOfStock' && styles.outOfStockSectionTitle
+              ]}
+            >
               {title}
             </Text>
           </View>
@@ -610,6 +756,18 @@ const KitchenDetailScreen = () => {
         variant="success"
         onClose={() => setCompleteModalVisible(false)}
         onConfirm={handleConfirmCompleteAll}
+      />
+
+      {/* [THÊM] Modal xác nhận báo hết */}
+      <ConfirmModal
+        isVisible={reportOutOfStockModal.visible}
+        title="Xác nhận báo hết"
+        message={`Bạn có chắc chắn muốn báo hết món "${reportOutOfStockModal.itemName}"?`}
+        confirmText="Báo hết"
+        cancelText="Hủy"
+        variant="warning"
+        onClose={() => setReportOutOfStockModal({ visible: false, itemId: null, itemName: '' })}
+        onConfirm={handleConfirmReportOutOfStock}
       />
     </SafeAreaView>
   );
@@ -806,12 +964,18 @@ const styles = StyleSheet.create({
   returnedSectionHeader: {
     // Không thay đổi nền, giữ như bình thường
   },
+  outOfStockSectionHeader: {
+    // Giữ nền bình thường, không đỏ
+  },
   sectionTitle: {
     fontSize: 13,
     fontWeight: '600',
     color: '#4B5563',
   },
   returnedSectionTitle: {
+    color: '#4B5563',
+  },
+  outOfStockSectionTitle: {
     color: '#4B5563',
   },
   
@@ -845,6 +1009,39 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     opacity: 0.5,
+  },
+  
+  // [THÊM] Dropdown styles
+  dropdownContent: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  dropdownButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  dropdownButtonActive: {
+    backgroundColor: '#D1FAE5',
+    borderColor: '#6EE7B7',
+  },
+  dropdownButtonInactive: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FCA5A5',
+  },
+  dropdownButtonText: {
+    marginLeft: 8,
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  dropdownButtonTextActive: {
+    color: '#059669',
+  },
+  dropdownButtonTextInactive: {
+    color: '#DC2626',
   },
 });
 export default KitchenDetailScreen;

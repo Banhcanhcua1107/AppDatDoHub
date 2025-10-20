@@ -18,6 +18,7 @@ import { supabase } from '../../services/supabase';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { KitchenStackParamList } from '../../navigation/AppNavigator';
+import { sendOutOfStockNotification } from '../../services/notificationService';
 
 type AvailabilityNavigationProp = NativeStackNavigationProp<KitchenStackParamList>;
 
@@ -88,6 +89,8 @@ const ItemAvailabilityScreen = () => {
 
   const handleUpdateAvailability = async (id: number, newStatus: boolean) => {
     const originalItems = [...menuItems];
+    const updatedItem = menuItems.find(item => item.id === id);
+    
     setMenuItems(currentItems =>
       currentItems.map(item => (item.id === id ? { ...item, is_available: newStatus } : item))
     );
@@ -97,7 +100,7 @@ const ItemAvailabilityScreen = () => {
         .from('menu_items')
         .update({ is_available: newStatus })
         .eq('id', id)
-        .select('id'); 
+        .select('id, name'); 
 
       if (error) {
         throw error;
@@ -107,9 +110,40 @@ const ItemAvailabilityScreen = () => {
         throw new Error('Không có quyền cập nhật hoặc không tìm thấy món.');
       }
 
+      // If marking as unavailable, send out_of_stock notifications to affected orders
+      if (!newStatus && updatedItem) {
+        try {
+          // Find all active orders that contain this menu item
+          const { data: affectedOrders, error: ordersError } = await supabase
+            .from('order_items')
+            .select('order_id, table_name')
+            .eq('menu_item_id', id)
+            .eq('status', 'pending');
+
+          if (ordersError) {
+            console.warn('Error fetching affected orders:', ordersError);
+          } else if (affectedOrders && affectedOrders.length > 0) {
+            // Send notification to each affected order (avoid duplicates)
+            const uniqueOrders = Array.from(
+              new Map(affectedOrders.map(o => [o.order_id, o])).values()
+            );
+
+            for (const order of uniqueOrders) {
+              await sendOutOfStockNotification(
+                order.order_id,
+                order.table_name || 'Unknown',
+                updatedItem.name
+              );
+            }
+          }
+        } catch (notificationError) {
+          console.warn('Error sending notifications:', notificationError);
+          // Don't throw - item was still updated successfully
+        }
+      }
+
     } catch (err: any) {
       Alert.alert('Lỗi', `Không thể cập nhật trạng thái món: ${err.message}`);
-
       setMenuItems(originalItems);
     }
   };

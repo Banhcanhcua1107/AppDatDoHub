@@ -22,6 +22,7 @@ interface ReturnNotification {
   item_name: string; // Thay từ item_names (mảng) sang item_name (singular)
   status: 'pending' | 'acknowledged';
   created_at: string;
+  notification_type?: 'return_item' | 'item_ready' | 'out_of_stock'; // [MỚI] Loại thông báo
 }
 
 const ReturnNotificationScreen = () => {
@@ -181,8 +182,23 @@ const ReturnNotificationScreen = () => {
     return `${diffDays} ngày trước`;
   };
 
+  // [MỚI] Hàm lấy thông tin loại thông báo
+  const getNotificationTypeInfo = (type?: string) => {
+    switch (type) {
+      case 'item_ready':
+        return { label: 'Sẵn sàng phục vụ', color: '#10B981', icon: 'checkmark-circle' };
+      case 'return_item':
+        return { label: 'Trả lại món', color: '#F97316', icon: 'arrow-undo' };
+      case 'out_of_stock':
+        return { label: 'Hết hàng', color: '#DC2626', icon: 'alert-circle' };
+      default:
+        return { label: 'Thông báo', color: '#3B82F6', icon: 'notifications' };
+    }
+  };
+
   const renderNotification = ({ item }: { item: ReturnNotification }) => {
     const timeAgo = getTimeAgo(item.created_at);
+    const typeInfo = getNotificationTypeInfo(item.notification_type);
 
     return (
       <View style={styles.card}>
@@ -191,8 +207,13 @@ const ReturnNotificationScreen = () => {
             <Text style={styles.tableName}>{item.table_name}</Text>
             <Text style={styles.timeText}>{timeAgo}</Text>
           </View>
-          {item.status === 'acknowledged' && (
+          {item.status === 'acknowledged' ? (
             <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+          ) : (
+            <View style={[styles.typeBadge, { backgroundColor: `${typeInfo.color}20` }]}>
+              <Ionicons name={typeInfo.icon as any} size={14} color={typeInfo.color} />
+              <Text style={[styles.typeBadgeText, { color: typeInfo.color }]}>{typeInfo.label}</Text>
+            </View>
           )}
         </View>
 
@@ -407,6 +428,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
     marginTop: 2,
+  },
+  // [MỚI] Badge loại thông báo
+  typeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    gap: 4,
+  },
+  typeBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   itemsText: {
     fontSize: 14,

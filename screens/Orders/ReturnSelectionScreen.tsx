@@ -21,6 +21,7 @@ import { supabase } from '../../services/supabase';
 import Toast from 'react-native-toast-message';
 import { useNetwork } from '../../context/NetworkContext';
 import ConfirmModal from '../../components/ConfirmModal';
+import { sendReturnItemNotification } from '../../services/notificationService';
 
 // [THAY ĐỔI] Interface cần thêm status và created_at để xử lý logic
 interface ItemToReturn {
@@ -163,6 +164,15 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
         const { error } = await supabase.from('cancellation_requests').insert(requestPayload);
         if (error) throw new Error(`Gửi yêu cầu thất bại: ${error.message}`);
         
+        // Send return_item notifications for cancellation request items
+        for (const item of itemsToRequestCancellation) {
+          try {
+            await sendReturnItemNotification(orderId, tableName || 'Không rõ', item.name, item.quantity);
+          } catch (notificationError) {
+            console.warn('Error sending notification for item:', item.name, notificationError);
+          }
+        }
+        
         requestMessage = `Đã gửi yêu cầu trả ${itemsToRequestCancellation.length} món tới bếp.`;
       }
 
@@ -205,6 +215,15 @@ const ReturnSelectionScreen = ({ route, navigation }: Props) => {
           .in('id', itemIdsToCancel);
 
         if (updateError) throw new Error(`Cập nhật quantity thất bại: ${updateError.message}`);
+        
+        // Send return_item notifications for directly cancelled items
+        for (const item of itemsToCancelDirectly) {
+          try {
+            await sendReturnItemNotification(orderId, tableName || 'Không rõ', item.name, item.quantity);
+          } catch (notificationError) {
+            console.warn('Error sending notification for item:', item.name, notificationError);
+          }
+        }
         
         successMessage = `Đã hủy thành công ${itemsToCancelDirectly.length} món.`;
       }

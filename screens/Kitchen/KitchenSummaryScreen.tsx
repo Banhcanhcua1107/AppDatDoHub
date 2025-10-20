@@ -96,10 +96,11 @@ const KitchenSummaryScreen = () => {
         const orders = item.orders as any;
         const tableName = orders?.order_tables?.[0]?.tables?.name || 'Mang về';
         
-        // [CẬP NHẬT] Bỏ qua món hết hàng + đang chờ
+        // [CẬP NHẬT] Bỏ qua những món hết hàng (is_available = false)
+        // Nếu báo hết, sẽ không hiển thị bất kể trạng thái
         const menuItems = item.menu_items as any;
         const isAvailable = menuItems?.is_available ?? true;
-        if (!isAvailable && item.status === 'waiting') {
+        if (!isAvailable) {
           return acc;
         }
         

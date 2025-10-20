@@ -74,6 +74,12 @@ const DetailItemCard: React.FC<{
       return null;
     }
     
+    // [MỚI] Nếu hết món, không hiển thị nút Chế biến hoặc Xong
+    const isOutOfStock = item.is_available === false;
+    if (isOutOfStock) {
+      return null;
+    }
+    
     return (
       <View style={styles.footerActionsContainer}>
         {status === STATUS.PENDING && (
@@ -398,18 +404,19 @@ const KitchenSummaryDetailScreen = () => {
     [detailItems, hasPendingItems, hasInProgressItems, hasReturnedItems]
   );
 
-  // [CẬP NHẬT] Tách items thành 2 section: bình thường ở trên, trả lại ở dưới
+  // [CẬP NHẬT] Tách items thành 3 section: Món còn, Món đã trả lại, Món đã hết
   const groupedItems = useMemo(() => {
-    const normalItems = detailItems.filter(item => !item.isReturnedItem);
+    const availableItems = detailItems.filter(item => !item.isReturnedItem && item.is_available !== false);
     const returnedItems = detailItems.filter(item => item.isReturnedItem);
+    const outOfStockItems = detailItems.filter(item => !item.isReturnedItem && item.is_available === false);
     
     const sections = [];
     
-    if (normalItems.length > 0) {
+    if (availableItems.length > 0) {
       sections.push({
-        title: 'Đợt chế biến',
-        data: normalItems,
-        isReturnedSection: false
+        title: 'Món còn',
+        data: availableItems,
+        sectionType: 'available'
       });
     }
     
@@ -417,7 +424,15 @@ const KitchenSummaryDetailScreen = () => {
       sections.push({
         title: 'Món đã trả lại',
         data: returnedItems,
-        isReturnedSection: true
+        sectionType: 'returned'
+      });
+    }
+    
+    if (outOfStockItems.length > 0) {
+      sections.push({
+        title: 'Món đã hết',
+        data: outOfStockItems,
+        sectionType: 'outOfStock'
       });
     }
     
@@ -447,9 +462,21 @@ const KitchenSummaryDetailScreen = () => {
             onComplete={handleCompleteItem}
           />
         )}
-        renderSectionHeader={({ section: { title, isReturnedSection } }) => (
-          <View style={[styles.sectionHeader, isReturnedSection && styles.returnedSectionHeader]}>
-            <Text style={[styles.sectionTitle, isReturnedSection && styles.returnedSectionTitle]}>
+        renderSectionHeader={({ section: { title, sectionType } }) => (
+          <View 
+            style={[
+              styles.sectionHeader,
+              sectionType === 'returned' && styles.returnedSectionHeader,
+              sectionType === 'outOfStock' && styles.outOfStockSectionHeader
+            ]}
+          >
+            <Text 
+              style={[
+                styles.sectionTitle,
+                sectionType === 'returned' && styles.returnedSectionTitle,
+                sectionType === 'outOfStock' && styles.outOfStockSectionTitle
+              ]}
+            >
               {title}
             </Text>
           </View>
@@ -644,12 +671,18 @@ const styles = StyleSheet.create({
   returnedSectionHeader: {
     // Không thay đổi nền, giữ như bình thường
   },
+  outOfStockSectionHeader: {
+    // Giữ nền bình thường, không đỏ
+  },
   sectionTitle: {
     fontSize: 13,
     fontWeight: '600',
     color: '#4B5563',
   },
   returnedSectionTitle: {
+    color: '#4B5563',
+  },
+  outOfStockSectionTitle: {
     color: '#4B5563',
   },
   

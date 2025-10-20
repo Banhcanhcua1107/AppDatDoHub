@@ -75,6 +75,7 @@ type OrderItemCardProps = {
 const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowMenu }) => {
   // [SỬA LỖI] Thêm dòng này để khai báo state
   const [isToggling, setIsToggling] = useState(false);
+  const [notificationCount, setNotificationCount] = useState(0); // [MỚI] Notification count cho order này
   const { isOnline } = useNetwork();
   const formatTimeElapsed = (startTime: string) => {
     const start = new Date(startTime).getTime();
@@ -136,6 +137,44 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
         setIsToggling(false);
     }
   };
+
+  // [MỚI] Fetch notification count cho order này
+  React.useEffect(() => {
+    const fetchNotifications = async () => {
+      try {
+        const { count, error } = await supabase
+          .from('return_notifications')
+          .select('*', { count: 'exact', head: true })
+          .eq('order_id', item.orderId)
+          .eq('status', 'pending');
+        
+        if (error) throw error;
+        setNotificationCount(count || 0);
+      } catch (error: any) {
+        console.error('Lỗi fetch notification:', error.message);
+      }
+    };
+
+    fetchNotifications();
+
+    // [MỚI] Subscribe realtime notification
+    const channel = supabase
+      .channel(`return_notifications_${item.orderId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'return_notifications' },
+        (payload: any) => {
+          if (payload.new?.order_id === item.orderId || payload.old?.order_id === item.orderId) {
+            fetchNotifications();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [item.orderId]);
 
   
   return (
@@ -212,6 +251,34 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
             />
           )}
         </TouchableOpacity>
+        {/* [MỚI] Nút thông báo riêng cho bàn */}
+        <TouchableOpacity
+          onPress={() => navigation.navigate(ROUTES.RETURN_NOTIFICATIONS)}
+          className="py-3 items-center justify-center flex-1 relative"
+          style={{ position: 'relative' }}
+        >
+          <Ionicons name="notifications-outline" size={24} color="gray" />
+          {notificationCount > 0 && (
+            <View style={{
+              position: 'absolute',
+              top: 2,
+              right: 6,
+              backgroundColor: '#EF4444',
+              borderRadius: 10,
+              minWidth: 20,
+              height: 20,
+              justifyContent: 'center',
+              alignItems: 'center',
+              paddingHorizontal: 5,
+              borderWidth: 2,
+              borderColor: '#FFFFFF',
+            }}>
+              <Text style={{ color: 'white', fontSize: 11, fontWeight: 'bold' }}>
+                {notificationCount > 99 ? '99+' : notificationCount}
+              </Text>
+            </View>
+          )}
+        </TouchableOpacity>
         <TouchableOpacity
           onPress={() => onShowMenu(item)}
           className="py-3 items-center justify-center flex-1"
@@ -235,7 +302,6 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
   const [isMenuVisible, setMenuVisible] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<ActiveOrder | null>(null);
   const [isCancelModalVisible, setCancelModalVisible] = useState(false);
-  const [notificationCount, setNotificationCount] = useState(0);
 
   const fetchActiveOrders = useCallback(async (isInitialLoad = false) => {
     if (isInitialLoad) setLoading(true);
@@ -293,25 +359,10 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
     }
   }, []);
 
-  const fetchNotificationCount = useCallback(async () => {
-    try {
-      const { count, error } = await supabase
-        .from('return_notifications')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'pending');
-      
-      if (error) throw error;
-      setNotificationCount(count || 0);
-    } catch (error: any) {
-      console.error('Lỗi fetch notification count:', error.message);
-    }
-  }, []);
-
   useFocusEffect(
     useCallback(() => {
       fetchActiveOrders(true);
-      fetchNotificationCount();
-    }, [fetchActiveOrders, fetchNotificationCount])
+    }, [fetchActiveOrders])
   );
 
   useEffect(() => {
@@ -321,19 +372,11 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
         fetchActiveOrders(false);
       })
       .subscribe();
-    
-    const notificationChannel = supabase
-      .channel('public:return_notifications')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'return_notifications' }, () => {
-        fetchNotificationCount();
-      })
-      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
-      supabase.removeChannel(notificationChannel);
     };
-  }, [fetchActiveOrders, fetchNotificationCount]);
+  }, [fetchActiveOrders]);
 
   const menuActions: MenuItemProps[] = [
     { icon: 'notifications-outline', text: 'Kiểm tra lên món', action: 'check_served_status' },
@@ -509,20 +552,6 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
             </TouchableOpacity>
           </View>
           <View className="flex-row items-center" style={{ gap: 12 }}>
-            {/* Icon thông báo với badge */}
-            <TouchableOpacity
-              onPress={() => navigation.navigate(ROUTES.RETURN_NOTIFICATIONS)}
-              className="relative"
-              style={styles.notificationButton}
-            >
-              <Ionicons name="notifications-outline" size={26} color="#111827" />
-              {notificationCount > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{notificationCount > 99 ? '99+' : notificationCount}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-            
             {/* Nút refresh */}
             <TouchableOpacity
               onPress={() => fetchActiveOrders(true)}

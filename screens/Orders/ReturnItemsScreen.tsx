@@ -43,7 +43,7 @@ const ReturnedOrderCard: React.FC<{ item: ReturnedOrderSummary }> = ({ item }) =
       onPress={() => navigation.navigate(ROUTES.RETURNED_ITEMS_DETAIL, { orderId: item.order_id })}
     >
       <View style={styles.cardHeader}>
-        <Text style={styles.cardTitle}>Bàn {item.table_names}</Text>
+        <Text style={styles.cardTitle}>{item.table_names}</Text>
         <View style={styles.badge}>
           <Icon name="arrow-undo-outline" size={14} color="#D97706" />
           <Text style={styles.badgeText}>{item.total_returned_items} món</Text>
