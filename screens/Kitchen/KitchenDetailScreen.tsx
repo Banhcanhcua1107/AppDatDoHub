@@ -5,7 +5,7 @@ import {
   View,
   Text,
   StyleSheet,
-  FlatList,
+  SectionList,
   TouchableOpacity,
   ActivityIndicator,
   SafeAreaView,
@@ -39,6 +39,7 @@ interface KitchenDetailItem {
   status: KitchenItemStatus;
   customizations: any;
   is_available?: boolean; // [MỚI] Trạng thái còn hàng
+  isReturnedItem?: boolean; // [MỚI] Cờ để đánh dấu món đã trả lại
 }
 
 // ---- COMPONENT CON (CẬP NHẬT UI ĐỂ KHỚP VỚI HÌNH ẢNH) ----
@@ -76,6 +77,11 @@ const KitchenDetailItemCard: React.FC<{
   const statusInfo = getStatusInfo();
 
   const renderFooterContent = () => {
+    // [MỚI] Nếu đã trả lại, chỉ hiển thị badge - không có nút nào
+    if (item.isReturnedItem) {
+      return null;
+    }
+    
     if (isCompleted) {
       return (
         <View style={styles.completedBadge}>
@@ -114,16 +120,36 @@ const KitchenDetailItemCard: React.FC<{
 
   return (
     <View
-      style={[styles.cardShadow, (isCompleted || isOutOfStock) && styles.disabledItem]}
+      style={[styles.cardShadow, (item.isReturnedItem || isOutOfStock) && styles.disabledItem]}
       className="bg-white rounded-2xl mb-3"
     >
       <View style={styles.cardHeader}>
         <View style={styles.cardHeaderLeft}>
-          <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
+          {/* [CẬP NHẬT] Gạch ngang tên khi đã trả lại */}
+          <Text 
+            style={[
+              styles.itemName, 
+              item.isReturnedItem && { textDecorationLine: 'line-through', color: '#9CA3AF' }
+            ]} 
+            numberOfLines={2}
+          >
+            {item.name}
+          </Text>
         </View>
-        <View style={[styles.statusBadge, { backgroundColor: `${statusInfo.color}20` }]}>
-          <Ionicons name={statusInfo.icon as any} size={14} color={statusInfo.color} />
-          <Text style={[styles.statusText, { color: statusInfo.color }]}>{statusInfo.text}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {/* [MỚI] Badge "Đã trả lại" */}
+          {item.isReturnedItem && (
+            <View style={[styles.statusBadge, { backgroundColor: '#FEE2E2' }]}>
+              <Text style={[styles.statusText, { color: '#DC2626', fontWeight: '600' }]}>Đã trả lại</Text>
+            </View>
+          )}
+          {/* Status badge thông thường */}
+          {!item.isReturnedItem && (
+            <View style={[styles.statusBadge, { backgroundColor: `${statusInfo.color}20` }]}>
+              <Ionicons name={statusInfo.icon as any} size={14} color={statusInfo.color} />
+              <Text style={[styles.statusText, { color: statusInfo.color }]}>{statusInfo.text}</Text>
+            </View>
+          )}
         </View>
       </View>
 
@@ -177,6 +203,7 @@ const KitchenDetailScreen = () => {
   const fetchOrderDetails = useCallback(async () => {
     try {
       // [CẬP NHẬT] Thêm returned_quantity để lọc món đã trả hết
+      // [CẬP NHẬT] Lấy tất cả món (kể cả đã trả)
       const { data, error } = await supabase
         .from('order_items')
         .select('id, quantity, returned_quantity, customizations, status, created_at, menu_items ( is_available )')
@@ -186,34 +213,48 @@ const KitchenDetailScreen = () => {
 
       if (error) throw error;
       
-      // [FIX] Chỉ hiển thị món còn cần làm (chưa trả hết)
-      const mappedItems = data
-        .map((item: any) => {
-          const returnedQty = item.returned_quantity || 0;
-          const remainingQty = item.quantity - returnedQty;
-          
-          return {
-            ...item,
-            quantity: remainingQty, // Số lượng còn lại sau khi trừ đi số đã trả
+      // [CẬP NHẬT] Tạo item riêng cho các món đã trả (giống OrderConfirmationScreen)
+      const allItems: KitchenDetailItem[] = [];
+      
+      data.forEach((item: any) => {
+        const returnedQty = item.returned_quantity || 0;
+        const remainingQty = item.quantity - returnedQty;
+        const name = item.customizations.name || 'Món không tên';
+        
+        // [MỚI] Nếu có số lượng đã trả, tạo item riêng
+        if (returnedQty > 0) {
+          allItems.push({
+            id: item.id,
+            name,
+            quantity: returnedQty,
             returned_quantity: returnedQty,
-            name: item.customizations.name || 'Món không tên',
+            note: item.customizations.note || null,
+            status: STATUS.SERVED, // Đánh dấu là đã trả
+            customizations: item.customizations,
+            is_available: item.menu_items?.is_available ?? true,
+            isReturnedItem: true, // [MỚI] Cờ để đánh dấu món đã trả lại
+          });
+        }
+        
+        // [MỚI] Nếu còn số lượng chưa trả, tạo item chính
+        if (remainingQty > 0) {
+          // Bỏ qua món hết hàng VÀ đang chờ
+          if (item.is_available === false && item.status === STATUS.PENDING) {
+            return; // Skip
+          }
+          
+          allItems.push({
+            ...item,
+            quantity: remainingQty,
+            returned_quantity: returnedQty,
+            name,
             note: item.customizations.note || null,
             is_available: item.menu_items?.is_available ?? true,
-          };
-        })
-        .filter((item: any) => {
-          // [FIX] Bỏ qua món đã trả hết
-          if (item.quantity <= 0) {
-            return false;
-          }
-          // Bỏ qua món hết hàng VÀ đang chờ
-          if (!item.is_available && item.status === STATUS.PENDING) {
-            return false;
-          }
-          return true; // Giữ món còn cần làm
-        });
+          });
+        }
+      });
       
-      setItems(mappedItems);
+      setItems(allItems);
     } catch (err: any) {
       console.error('Lỗi tải chi tiết order:', err.message);
     } finally {
@@ -353,26 +394,27 @@ const KitchenDetailScreen = () => {
     setReturnModalVisible(false);
     
     try {
-      // [FIX] Chỉ lấy món đã hoàn thành (completed) để trả cho khách
-      const { data: completedItems, error: fetchError } = await supabase
+      // [UPDATED] Lấy TẤT CẢ items hiện tại (ngoại trừ PENDING) để trả về
+      const { data: itemsToReturn, error: fetchError } = await supabase
         .from('order_items')
         .select('id, quantity, customizations')
         .eq('order_id', orderId)
-        .eq('status', STATUS.COMPLETED); // [FIX] Chỉ lấy món completed
+        .neq('status', STATUS.PENDING) // Lấy tất cả ngoài PENDING
+        .neq('status', STATUS.SERVED); // Và ngoài đã SERVED
 
       if (fetchError) throw fetchError;
 
-      if (!completedItems || completedItems.length === 0) {
-        console.log('[KitchenDetail] Không có món nào đã hoàn thành để trả');
+      if (!itemsToReturn || itemsToReturn.length === 0) {
+        console.log('[KitchenDetail] Không có món nào để trả');
         if (navigation.canGoBack()) {
           navigation.goBack();
         }
         return;
       }
 
-      const itemIds = completedItems.map(item => item.id);
+      const itemIds = itemsToReturn.map(item => item.id);
 
-      // [FIX] Chuyển CHỈ món completed sang 'served' (đã trả cho khách)
+      // [UPDATED] Chuyển TẤT CẢ sang 'served' (đã trả cho khách/phục vụ)
       const { error: updateError } = await supabase
         .from('order_items')
         .update({ status: STATUS.SERVED }) 
@@ -391,13 +433,85 @@ const KitchenDetailScreen = () => {
     }
   };
 
+  // [MỚI] Hàm xử lý khi bấm "Hoàn thành"
+  const handleCompleteAllClicked = async () => {
+    try {
+      // [MỚI] Lấy TẤT CẢ items ở IN_PROGRESS để chuyển sang COMPLETED
+      const inProgressItems = items.filter(item => item.status === STATUS.IN_PROGRESS);
+      
+      if (inProgressItems.length === 0) {
+        console.log('[KitchenDetail] Không có món nào đang làm để hoàn thành');
+        return;
+      }
+
+      const itemIds = inProgressItems.map(item => item.id);
+
+      // [MỚI] Cập nhật UI trước (optimistic update)
+      setItems(currentItems =>
+        currentItems.map(item =>
+          itemIds.includes(item.id) ? { ...item, status: STATUS.COMPLETED } : item
+        )
+      );
+
+      // [MỚI] Cập nhật database
+      const { error: updateError } = await supabase
+        .from('order_items')
+        .update({ status: STATUS.COMPLETED })
+        .in('id', itemIds);
+
+      if (updateError) throw updateError;
+
+      // [MỚI] Hiển thị modal xác nhận trả món
+      setReturnModalVisible(true);
+    } catch (err: any) {
+      console.error('Lỗi hoàn thành món:', err.message);
+      // [MỚI] Revert UI khi lỗi
+      setItems(currentItems =>
+        currentItems.map(item =>
+          item.status === STATUS.COMPLETED && item.status !== STATUS.SERVED
+            ? { ...item, status: STATUS.IN_PROGRESS }
+            : item
+        )
+      );
+    }
+  };
+
   if (loading) {
     return <View style={styles.centerContainer}><ActivityIndicator size="large" color="#1E3A8A" /></View>;
   }
 
   const hasPendingItems = items.some(item => item.status === STATUS.PENDING);
-  // [NEW] Check if all items are completed
-  const allItemsCompleted = items.length > 0 && items.every(item => item.status === STATUS.COMPLETED || item.status === STATUS.SERVED);
+  // [UPDATED] Nút "Hoàn thành" enable khi:
+  // 1. Không có item PENDING
+  // 2. Có ít nhất 1 item ở IN_PROGRESS (để chuyển sang COMPLETED)
+  const hasInProgressItems = items.some(item => item.status === STATUS.IN_PROGRESS);
+  const allItemsCompleted = items.length > 0 && !hasPendingItems && hasInProgressItems;
+
+  // [MỚI] Phân chia items thành các section
+  const groupedItems = (() => {
+    const returnedItems = items.filter(item => item.isReturnedItem);
+    const normalItems = items.filter(item => !item.isReturnedItem);
+    
+    const sections = [];
+    
+    if (normalItems.length > 0) {
+      sections.push({
+        title: 'Đợt chế biến',
+        data: normalItems,
+        isReturnedSection: false
+      });
+    }
+    
+    if (returnedItems.length > 0) {
+      sections.push({
+        title: 'Món đã trả lại',
+        data: returnedItems,
+        isReturnedSection: true
+      });
+    }
+    
+    return sections;
+  })();
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -420,8 +534,8 @@ const KitchenDetailScreen = () => {
           </TouchableOpacity>
         )}
       </View>
-      <FlatList
-        data={items}
+      <SectionList
+        sections={groupedItems}
         keyExtractor={(item) => item.id.toString()}
         renderItem={({ item }) => (
           <KitchenDetailItemCard
@@ -429,6 +543,13 @@ const KitchenDetailScreen = () => {
             onProcess={handleProcessItem}
             onComplete={handleCompleteItem}
           />
+        )}
+        renderSectionHeader={({ section: { title, isReturnedSection } }) => (
+          <View style={[styles.sectionHeader, isReturnedSection && styles.returnedSectionHeader]}>
+            <Text style={[styles.sectionTitle, isReturnedSection && styles.returnedSectionTitle]}>
+              {title}
+            </Text>
+          </View>
         )}
         contentContainerStyle={styles.listContainer}
         ListEmptyComponent={<View style={styles.centerContainer}><Text style={{color: '#6B7280'}}>Order này không có món nào.</Text></View>}
@@ -445,7 +566,7 @@ const KitchenDetailScreen = () => {
           <FooterActionButton
               icon="checkmark-done-outline"
               label="Hoàn thành"
-              onPress={() => setReturnModalVisible(true)}
+              onPress={handleCompleteAllClicked}
               color="#10B981"
               backgroundColor="#ECFDF5"
               disabled={!allItemsCompleted}
@@ -643,6 +764,26 @@ const styles = StyleSheet.create({
     color: '#10B981',
     fontSize: 13,
     fontWeight: '600',
+  },
+  
+  // [MỚI] Section header styles
+  sectionHeader: {
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  returnedSectionHeader: {
+    // Không thay đổi nền, giữ như bình thường
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#4B5563',
+  },
+  returnedSectionTitle: {
+    color: '#4B5563',
   },
   
   footer: {
