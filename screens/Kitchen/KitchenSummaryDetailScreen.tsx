@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { supabase } from '../../services/supabase';
-import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { KitchenStackParamList } from '../../navigation/AppNavigator';
 
@@ -51,6 +51,9 @@ const DetailItemCard: React.FC<{
   const toppingsText = (customizations.toppings?.map((t: any) => t.name) || []).join(', ') || 'Không có';
   const noteText = customizations.note;
 
+  // [MỚI] Kiểm tra món đã hoàn thành
+  const isCompleted = status === STATUS.COMPLETED;
+
   const getStatusInfo = () => {
     switch (status) {
       case STATUS.IN_PROGRESS:
@@ -64,7 +67,7 @@ const DetailItemCard: React.FC<{
   const statusInfo = getStatusInfo();
 
   const renderFooterActions = () => {
-    if (status === STATUS.COMPLETED) {
+    if (isCompleted) {
       return (
         <View style={styles.completedBadge}>
           <Ionicons name="checkmark-circle" size={18} color="#10B981" />
@@ -73,24 +76,15 @@ const DetailItemCard: React.FC<{
       );
     }
     
-    // [MỚI] Hiển thị badge cảnh báo nếu món hết
-    const isOutOfStock = item.is_available === false;
-    
     return (
       <View style={styles.footerActionsContainer}>
-        {isOutOfStock && status === STATUS.IN_PROGRESS && (
-          <View style={styles.outOfStockBadge}>
-            <Ionicons name="alert-circle" size={16} color="#DC2626" />
-            <Text style={styles.outOfStockText}>Hết món</Text>
-          </View>
-        )}
-        
         {status === STATUS.PENDING && (
           <TouchableOpacity
             style={styles.processButton}
             onPress={() => onProcess(item.id)}
+            activeOpacity={0.7}
           >
-            <FontAwesome5 name="utensils" size={16} color="white" />
+            <Ionicons name="flame" size={16} color="white" />
             <Text style={styles.buttonText}>Chế biến</Text>
           </TouchableOpacity>
         )}
@@ -99,9 +93,10 @@ const DetailItemCard: React.FC<{
           <TouchableOpacity
             style={styles.completeButton}
             onPress={() => onComplete(item.id)}
+            activeOpacity={0.7}
           >
-            <Ionicons name="notifications-outline" size={18} color="white" />
-            <Text style={styles.buttonText}>Trả món</Text>
+            <Ionicons name="checkmark-done-outline" size={18} color="white" />
+            <Text style={styles.buttonText}>Xong</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -109,22 +104,31 @@ const DetailItemCard: React.FC<{
   };
 
   return (
-    <View style={styles.card}>
+    <View
+      style={[styles.card, isCompleted && styles.disabledItem]}
+      className="rounded-2xl"
+    >
       <View style={styles.cardHeader}>
         <Ionicons name="receipt-outline" size={20} color="#1F2937" />
         <Text style={styles.tableName}>{item.table_name}</Text>
+        <View style={[styles.statusBadge, { backgroundColor: `${statusInfo.color}20` }]}>
+          <Ionicons name={statusInfo.icon as any} size={14} color={statusInfo.color} />
+          <Text style={[styles.statusText, { color: statusInfo.color }]}>{statusInfo.text}</Text>
+        </View>
       </View>
+      
+      <View style={styles.cardDivider} />
+      
       <View style={styles.cardBody}>
-        <Text style={styles.customizationText}>{`Số lượng: ${item.quantity}`}</Text>
+        <Text style={styles.customizationText}>{`SL: ${item.quantity}`}</Text>
         <Text style={styles.customizationText}>{`Size: ${sizeText}, Đường: ${sugarText}`}</Text>
         <Text style={styles.customizationText}>{`Topping: ${toppingsText}`}</Text>
         {noteText && <Text style={styles.noteText}>Ghi chú: {noteText}</Text>}
       </View>
+      
+      <View style={styles.cardDivider} />
+      
       <View style={styles.cardFooter}>
-         <View style={[styles.statusBadge, { backgroundColor: `${statusInfo.color}20` }]}>
-          <Ionicons name={statusInfo.icon as any} size={14} color={statusInfo.color} />
-          <Text style={[styles.statusText, { color: statusInfo.color }]}>{statusInfo.text}</Text>
-        </View>
         {renderFooterActions()}
       </View>
     </View>
@@ -380,8 +384,8 @@ const KitchenSummaryDetailScreen = () => {
               loading={isProcessing}
           />
           <FooterActionButton
-              icon="notifications-outline"
-              label="Xong"
+              icon="checkmark-done-outline"
+              label="Hoàn thành"
               onPress={handleCompleteAllInProgress}
               color="#10B981"
               backgroundColor="#ECFDF5"
@@ -411,79 +415,94 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 20, fontWeight: 'bold', flex: 1, textAlign: 'center' },
   listContainer: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 },
   
+  // [CẬP NHẬT] Card styling giống OrderConfirmationScreen - GỌN HƠN
   card: {
     backgroundColor: 'white',
-    borderRadius: 12,
-    marginBottom: 16,
+    borderRadius: 16,
+    marginBottom: 8,
+    overflow: 'hidden',
     shadowColor: '#475569',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 15,
+    elevation: 5,
   },
+  disabledItem: {
+    backgroundColor: '#F9FAFB',
+    opacity: 0.8,
+  },
+
+  // [MỚI] Card header
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6'
+    borderBottomColor: '#F3F4F6',
   },
   tableName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: 'bold',
     color: '#111827',
     marginLeft: 8,
+    flex: 1,
   },
-  cardBody: {
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-  },
-  customizationText: {
-    fontSize: 14,
-    color: '#4B5563',
-    lineHeight: 20,
-  },
-  noteText: {
-    fontSize: 14,
-    color: '#D97706',
-    fontStyle: 'italic',
-    marginTop: 6,
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    alignSelf: 'flex-start',
-  },
-  cardFooter: {
-      paddingHorizontal: 16,
-      paddingBottom: 8,
-      paddingTop: 4,
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-  },
+
+  // [MỚI] Status badge
   statusBadge: { 
     flexDirection: 'row', 
     alignItems: 'center', 
-    paddingHorizontal: 10, 
-    paddingVertical: 5, 
-    borderRadius: 12, 
+    paddingHorizontal: 8, 
+    paddingVertical: 4, 
+    borderRadius: 10, 
     alignSelf: 'flex-start' 
   },
   statusText: { 
-      marginLeft: 6, 
-      fontWeight: '600', 
-      fontSize: 12 
+    marginLeft: 4, 
+    fontWeight: '600', 
+    fontSize: 11 
+  },
+
+  // [MỚI] Card body
+  cardBody: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  cardDivider: {
+    height: 1,
+    backgroundColor: '#F3F4F6',
+  },
+  customizationText: {
+    fontSize: 12,
+    color: '#4B5563',
+    lineHeight: 16,
+    marginBottom: 2,
+  },
+  noteText: {
+    fontSize: 12,
+    color: '#D97706',
+    fontStyle: 'italic',
+    marginTop: 4,
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+  },
+
+  // [MỚI] Card footer
+  cardFooter: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   footerActionsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-  },
-  footerActionButton: {
-    padding: 6,
-    marginLeft: 12,
   },
   
   processButton: {
@@ -521,37 +540,6 @@ const styles = StyleSheet.create({
   completedText: {
     color: '#10B981',
     fontSize: 13,
-    fontWeight: '600',
-  },
-  returnedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FEF2F2',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    gap: 4,
-    borderWidth: 1,
-    borderColor: '#FCA5A5',
-  },
-  returnedText: {
-    color: '#DC2626',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  outOfStockBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FEF2F2',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    gap: 4,
-    marginRight: 8,
-  },
-  outOfStockText: {
-    color: '#DC2626',
-    fontSize: 12,
     fontWeight: '600',
   },
   

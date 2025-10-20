@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { supabase } from '../../services/supabase';
-import { Ionicons, FontAwesome5 } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { KitchenStackParamList } from '../../navigation/AppNavigator';
 import ConfirmModal from '../../components/ConfirmModal';
@@ -53,8 +53,30 @@ const KitchenDetailItemCard: React.FC<{
   const toppingsText = (customizations.toppings?.map((t: any) => t.name) || []).join(', ') || 'Không có';
   const noteText = customizations.note;
 
+  // [MỚI] Kiểm tra món có còn hàng không
+  const isOutOfStock = item.is_available === false;
+  // [MỚI] Kiểm tra món đang được làm
+  const isInProgress = status === STATUS.IN_PROGRESS;
+  // [MỚI] Kiểm tra món đã hoàn thành
+  const isCompleted = status === STATUS.COMPLETED || status === STATUS.SERVED;
+
+  const getStatusInfo = () => {
+    if (isOutOfStock) {
+      return { text: 'Hết món', color: '#DC2626', icon: 'alert-circle' };
+    }
+    if (isInProgress) {
+      return { text: 'Đang làm', color: '#F97316', icon: 'flame' };
+    }
+    if (isCompleted) {
+      return { text: 'Hoàn thành', color: '#10B981', icon: 'checkmark-circle' };
+    }
+    return { text: 'Chờ bếp', color: '#F97316', icon: 'time-outline' };
+  };
+
+  const statusInfo = getStatusInfo();
+
   const renderFooterContent = () => {
-    if (status === STATUS.COMPLETED || status === STATUS.SERVED) {
+    if (isCompleted) {
       return (
         <View style={styles.completedBadge}>
           <Ionicons name="checkmark-circle" size={18} color="#10B981" />
@@ -63,24 +85,15 @@ const KitchenDetailItemCard: React.FC<{
       );
     }
     
-    // [MỚI] Hiển thị badge cảnh báo nếu món hết
-    const isOutOfStock = item.is_available === false;
-    
     return (
       <View style={styles.footerActionsContainer}>
-        {isOutOfStock && status === STATUS.IN_PROGRESS && (
-          <View style={styles.outOfStockBadge}>
-            <Ionicons name="alert-circle" size={16} color="#DC2626" />
-            <Text style={styles.outOfStockText}>Hết món</Text>
-          </View>
-        )}
-        
         {status === STATUS.PENDING && (
           <TouchableOpacity
             style={styles.processButton}
             onPress={() => onProcess(item.id)}
+            activeOpacity={0.7}
           >
-            <FontAwesome5 name="utensils" size={16} color="white" />
+            <Ionicons name="flame" size={16} color="white" />
             <Text style={styles.buttonText}>Chế biến</Text>
           </TouchableOpacity>
         )}
@@ -89,8 +102,9 @@ const KitchenDetailItemCard: React.FC<{
           <TouchableOpacity
             style={styles.completeButton}
             onPress={() => onComplete(item.id)}
+            activeOpacity={0.7}
           >
-            <Ionicons name="checkmark-circle-outline" size={18} color="white" />
+            <Ionicons name="checkmark-done-outline" size={18} color="white" />
             <Text style={styles.buttonText}>Xong</Text>
           </TouchableOpacity>
         )}
@@ -99,16 +113,32 @@ const KitchenDetailItemCard: React.FC<{
   };
 
   return (
-    <View style={styles.cardShadow}>
-      <View>
-        <Text style={styles.itemName}>{item.name}</Text>
+    <View
+      style={[styles.cardShadow, (isCompleted || isOutOfStock) && styles.disabledItem]}
+      className="bg-white rounded-2xl mb-3"
+    >
+      <View style={styles.cardHeader}>
+        <View style={styles.cardHeaderLeft}>
+          <Text style={styles.itemName} numberOfLines={2}>{item.name}</Text>
+        </View>
+        <View style={[styles.statusBadge, { backgroundColor: `${statusInfo.color}20` }]}>
+          <Ionicons name={statusInfo.icon as any} size={14} color={statusInfo.color} />
+          <Text style={[styles.statusText, { color: statusInfo.color }]}>{statusInfo.text}</Text>
+        </View>
+      </View>
+
+      <View style={styles.cardDivider} />
+
+      <View style={styles.cardBody}>
         <Text style={styles.itemCustomization}>{`Size: ${sizeText}, Đường: ${sugarText}`}</Text>
         <Text style={styles.itemCustomization}>{`Topping: ${toppingsText}`}</Text>
         {noteText && <Text style={styles.itemNote}>Ghi chú: {noteText}</Text>}
       </View>
-      <View style={styles.divider} />
-      <View style={styles.itemFooter}>
-        <Text style={styles.itemQuantityText}>Số lượng: {item.quantity}</Text>
+
+      <View style={styles.cardDivider} />
+
+      <View style={styles.cardFooter}>
+        <Text style={styles.itemQuantityText}>SL: {item.quantity}</Text>
         {renderFooterContent()}
       </View>
     </View>
@@ -411,8 +441,8 @@ const KitchenDetailScreen = () => {
               disabled={!hasPendingItems}
           />
           <FooterActionButton
-              icon="notifications-outline"
-              label="Xong"
+              icon="checkmark-done-outline"
+              label="Hoàn thành"
               onPress={() => setReturnModalVisible(true)}
               color="#10B981"
               backgroundColor="#ECFDF5"
@@ -447,19 +477,14 @@ const styles = StyleSheet.create({
     borderBottomColor: '#E5E7EB',
   },
   backButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center', marginLeft: -10 },
-  headerNotificationButton: { // [MỚI]
+  headerNotificationButton: {
     position: 'relative',
     width: 36,
     height: 36,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  headerNotificationButtonActive: { // [XÓA - không dùng nữa]
-    backgroundColor: '#FEF2F2',
-    borderWidth: 1,
-    borderColor: '#FCA5A5',
-  },
-  headerBadgeContainer: { // [MỚI]
+  headerBadgeContainer: {
     position: 'absolute',
     top: -5,
     right: -5,
@@ -472,7 +497,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#FFFFFF',
   },
-  headerBadgeText: { // [MỚI]
+  headerBadgeText: {
     color: 'white',
     fontSize: 11,
     fontWeight: 'bold',
@@ -480,54 +505,96 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 20, fontWeight: 'bold' },
   listContainer: { padding: 16 },
   
+  // [CẬP NHẬT] Card styling giống OrderConfirmationScreen - GỌN HƠN
   cardShadow: {
     backgroundColor: 'white',
-    borderRadius: 12,
-    marginBottom: 12,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 8,
+    borderRadius: 16,
+    marginBottom: 8,
+    overflow: 'hidden',
     shadowColor: '#475569',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 15,
+    elevation: 5,
   },
-  itemName: {
-    fontSize: 17,
-    fontWeight: 'bold',
-    color: '#111827',
-    marginBottom: 4,
+  disabledItem: {
+    backgroundColor: '#F9FAFB',
+    opacity: 0.8,
   },
-  itemCustomization: {
-    fontSize: 13,
-    color: '#6B7280',
-    lineHeight: 18,
-  },
-  itemNote: {
-    fontSize: 13,
-    color: '#D97706',
-    fontStyle: 'italic',
-    marginTop: 6,
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    alignSelf: 'flex-start',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#F3F4F6',
-    marginVertical: 8,
-  },
-  itemFooter: {
+
+  // [MỚI] Card header với item name và status badge
+  cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    minHeight: 32,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  cardHeaderLeft: {
+    flex: 1,
+    marginRight: 8,
+  },
+  itemName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#111827',
+    lineHeight: 20,
+  },
+
+  // [MỚI] Status badge
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    alignSelf: 'flex-start',
+  },
+  statusText: {
+    marginLeft: 4,
+    fontWeight: '600',
+    fontSize: 11,
+  },
+
+  // [MỚI] Card body
+  cardBody: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  cardDivider: {
+    height: 1,
+    backgroundColor: '#F3F4F6',
+  },
+  itemCustomization: {
+    fontSize: 12,
+    color: '#6B7280',
+    lineHeight: 16,
+    marginBottom: 2,
+  },
+  itemNote: {
+    fontSize: 12,
+    color: '#D97706',
+    fontStyle: 'italic',
+    marginTop: 4,
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+  },
+
+  // [MỚI] Card footer
+  cardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
   },
   itemQuantityText: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '500',
     color: '#4B5563',
   },
@@ -535,10 +602,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-  },
-  footerActionButton: {
-    padding: 6,
-    marginLeft: 12,
   },
   
   processButton: {
@@ -576,37 +639,6 @@ const styles = StyleSheet.create({
   completedText: {
     color: '#10B981',
     fontSize: 13,
-    fontWeight: '600',
-  },
-  returnedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FEF2F2',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    gap: 4,
-    borderWidth: 1,
-    borderColor: '#FCA5A5',
-  },
-  returnedText: {
-    color: '#DC2626',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  outOfStockBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FEF2F2',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    gap: 4,
-    marginRight: 8,
-  },
-  outOfStockText: {
-    color: '#DC2626',
-    fontSize: 12,
     fontWeight: '600',
   },
   

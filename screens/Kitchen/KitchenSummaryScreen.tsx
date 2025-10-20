@@ -348,13 +348,24 @@ const KitchenSummaryScreen = () => {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor="#1E3A8A" />
-      {renderSortModal()}
-      <View style={styles.header}>
-        <Ionicons name="analytics" size={24} color="white" />
-        <Text style={styles.headerTitle}>Tổng hợp chế biến</Text>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+      <View style={styles.headerWrapper}>
+        <View style={styles.headerContainer}>
+          <View>
+            <Text style={styles.headerTitle}>Tổng hợp</Text>
+            <Text style={styles.headerSubtitle}>Chế biến đơn hàng</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.refreshButton}
+            onPress={() => fetchSummaryData()}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="refresh" size={24} color="#111827" />
+          </TouchableOpacity>
+        </View>
       </View>
 
+      {renderSortModal()}
       <View style={styles.searchFilterContainer}>
         <View style={styles.searchBar}>
           <Ionicons name="search-outline" size={20} color="#9CA3AF" style={{marginLeft: 12}} />
@@ -397,11 +408,43 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#F3F4F6' },
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   emptyText: { marginTop: 16, fontSize: 18, color: '#6B7280', fontWeight: '500', textAlign: 'center' },
-  header: { 
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#1E3A8A', 
-    paddingHorizontal: 16, paddingVertical: 12 , paddingTop: 20
+  
+  // [CẬP NHẬT] Header giống OrderScreen
+  headerWrapper: {
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
-  headerTitle: { color: 'white', fontSize: 20, fontWeight: 'bold', marginLeft: 12 },
+  headerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  headerTitle: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  refreshButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
   
   listContainer: { 
     paddingHorizontal: 16, 

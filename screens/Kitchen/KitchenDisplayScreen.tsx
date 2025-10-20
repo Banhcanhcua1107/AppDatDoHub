@@ -144,8 +144,8 @@ const OrderTicketCard: React.FC<{
           }}
           activeOpacity={0.7}
         >
-          <Ionicons name="notifications-outline" size={16} color="white" />
-          <Text style={styles.buttonText}>Trả món</Text>
+          <Ionicons name="checkmark-done-outline" size={16} color="white" />
+          <Text style={styles.buttonText}>Hoàn thành</Text>
         </TouchableOpacity>
       </View>
     </TouchableOpacity>
@@ -371,10 +371,22 @@ const KitchenDisplayScreen = () => {
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor="#1E3A8A" />
-      <View style={styles.header}>
-        <Ionicons name="close" size={28} color="white" />
-        <Text style={styles.headerTitle}>Bep & Bar</Text>
-        <View style={{ width: 28 }} />
+      <View style={styles.headerWrapper}>
+        <View style={styles.headerContainer}>
+          <View>
+            <Text style={styles.headerTitle}>Bếp & Bar</Text>
+            <Text style={styles.headerSubtitle}>Chế biến đơn hàng</Text>
+          </View>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              onPress={fetchPendingCancellations}
+              style={styles.refreshButton}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="refresh" size={24} color="#111827" />
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
       <FlatList
         data={orders}
@@ -417,8 +429,49 @@ const styles = StyleSheet.create({
   centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   loadingText: { marginTop: 10, fontSize: 16, color: '#4B5563' },
   emptyText: { marginTop: 16, fontSize: 18, color: '#6B7280', fontWeight: '500', textAlign: 'center' },
-  header: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1E3A8A', paddingHorizontal: 16, paddingVertical: 12, paddingTop: 20 },
-  headerTitle: { flex: 1,color: 'white', fontSize: 20, fontWeight: 'bold', marginLeft: 12 },
+  
+  // [CẬP NHẬT] Header giống OrderScreen
+  headerWrapper: {
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  headerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  headerTitle: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  refreshButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  
   listContainer: { paddingHorizontal: 16, paddingVertical: 12 },
   
   // Card styles
@@ -476,19 +529,19 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: 'white',
   },
-  topRightContainer: { // [MỚI]
+  topRightContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  notificationIconButton: { // [MỚI]
+  notificationIconButton: {
     position: 'relative',
     width: 32,
     height: 32,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  notificationBadge: { // [MỚI]
+  notificationBadge: {
     position: 'absolute',
     top: -8,
     right: -8,
@@ -499,7 +552,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  notificationBadgeText: { // [MỚI]
+  notificationBadgeText: {
     color: 'white',
     fontSize: 11,
     fontWeight: 'bold',
@@ -553,7 +606,7 @@ const styles = StyleSheet.create({
     gap: 6
   },
   processButton: { backgroundColor: '#1E40AF' },
-  serveButton: { backgroundColor: '#F59E0B' },
+  serveButton: { backgroundColor: '#10B981' },
   buttonDisabled: { backgroundColor: '#D1D5DB' },
   buttonText: { color: 'white', fontSize: 13, fontWeight: '600' },
 });
