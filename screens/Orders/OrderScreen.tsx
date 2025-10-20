@@ -157,19 +157,25 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
 
     fetchNotifications();
 
-    // [MỚI] Subscribe realtime notification
+    // [MỚI] Subscribe realtime notification - Filter by order_id
     const channel = supabase
       .channel(`return_notifications_${item.orderId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'return_notifications' },
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'return_notifications',
+          filter: `order_id=eq.${item.orderId}`
+        },
         (payload: any) => {
-          if (payload.new?.order_id === item.orderId || payload.old?.order_id === item.orderId) {
-            fetchNotifications();
-          }
+          console.log(`[OrderScreen] Notification received for order ${item.orderId}:`, payload);
+          fetchNotifications();
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log(`[OrderScreen] Subscription status for ${item.orderId}:`, status);
+      });
 
     return () => {
       supabase.removeChannel(channel);
@@ -257,7 +263,7 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
           className="py-3 items-center justify-center flex-1 relative"
           style={{ position: 'relative' }}
         >
-          <Ionicons name="notifications-outline" size={24} color="gray" />
+          <Ionicons name="notifications-outline" size={24} color={notificationCount > 0 ? '#EF4444' : 'gray'} />
           {notificationCount > 0 && (
             <View style={{
               position: 'absolute',

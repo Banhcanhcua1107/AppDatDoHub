@@ -601,6 +601,11 @@ const KitchenDetailScreen = () => {
 
       // Hiển thị toast thành công
       console.log('[KitchenDetail] Đã gửi thông báo phục vụ cho tất cả món');
+      
+      // [THÊM MỚI] Quay về KitchenDisplayScreen
+      if (navigation.canGoBack()) {
+        navigation.goBack();
+      }
     } catch (err: any) {
       console.error('Lỗi hoàn thành tất cả:', err.message);
       // [MỚI] Revert UI khi lỗi
