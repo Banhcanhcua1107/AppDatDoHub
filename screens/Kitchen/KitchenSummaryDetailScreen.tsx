@@ -288,6 +288,10 @@ const KitchenSummaryDetailScreen = () => {
 
   const handleCompleteAllInProgress = async () => {
     setIsCompleting(true);
+    
+    // [OPTIMIZED] Optimistic update: update UI trước
+    setDetailItems(current => current.map(item => ({ ...item, status: STATUS.COMPLETED })));
+    
     try {
       // [*** SỬA LỖI ***]
       // Chỉ query những món có tên này VÀ có status là waiting, in_progress, hoặc completed.
@@ -301,21 +305,12 @@ const KitchenSummaryDetailScreen = () => {
       if (fetchError) throw fetchError;
 
       if (!allItemsWithName || allItemsWithName.length === 0) {
-        Alert.alert('Thông báo', 'Không có món nào để hoàn thành.');
         setIsCompleting(false);
         return;
       }
 
-      const mappedAllItems = allItemsWithName.map((item: any) => ({
-        id: item.id,
-        quantity: item.quantity,
-        status: item.status,
-        customizations: item.customizations,
-        table_name: item.orders?.order_tables?.[0]?.tables?.name || 'Mang về',
-      }));
-
       // Cập nhật tất cả các món tìm được (chỉ những món đang hoạt động) sang 'completed'
-      const allItemIds = mappedAllItems.map(item => item.id);
+      const allItemIds = allItemsWithName.map(item => item.id);
       const { error: updateError } = await supabase
         .from('order_items')
         .update({ status: STATUS.COMPLETED }) 
@@ -323,21 +318,24 @@ const KitchenSummaryDetailScreen = () => {
 
       if (updateError) throw updateError;
       
-      // Tự động quay về màn hình trước
+      // [OPTIMIZED] Tự động quay về màn hình trước sau khi success
       if (navigation.canGoBack()) {
         navigation.goBack();
       }
 
     } catch (err: any) {
       Alert.alert('Lỗi', 'Không thể hoàn thành món: ' + err.message);
+      // [OPTIMIZED] Revert UI khi lỗi
+      setDetailItems(current => current.map(item => ({ ...item, status: STATUS.IN_PROGRESS })));
     } finally {
       setIsCompleting(false);
     }
   };
 
   const hasPendingItems = useMemo(() => detailItems.some(item => item.status === STATUS.PENDING), [detailItems]);
-  const hasItemsToReturn = useMemo(() => 
-    detailItems.some(item => item.status === STATUS.IN_PROGRESS || item.status === STATUS.COMPLETED), 
+  // [NEW] Check if all items are completed
+  const allItemsCompleted = useMemo(() => 
+    detailItems.length > 0 && detailItems.every(item => item.status === STATUS.COMPLETED), 
     [detailItems]
   );
 
@@ -389,7 +387,7 @@ const KitchenSummaryDetailScreen = () => {
               onPress={handleCompleteAllInProgress}
               color="#10B981"
               backgroundColor="#ECFDF5"
-              disabled={!hasItemsToReturn}
+              disabled={!allItemsCompleted}
               loading={isCompleting}
           />
       </View>
@@ -496,7 +494,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     alignItems: 'center',
   },
   footerActionsContainer: {

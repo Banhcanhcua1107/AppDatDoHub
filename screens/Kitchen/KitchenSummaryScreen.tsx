@@ -355,13 +355,6 @@ const KitchenSummaryScreen = () => {
             <Text style={styles.headerTitle}>Tổng hợp</Text>
             <Text style={styles.headerSubtitle}>Chế biến đơn hàng</Text>
           </View>
-          <TouchableOpacity
-            style={styles.refreshButton}
-            onPress={() => fetchSummaryData()}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="refresh" size={24} color="#111827" />
-          </TouchableOpacity>
         </View>
       </View>
 
@@ -431,19 +424,6 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 14,
     color: '#6B7280',
-  },
-  refreshButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
   },
   
   listContainer: { 

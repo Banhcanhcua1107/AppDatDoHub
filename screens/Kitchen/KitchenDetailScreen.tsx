@@ -338,7 +338,7 @@ const KitchenDetailScreen = () => {
     
     try {
       await supabase.from('order_items').update({ status: STATUS.IN_PROGRESS }).in('id', itemIdsToProcess).throwOnError();
-      await fetchOrderDetails();
+      // [OPTIMIZED] Không gọi fetchOrderDetails() để giữ UI đã update
     } catch (err: any) {
       console.error('Lỗi chế biến tất cả món:', err.message);
       setItems(currentItems =>
@@ -396,6 +396,8 @@ const KitchenDetailScreen = () => {
   }
 
   const hasPendingItems = items.some(item => item.status === STATUS.PENDING);
+  // [NEW] Check if all items are completed
+  const allItemsCompleted = items.length > 0 && items.every(item => item.status === STATUS.COMPLETED || item.status === STATUS.SERVED);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -446,6 +448,7 @@ const KitchenDetailScreen = () => {
               onPress={() => setReturnModalVisible(true)}
               color="#10B981"
               backgroundColor="#ECFDF5"
+              disabled={!allItemsCompleted}
           />
       </View>
 

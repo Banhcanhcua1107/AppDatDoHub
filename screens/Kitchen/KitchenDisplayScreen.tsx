@@ -377,15 +377,6 @@ const KitchenDisplayScreen = () => {
             <Text style={styles.headerTitle}>Bếp & Bar</Text>
             <Text style={styles.headerSubtitle}>Chế biến đơn hàng</Text>
           </View>
-          <View style={styles.headerActions}>
-            <TouchableOpacity
-              onPress={fetchPendingCancellations}
-              style={styles.refreshButton}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="refresh" size={24} color="#111827" />
-            </TouchableOpacity>
-          </View>
         </View>
       </View>
       <FlatList
@@ -457,19 +448,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-  },
-  refreshButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
   },
   
   listContainer: { paddingHorizontal: 16, paddingVertical: 12 },
