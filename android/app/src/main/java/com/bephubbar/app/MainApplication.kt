@@ -1,4 +1,4 @@
-package com.anonymous.myexpoapp
+package com.bephubbar.app
 
 import android.app.Application
 import android.content.res.Configuration
