@@ -195,7 +195,13 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
           style={{ backgroundColor: '#3B82F6' }}
           className="flex-row justify-between items-center p-3 rounded-t-lg"
         >
-          <View />
+          {/* [CẬP NHẬT] Thêm thời gian lên header */}
+          <View className="flex-row items-center">
+            <Ionicons name="time-outline" size={16} color="white" />
+            <Text className="text-white font-bold text-sm ml-2">
+              {formatTimeElapsed(item.createdAt)}
+            </Text>
+          </View>
           <View className="flex-row items-center">
             <Ionicons name="copy-outline" size={16} color="white" />
             <Text className="text-white font-bold text-sm ml-1">{item.totalItemCount}</Text>
@@ -206,16 +212,11 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
             <Text className="text-gray-800 font-bold text-xl">{displayTableName}</Text>
           </View>
           <View className="w-1/2 pl-4 items-end">
+            {/* [CẬP NHẬT] Chỉ để lại số tiền, bỏ thời gian */}
             <Text className="text-gray-900 font-bold text-2xl">
               {item.totalPrice.toLocaleString('vi-VN')}
             </Text>
-            <View className="flex-row items-center justify-between w-full mt-1">
-              <View className="flex-row items-center">
-                <Ionicons name="time-outline" size={15} color="gray" />
-                <Text className="text-gray-600 text-sm ml-1">
-                  {formatTimeElapsed(item.createdAt)}
-                </Text>
-              </View>
+            <View className="flex-row items-center justify-end mt-1">
               {item.is_provisional && <Ionicons name="restaurant" size={22} color="#2E8540" />}
             </View>
           </View>
