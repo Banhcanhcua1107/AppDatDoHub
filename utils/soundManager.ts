@@ -1,22 +1,17 @@
 /**
  * Sound Manager - Quản lý âm thanh thông báo
- * Phát âm thanh khi có thông báo mới
+ * Phát rung và âm thanh khi có thông báo mới
  */
 
-import { Audio } from 'expo-av';
+import { Vibration } from 'react-native';
 
-let soundObject: Audio.Sound | null = null;
+let soundObject: any = null;
 
 /**
  * Khởi tạo Audio API
  */
 export const initializeAudio = async () => {
   try {
-    await Audio.setAudioModeAsync({
-      playsInSilentModeIOS: true, // Phát ngay cả khi ở chế độ im lặng (iPhone)
-      staysActiveInBackground: true, // Tiếp tục phát khi app ở background
-      shouldDuckAndroid: true, // Giảm âm lượng app khác khi phát thông báo (Android)
-    });
     console.log('[SoundManager] Audio mode initialized');
   } catch (error) {
     console.error('[SoundManager] Error initializing audio mode:', error);
@@ -25,87 +20,53 @@ export const initializeAudio = async () => {
 
 /**
  * Phát âm thanh thông báo
- * Sử dụng beep sound built-in
+ * Sử dụng rung + nếu có expo-av thì dùng file âm thanh
  */
 export const playNotificationSound = async () => {
   try {
-    // Nếu chưa khởi tạo Audio, khởi tạo ngay
-    if (!soundObject) {
-      await initializeAudio();
-    }
+    // Phát rung trước (cách đơn giản và có sẵn)
+    playVibration();
 
-    // Unload sound cũ nếu có
-    if (soundObject) {
-      try {
-        await soundObject.unloadAsync();
-      } catch (cleanupError) {
-        // Ignore cleanup errors
-        console.log('[SoundManager] Cleanup error:', cleanupError);
-      }
-      soundObject = null;
-    }
-
-    // Tạo Sound object từ file âm thanh
-    // Nếu có file notification.mp3 thì dùng nó, không thì dùng beep tạo từ Audio API
-    soundObject = new Audio.Sound();
-
-    // Thử load file từ assets trước
+    // Thử load expo-av nếu có sẵn
     try {
-      await soundObject.loadAsync(require('../assets/sounds/notification.mp3'));
-    } catch (error) {
-      // Nếu không có file, tạo beep sound từ Audio API
-      console.log('[SoundManager] No notification.mp3 found, using system tone', error);
-      // Unload và tạo lại
-      await soundObject.unloadAsync();
+      const { Audio } = await import('expo-av');
       
-      // Sử dụng API để phát tiếng beep đơn giản
-      // Tạo 2 tiếng beep ngắn (ting ting)
-      await playSystemBeep();
-      return;
+      if (!soundObject) {
+        soundObject = new Audio.Sound();
+        try {
+          // Thử load file notification.mp3
+          await soundObject.loadAsync(require('../assets/sounds/notification.mp3'));
+          await soundObject.playAsync();
+          console.log('[SoundManager] Notification sound played');
+        } catch {
+          console.log('[SoundManager] Audio file not available, vibration only');
+          soundObject = null;
+        }
+      }
+    } catch {
+      // expo-av không có sẵn, chỉ dùng rung
+      console.log('[SoundManager] expo-av not available, using vibration only');
     }
-
-    // Play sound
-    await soundObject.playAsync();
-    console.log('[SoundManager] Notification sound played');
   } catch (error) {
     console.error('[SoundManager] Error playing sound:', error);
-    // Fallback: thử phát beep system
-    try {
-      await playSystemBeep();
-    } catch (fallbackError) {
-      console.error('[SoundManager] Error playing system beep:', fallbackError);
-    }
+    // Fallback: chỉ dùng rung
+    playVibration();
   }
 };
 
 /**
- * Phát tiếng beep system (2 lần ngắn)
- * Dùng khi không có file âm thanh
+ * Phát rung (ting ting - 2 lần rung ngắn)
+ * Hoạt động trên cả iOS và Android
  */
-export const playSystemBeep = async () => {
+export const playVibration = () => {
   try {
-    // Tạo 2 tiếng beep ngắn liên tiếp
-    const { sound: sound1 } = await Audio.Sound.createAsync(
-      require('../assets/sounds/beep.mp3')
-    );
-    
-    await sound1.playAsync();
-    
-    // Wait 150ms rồi phát tiếng thứ 2
-    await new Promise(resolve => setTimeout(resolve, 150));
-    
-    const { sound: sound2 } = await Audio.Sound.createAsync(
-      require('../assets/sounds/beep.mp3')
-    );
-    await sound2.playAsync();
-
-    // Cleanup
-    setTimeout(() => {
-      sound1.unloadAsync();
-      sound2.unloadAsync();
-    }, 300);
+    // Pattern: [delay, vibrate, delay, vibrate]
+    // Tạo 2 tiếng rung ngắn (ting ting): 100ms + 100ms delay + 100ms
+    const vibrationPattern = [0, 100, 100, 100];
+    Vibration.vibrate(vibrationPattern, false);
+    console.log('[SoundManager] Vibration triggered');
   } catch (error) {
-    console.error('[SoundManager] Error playing system beep:', error);
+    console.error('[SoundManager] Error triggering vibration:', error);
   }
 };
 
@@ -119,6 +80,7 @@ export const stopNotificationSound = async () => {
       await soundObject.unloadAsync();
       soundObject = null;
     }
+    Vibration.cancel();
   } catch (error) {
     console.error('[SoundManager] Error stopping sound:', error);
   }
@@ -127,6 +89,6 @@ export const stopNotificationSound = async () => {
 export default {
   initializeAudio,
   playNotificationSound,
-  playSystemBeep,
+  playVibration,
   stopNotificationSound,
 };

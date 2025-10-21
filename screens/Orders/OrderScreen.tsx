@@ -22,7 +22,8 @@ import { supabase } from '../../services/supabase';
 import { AppTabParamList, AppStackParamList, ROUTES } from '../../constants/routes';
 import Toast from 'react-native-toast-message';
 import { useNetwork } from '../../context/NetworkContext';
-import ConfirmModal from '../../components/ConfirmModal'; 
+import ConfirmModal from '../../components/ConfirmModal';
+import { playNotificationSound } from '../../utils/soundManager'; 
 // --- [SỬA LỖI] Định nghĩa kiểu dữ liệu rõ ràng ---
 type TableInfo = { id: string; name: string };
 type ActiveOrder = {
@@ -170,6 +171,10 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
         },
         (payload: any) => {
           console.log(`[OrderScreen] Notification received for order ${item.orderId}:`, payload);
+          // [CẬP NHẬT] Phát âm thanh khi có thông báo mới
+          if (payload.eventType === 'INSERT') {
+            playNotificationSound();
+          }
           fetchNotifications();
         }
       )
