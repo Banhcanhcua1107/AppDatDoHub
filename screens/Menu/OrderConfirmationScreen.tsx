@@ -111,12 +111,15 @@ const OrderListItem: React.FC<{
   const isOutOfStock = is_available === false;
   // [MỚI] Kiểm tra món đang được làm
   const isInProgress = status === 'in_progress';
+  // [MỚI] Kiểm tra món đã hoàn thành (phục vụ hoặc hoàn thành)
+  const isCompleted = status === 'served' || status === 'completed';
 
   const ExpandedView = () => (
     <View className="mt-4 pt-4 border-t border-gray-100">
       <View className="flex-row items-center justify-between">
         <View className="flex-row items-center">
           <Text className="text-gray-600 mr-4">Số lượng:</Text>
+          {/* [CẬP NHẬT] Chỉ có thể sửa số lượng nếu là món mới */}
           <TouchableOpacity
             onPress={() => onUpdateQuantity(item.quantity - 1)}
             disabled={!isNew || isOutOfStock}
@@ -133,7 +136,13 @@ const OrderListItem: React.FC<{
             <Icon name="add" size={18} color={(!isNew || isOutOfStock) ? '#ccc' : 'white'} />
           </TouchableOpacity>
         </View>
-        <TouchableOpacity onPress={onOpenMenu} disabled={isOutOfStock} className="p-2" style={{ opacity: isOutOfStock ? 0.5 : 1 }}>
+        {/* [CẬP NHẬT] Chỉ mở menu nếu là món mới hoặc mới gửi bếp (chưa hoàn thành) */}
+        <TouchableOpacity 
+          onPress={onOpenMenu} 
+          disabled={isCompleted || isPaid || isReturnedItem || isOutOfStock} 
+          className="p-2" 
+          style={{ opacity: (isCompleted || isPaid || isReturnedItem || isOutOfStock) ? 0.5 : 1 }}
+        >
           <Icon name="ellipsis-horizontal" size={24} color="gray" />
         </TouchableOpacity>
       </View>
@@ -142,24 +151,22 @@ const OrderListItem: React.FC<{
 
   return (
     <View
-      style={[styles.shadow, (isPaid || isReturnedItem || isOutOfStock) && styles.paidItem]}
+      style={[styles.shadow, (isPaid || isReturnedItem || isOutOfStock || isCompleted) && styles.paidItem]}
       className="bg-white rounded-2xl p-4 mb-4"
     >
-      <TouchableOpacity onPress={onPress} disabled={isPaid || isReturnedItem || isOutOfStock}>
+      <TouchableOpacity onPress={onPress} disabled={isPaid || isReturnedItem || isOutOfStock || isCompleted}>
         <View className="flex-row justify-between items-start">
           <View className="flex-1 pr-4">
             <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
-              {item.status === 'served' && !isReturnedItem && (
-              <Icon name="checkmark-circle" size={20} color="#3B82F6" style={{ marginRight: 6 }} />
+              {/* [CẬP NHẬT] Chỉ show icon hoàn thành nếu không phải hết hàng */}
+              {(item.status === 'served' || item.status === 'completed') && !isReturnedItem && !isOutOfStock && (
+              <Icon name="checkmark-circle" size={20} color="#10B981" style={{ marginRight: 6 }} />
               )}
               {item.status === 'in_progress' && !isOutOfStock && (
                 <Icon name="flame" size={20} color="#F97316" style={{ marginRight: 6 }} />
               )}
-              {item.status === 'completed' && (
-                <Icon name="restaurant-outline" size={20} color="#10B981" style={{ marginRight: 6 }} />
-              )}
               <Text
-                className={`text-lg font-bold ${(isPaid || isReturnedItem || isOutOfStock) ? 'text-gray-500' : 'text-gray-800'} ${(isReturnedItem || isOutOfStock) ? 'line-through' : ''}`}
+                className={`text-lg font-bold ${(isPaid || isReturnedItem || isOutOfStock || isCompleted) ? 'text-gray-500' : 'text-gray-800'} ${(isReturnedItem || isOutOfStock) ? 'line-through' : ''}`}
               >
                 {item.name}
               </Text>
@@ -178,6 +185,17 @@ const OrderListItem: React.FC<{
                 <Text className="text-green-800 text-xs font-bold">Mới</Text>
               </View>
             )}
+            {/* [CẬP NHẬT] Chỉ show "Hoàn thành" nếu không phải hết hàng - Màu xanh lá */}
+            {isCompleted && !isOutOfStock && (
+              <View className="bg-green-100 px-2 py-1 rounded-full mb-1">
+                <Text className="text-green-800 text-xs font-bold">Hoàn thành</Text>
+              </View>
+            )}
+            {isInProgress && !isCompleted && !isOutOfStock && (
+              <View className="bg-orange-100 px-2 py-1 rounded-full mb-1">
+                <Text className="text-orange-800 text-xs font-bold">Đang làm</Text>
+              </View>
+            )}
             {isPaid && (
               <View className="bg-gray-200 px-2 py-1 rounded-full mb-1">
                 <Text className="text-gray-600 text-xs font-bold">Đã trả bill</Text>
@@ -191,11 +209,6 @@ const OrderListItem: React.FC<{
             {isOutOfStock && !isPaid && !isReturnedItem && (
               <View className="bg-red-100 px-2 py-1 rounded-full mb-1">
                 <Text className="text-red-800 text-xs font-bold">Hết món</Text>
-              </View>
-            )}
-            {isInProgress && !isOutOfStock && (
-              <View className="bg-orange-100 px-2 py-1 rounded-full mb-1">
-                <Text className="text-orange-800 text-xs font-bold">Đang làm</Text>
               </View>
             )}
             <Text
@@ -645,6 +658,16 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
 
 
   const handleRemoveItem = (itemToRemove: DisplayItem) => {
+  // [CẬP NHẬT] Chỉ cho phép xóa món mới
+  if (!itemToRemove.isNew) {
+    Toast.show({
+      type: 'error',
+      text1: 'Không thể hủy',
+      text2: 'Chỉ có thể hủy những món mới chưa gửi bếp.'
+    });
+    return;
+  }
+
   const action = async () => {
     if (isOnline) {
       // --- LOGIC KHI ONLINE ---
@@ -682,13 +705,7 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
     }
   };
 
-  // Logic hiển thị Alert xác nhận không thay đổi
-  if (itemToRemove.isNew) {
-    action(); // Xóa món trong giỏ hàng thì không cần hỏi
-  } else {
-    // Hiển thị ConfirmModal thay vì Alert
-    setCancelItemModal({ visible: true, item: itemToRemove });
-  }
+  action();
 };
 
   const handleOpenItemMenu = (item: DisplayItem) => {
@@ -747,37 +764,51 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
 };
   const itemActions: ActionSheetItem[] = [];
   if (editingItem && !editingItem.isPaid && !editingItem.isReturnedItem) {
-    itemActions.push({
-      id: 'note',
-      text: 'Thêm/Sửa Ghi chú',
-      icon: 'create-outline',
-      onPress: () => {
-        // 1. Đóng ActionSheet
-        setActionSheetVisible(false);
-        // 2. Đợi một chút cho hiệu ứng đóng hoàn tất rồi mới mở modal ghi chú
-        setTimeout(() => {
-          setNoteModalVisible(true);
-        }, 250); // 250ms là khoảng thời gian hợp lý
-      },
-    });
-    itemActions.push({
-      id: 'remove',
-      text: 'Hủy món',
-      icon: 'trash-outline',
-      color: '#EF4444',
-      onPress: () => {
-        const itemToRemove = editingItem;
-        // 1. Đóng ActionSheet và xóa item đang sửa khỏi state
-        setActionSheetVisible(false);
-        setEditingItem(null);
-        // 2. Đợi một chút rồi mới thực hiện hành động hủy món để UI mượt mà
-        setTimeout(() => {
-          if (itemToRemove) {
-            handleRemoveItem(itemToRemove);
-          }
-        }, 250);
-      },
-    });
+    // [CẬP NHẬT] Chỉ có thể sửa ghi chú nếu là món mới
+    const canEditNote = editingItem.isNew;
+    // [CẬP NHẬT] Chỉ có thể hủy nếu là món mới
+    const canRemoveItem = editingItem.isNew;
+    // [CẬP NHẬT] Kiểm tra nếu món đã hoàn thành (served/completed)
+    const isItemCompleted = editingItem.status === 'served' || editingItem.status === 'completed';
+    // [CẬP NHẬT] Kiểm tra nếu món hết hàng
+    const itemIsOutOfStock = editingItem.is_available === false;
+    
+    if (canEditNote && !isItemCompleted && !itemIsOutOfStock) {
+      itemActions.push({
+        id: 'note',
+        text: 'Thêm/Sửa Ghi chú',
+        icon: 'create-outline',
+        onPress: () => {
+          // 1. Đóng ActionSheet
+          setActionSheetVisible(false);
+          // 2. Đợi một chút cho hiệu ứng đóng hoàn tất rồi mới mở modal ghi chú
+          setTimeout(() => {
+            setNoteModalVisible(true);
+          }, 250); // 250ms là khoảng thời gian hợp lý
+        },
+      });
+    }
+    
+    if (canRemoveItem && !isItemCompleted && !itemIsOutOfStock) {
+      itemActions.push({
+        id: 'remove',
+        text: 'Hủy món',
+        icon: 'trash-outline',
+        color: '#EF4444',
+        onPress: () => {
+          const itemToRemove = editingItem;
+          // 1. Đóng ActionSheet và xóa item đang sửa khỏi state
+          setActionSheetVisible(false);
+          setEditingItem(null);
+          // 2. Đợi một chút rồi mới thực hiện hành động hủy món để UI mượt mà
+          setTimeout(() => {
+            if (itemToRemove) {
+              handleRemoveItem(itemToRemove);
+            }
+          }, 250);
+        },
+      });
+    }
   }
 
   const allItems = displayedSections.flatMap((s) => s.data);
@@ -1219,7 +1250,7 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
 
   // [SỬA LỖI] Truyền đủ thông tin cần thiết cho logic 5 phút
   const navigateToReturn = () => {
-    const returnableItems = billableItems.map((item) => ({
+    const itemsToReturn = returnableItems.map((item) => ({
       id: item.id,
       name: item.name,
       quantity: item.quantity,
@@ -1229,7 +1260,7 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
       created_at: item.created_at, // [THÊM] Truyền thời gian tạo để tính toán 5 phút
     }));
 
-    if (returnableItems.length === 0) {
+    if (itemsToReturn.length === 0) {
       Alert.alert('Thông báo', 'Không có món nào đã gửi bếp để có thể trả.');
       return;
     }
@@ -1237,7 +1268,7 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
       navigation.navigate(ROUTES.RETURN_SELECTION, {
         orderId: activeOrderId,
         tableName: currentTableNameForDisplay, // [THÊM] Truyền tên bàn để hiển thị trong modal
-        items: returnableItems,
+        items: itemsToReturn,
       });
     }
   };
@@ -1304,6 +1335,20 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
   );
 
   const hasBillableItems = billableItems.length > 0;
+  
+  // [CẬP NHẬT] Kiểm tra có món nào có thể trả được
+  // Điều kiện: Phải là món đã gửi bếp (không phải mới), chưa thanh toán, chưa trả, còn hàng, CHƯA hoàn thành
+  const returnableItems = allItems.filter((item) =>
+    !item.isNew && // Không phải mới
+    !item.isPaid && // Chưa thanh toán
+    !item.isReturnedItem && // Chưa trả
+    item.is_available !== false && // Còn hàng
+    item.status !== 'new' && // Đảm bảo không phải trạng thái 'new'
+    item.status !== 'served' && // Không phải đã phục vụ
+    item.status !== 'completed' // Không phải đã hoàn thành
+  );
+  const canReturnItems = returnableItems.length > 0;
+  
   const isSessionClosable = paidItems.length > 0 && billableItems.length === 0 && !hasNewItems;
 
 
@@ -1384,7 +1429,7 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
             icon="arrow-undo-outline"
             text="Trả Món"
             color="#F97316"
-            disabled={!hasBillableItems || !isOnline}
+            disabled={!canReturnItems || !isOnline}
             onPress={handleGoToReturnScreen}
           />
           <ActionButton

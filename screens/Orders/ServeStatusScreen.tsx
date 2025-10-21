@@ -49,7 +49,7 @@ const ServeItemRow: React.FC<{
       case 'completed':
         return { text: 'Sẵn sàng', color: '#10B981', icon: 'restaurant-outline' };
       case 'served':
-        return { text: 'Đã phục vụ', color: '#3B82F6', icon: 'checkmark-done-outline' };
+        return { text: 'Đã phục vụ', color: '#10B981', icon: 'checkmark-circle' };
       default:
         return { text: 'Không rõ', color: 'gray', icon: 'help-circle-outline' };
     }
