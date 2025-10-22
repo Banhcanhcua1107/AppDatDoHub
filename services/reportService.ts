@@ -3,7 +3,7 @@
 import { supabase } from './supabase';
 
 // ============================================================================
-// REPORT INTERFACES
+// 1. REPORT INTERFACES (Định nghĩa tất cả các kiểu dữ liệu trước)
 // ============================================================================
 
 export interface SalesReport {
@@ -75,9 +75,9 @@ export interface Transaction {
   time: string;
   amount: number;
   items: number;
-  staff?: string;
   table_name?: string;
-  status: 'completed' | 'cancelled' | 'pending';
+  status: 'completed' | 'cancelled' | 'pending' | 'paid';
+  payment_method?: 'cash' | 'momo' | 'transfer';
 }
 
 export interface InventoryProduct {
@@ -88,7 +88,7 @@ export interface InventoryProduct {
 
 
 // ============================================================================
-// HELPER FUNCTIONS
+// 2. HELPER FUNCTIONS (Định nghĩa các hàm phụ trợ)
 // ============================================================================
 
 const formatDateForSQL = (date: Date): string => {
@@ -106,64 +106,46 @@ const formatTime = (dateTimeStr: string): string => {
 };
 
 // ============================================================================
-// GET TRANSACTIONS (Real data from database) - FIXED
+// 3. SERVICE FUNCTIONS (Các hàm gọi API)
 // ============================================================================
 
+/**
+ * Lấy danh sách giao dịch chi tiết bằng RPC function trên Supabase.
+ */
 export const getTransactions = async (
-  startDate: Date = new Date(),
-  endDate: Date = new Date(),
-  limit: number = 20
+  startDate: Date,
+  endDate: Date
 ): Promise<Transaction[]> => {
   try {
-    const startDateStr = `${formatDateForSQL(startDate)} 00:00:00`;
-    const endDateStr = `${formatDateForSQL(endDate)} 23:59:59`;
-
-    // Sử dụng select('*') để linh hoạt với các tên cột khác nhau
-    const { data: orders, error } = await supabase
-      .from('orders')
-      .select('*') 
-      .gte('created_at', startDateStr)
-      .lte('created_at', endDateStr)
-      .order('created_at', { ascending: false })
-      .limit(limit);
-
-    if (error) {
-      console.error('❌ Error fetching transactions:', error.message);
-      return [];
-    }
-    
-    // Xử lý dữ liệu trả về để khớp với interface `Transaction`
-    const transactions: Transaction[] = (orders || []).map((order: any) => {
-        // Tìm giá trị tổng tiền từ các tên cột có thể có
-        const amount = order.total_amount || order.amount || order.total || 0;
-        // Tìm số lượng sản phẩm
-        const itemCount = order.items_count || order.item_count || order.quantity || 0;
-        // Tìm tên nhân viên
-        const staffName = order.user_name || order.staff || order.cashier || 'Không rõ';
-
-        return {
-            id: order.id || '',
-            time: formatTime(order.created_at),
-            amount: Number(amount),
-            items: Number(itemCount),
-            staff: staffName,
-            table_name: order.table_name || 'Mang về',
-            status: order.status || 'completed',
-        };
+    const { data, error } = await supabase.rpc('get_transactions_with_details', {
+      p_start_date: startDate.toISOString(),
+      p_end_date: endDate.toISOString(),
     });
 
+    if (error) {
+      console.error('❌ Error fetching transactions via RPC:', error);
+      throw error;
+    }
+
+    const transactions: Transaction[] = (data || []).map((order: any) => ({
+      id: order.id,
+      time: formatTime(order.created_at),
+      amount: Number(order.amount || 0),
+      items: Number(order.total_items || 0),
+      table_name: order.table_name,
+      status: order.status,
+      payment_method: order.payment_method,
+    }));
+
     return transactions;
-  } catch (err) {
-    console.error('❌ Exception in getTransactions:', err);
+  } catch { // Sửa lỗi 'err' is defined but never used
     return [];
   }
 };
 
-
-// ============================================================================
-// 1. GET SALES REPORT
-// ============================================================================
-
+/**
+ * Lấy báo cáo doanh thu tổng quan.
+ */
 export const getSalesReport = async (
   startDate: Date = new Date(),
   endDate: Date = new Date()
@@ -189,10 +171,9 @@ export const getSalesReport = async (
   }
 };
 
-// ============================================================================
-// 2. GET INVENTORY REPORT
-// ============================================================================
-
+/**
+ * Lấy báo cáo tồn kho.
+ */
 export const getInventoryReport = async (): Promise<InventoryReport> => {
   try {
     const { data, error } = await supabase.rpc('get_inventory_report');
@@ -209,6 +190,9 @@ export const getInventoryReport = async (): Promise<InventoryReport> => {
   }
 };
 
+/**
+ * Lấy trạng thái của các món trong menu.
+ */
 export const getMenuItemsStatus = async (): Promise<InventoryProduct[]> => {
     try {
         const { data, error } = await supabase
@@ -232,10 +216,9 @@ export const getMenuItemsStatus = async (): Promise<InventoryProduct[]> => {
 }
 
 
-// ============================================================================
-// 3. GET PURCHASE REPORT
-// ============================================================================
-
+/**
+ * Lấy báo cáo nhập hàng.
+ */
 export const getPurchaseReport = async (
   startDate: Date = new Date(),
   endDate: Date = new Date()
@@ -257,10 +240,9 @@ export const getPurchaseReport = async (
   }
 };
 
-// ============================================================================
-// 4. GET RECEIVABLES REPORT
-// ============================================================================
-
+/**
+ * Lấy báo cáo công nợ.
+ */
 export const getReceivablesReport = async (
   startDate: Date = new Date(),
   endDate: Date = new Date()
@@ -282,10 +264,9 @@ export const getReceivablesReport = async (
   }
 };
 
-// ============================================================================
-// 5. GET CASH FLOW REPORT
-// ============================================================================
-
+/**
+ * Lấy báo cáo dòng tiền.
+ */
 export const getCashFlowReport = async (
   startDate: Date = new Date(),
   endDate: Date = new Date()
@@ -307,10 +288,9 @@ export const getCashFlowReport = async (
   }
 };
 
-// ============================================================================
-// 6. GET PROFIT REPORT
-// ============================================================================
-
+/**
+ * Lấy báo cáo lợi nhuận.
+ */
 export const getProfitReport = async (
   startDate: Date = new Date(),
   endDate: Date = new Date()

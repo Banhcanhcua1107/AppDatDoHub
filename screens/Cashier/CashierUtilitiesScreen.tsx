@@ -26,7 +26,7 @@ export default function CashierUtilitiesScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView>
-        {/* Khu vực tài khoản */}
+        {/* Khu vực tài khoản - GIỮ NGUYÊN */}
         <View style={styles.section}>
           <UtilityItem
             icon="key-outline"
@@ -40,7 +40,7 @@ export default function CashierUtilitiesScreen() {
           />
         </View>
 
-        {/* Khu vực Thiết bị & Đồng bộ */}
+        {/* Khu vực Thiết bị & Đồng bộ - GIỮ NGUYÊN */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Thiết bị & Đồng bộ</Text>
           <UtilityItem 
@@ -60,7 +60,7 @@ export default function CashierUtilitiesScreen() {
           />
         </View>
 
-        {/* Khu vực Hoạt động & Báo cáo */}
+        {/* Khu vực Hoạt động & Báo cáo - GIỮ NGUYÊN */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Hoạt động & Báo cáo</Text>
           <UtilityItem 
@@ -75,11 +75,11 @@ export default function CashierUtilitiesScreen() {
           />
         </View>
 
-        {/* Khu vực Quản lý Thu ngân - ĐẶC BIỆT CHO THU NGÂN */}
+        {/* Khu vực Quản lý Thu ngân - CẬP NHẬT LẠI */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Quản lý Thu ngân</Text>
           <UtilityItem 
-            icon="stats-chart"
+            icon="stats-chart-outline"
             title="Tổng quan" 
             onPress={() => navigation.navigate('Dashboard')}
           />
@@ -89,39 +89,34 @@ export default function CashierUtilitiesScreen() {
             onPress={() => navigation.navigate('CashierReport')}
           />
           <UtilityItem 
-            icon="cart-outline" 
-            title="Mua hàng" 
-            onPress={() => navigation.navigate('Purchase')}
-          />
-          <UtilityItem 
-            icon="cube-outline" 
-            title="Kho" 
-            onPress={() => navigation.navigate('Inventory')}
-          />
-          <UtilityItem 
-            icon="cash-outline" 
-            title="Quỹ tiền mặt" 
-            onPress={() => navigation.navigate('CashFund')}
-          />
-          <UtilityItem 
-            icon="card-outline" 
-            title="Quỹ tiền gửi" 
-            onPress={() => navigation.navigate('BankFund')}
+            icon="wallet-outline" 
+            title="Quỹ tiền" 
+            onPress={() => navigation.navigate('CashFlowDetail')}
           />
           <UtilityItem 
             icon="trending-down-outline" 
             title="Chi phí" 
             onPress={() => navigation.navigate('Expenses')}
           />
+           <UtilityItem 
+            icon="cube-outline" 
+            title="Kho" 
+            onPress={() => navigation.navigate('Inventory')}
+          />
           <UtilityItem 
-            icon="pricetag-outline" 
-            title="Khuyến mãi" 
-            onPress={() => navigation.navigate('Promotions')}
+            icon="cart-outline" 
+            title="Mua hàng" 
+            onPress={() => navigation.navigate('Purchase')}
           />
           <UtilityItem 
             icon="restaurant-outline" 
             title="Thực đơn" 
             onPress={() => navigation.navigate('MenuManagement')}
+          />
+           <UtilityItem 
+            icon="pricetag-outline" 
+            title="Khuyến mãi" 
+            onPress={() => navigation.navigate('Promotions')}
           />
         </View>
       </ScrollView>
