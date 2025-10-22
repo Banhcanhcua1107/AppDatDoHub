@@ -1,6 +1,6 @@
 // screens/Cashier/InventoryDetailScreen.tsx
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   SafeAreaView,
   View,
@@ -9,93 +9,110 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  Alert,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
-import { getInventoryReport } from '../../services/reportService';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { supabase } from '../../services/supabase';
 
-interface Product {
-  id: string;
+interface MenuItem {
+  id: number;
   name: string;
-  quantity: number;
-  unit: string;
-  minStock: number;
-  status: 'normal' | 'low' | 'out';
+  is_available: boolean;
 }
 
-export default function InventoryDetailScreen() {
+type InventoryStatus = 'out' | 'normal';
+
+interface InventoryData {
+  totalItems: number;
+  outOfStock: number;
+  normalStock: number;
+}
+
+interface InventoryProduct {
+  id: number;
+  name: string;
+  status: InventoryStatus;
+}
+
+const InventoryDetailScreen = () => {
   const navigation = useNavigation();
   const [loading, setLoading] = useState(true);
-  const [inventoryData, setInventoryData] = useState({
+  const [inventoryData, setInventoryData] = useState<InventoryData>({
     totalItems: 0,
     outOfStock: 0,
-    lowStock: 0,
+    normalStock: 0,
   });
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<InventoryProduct[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState<'all' | 'out' | 'normal'>('all');
 
-  useEffect(() => {
-    loadInventoryData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const loadInventoryData = async () => {
+  const loadInventoryData = useCallback(async () => {
     try {
       setLoading(true);
-      const report = await getInventoryReport();
       
-      setInventoryData({
-        totalItems: report.total_items || 0,
-        outOfStock: report.out_of_stock || 0,
-        lowStock: report.low_stock || 0,
-      });
+      const { data, error } = await supabase
+        .from('menu_items')
+        .select('id, name, is_available')
+        .order('name', { ascending: true });
 
-      // Generate mock product data for demo
-      const mockProducts = generateMockProducts(report.total_items || 0);
-      setProducts(mockProducts);
-    } catch (error) {
+      if (error) throw error;
+
+      const items = (data as MenuItem[]) || [];
+      const outOfStockItems = items.filter(item => !item.is_available);
+      const normalItems = items.filter(item => item.is_available);
+      
+      const inventoryProducts: InventoryProduct[] = items.map(item => ({
+        id: item.id,
+        name: item.name,
+        status: item.is_available ? 'normal' : 'out',
+      }));
+
+      const stats: InventoryData = {
+        totalItems: items.length,
+        outOfStock: outOfStockItems.length,
+        normalStock: normalItems.length,
+      };
+
+      setInventoryData(stats);
+      setProducts(inventoryProducts);
+    } catch (error: any) {
       console.error('❌ Error loading inventory data:', error);
+      Alert.alert('Lỗi', 'Không thể tải dữ liệu tồn kho: ' + error.message);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const generateMockProducts = (count: number): Product[] => {
-    const productNames = [
-      'Bạch tuộc', 'Bột mỳ', 'Bơ', 'Cà chua', 'Cạnh hình',
-      'Cà hủi', 'Cà ngữ', 'Coca Cola', 'Mực ống', 'Pepsi',
-      ' 7up', 'Thịt bò', 'Thịt gà', 'Thịt lợn', 'Tôm sú',
-    ];
+  useFocusEffect(
+    useCallback(() => {
+      setLoading(true);
+      loadInventoryData();
+    }, [loadInventoryData])
+  );
 
-    const products: Product[] = [];
-    for (let i = 0; i < Math.min(count, 15); i++) {
-      const quantity = Math.floor(Math.random() * 100);
-      let status: 'normal' | 'low' | 'out' = 'normal';
-      
-      if (quantity === 0) status = 'out';
-      else if (quantity < 20) status = 'low';
-      
-      products.push({
-        id: `prod_${i}`,
-        name: productNames[i % productNames.length],
-        quantity,
-        unit: i % 2 === 0 ? 'Kg' : 'Lần',
-        minStock: 20,
-        status,
-      });
-    }
-    return products;
-  };
+  const filteredProducts = products.filter((product: any) => {
+    const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesTab = activeTab === 'all' || product.status === activeTab;
+    return matchesSearch && matchesTab;
+  });
 
-  const getStatusLabel = (status: string) => {
+  const getStatusColor = (status: InventoryStatus) => {
     switch (status) {
+      case 'out':
+        return { bg: '#FEF2F2', text: '#DC2626', icon: 'close-circle' };
       case 'normal':
-        return 'Bình thường';
-      case 'low':
-        return 'Sắp hết';
+        return { bg: '#F0FDF4', text: '#16A34A', icon: 'checkmark-circle' };
+    }
+  };
+
+  const getStatusLabel = (status: InventoryStatus) => {
+    switch (status) {
       case 'out':
         return 'Hết hàng';
-      default:
-        return 'Không xác định';
+      case 'normal':
+        return 'Còn hàng';
     }
   };
 
@@ -103,278 +120,378 @@ export default function InventoryDetailScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#3B82F6" />
+          <ActivityIndicator size="large" color="#2563EB" />
           <Text style={styles.loadingText}>Đang tải dữ liệu...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  const lowStockProducts = products.filter(p => p.status === 'low');
-  const outOfStockProducts = products.filter(p => p.status === 'out');
-  const normalProducts = products.filter(p => p.status === 'normal');
-
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="chevron-back" size={28} color="#1E293B" />
+        <TouchableOpacity 
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+        >
+          <Ionicons name="chevron-back" size={24} color="#374151" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Chi tiết Tồn kho</Text>
-        <View style={{ width: 28 }} />
+        <Text style={styles.headerTitle}>Quản lý tồn kho</Text>
+        <View style={styles.headerRight} />
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        {/* Summary Stats */}
-        <View style={styles.statsContainer}>
+      <ScrollView 
+        showsVerticalScrollIndicator={false} 
+        contentContainerStyle={styles.scrollContent}
+      >
+        {/* Summary Cards */}
+        <View style={styles.statsGrid}>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>{inventoryData.totalItems}</Text>
-            <Text style={styles.statLabel}>Tổng sản phẩm</Text>
+            <View style={[styles.statIcon, styles.statTotal]}>
+              <Ionicons name="fast-food-outline" size={20} color="#2563EB" />
+            </View>
+            <Text style={styles.statNumber}>{inventoryData.totalItems}</Text>
+            <Text style={styles.statLabel}>Tổng món</Text>
           </View>
+
           <View style={styles.statCard}>
-            <Text style={[styles.statValue, { color: '#F59E0B' }]}>
-              {inventoryData.lowStock}
-            </Text>
-            <Text style={styles.statLabel}>Sắp hết hàng</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={[styles.statValue, { color: '#EF4444' }]}>
+            <View style={[styles.statIcon, styles.statOut]}>
+              <Ionicons name="alert-circle-outline" size={20} color="#DC2626" />
+            </View>
+            <Text style={[styles.statNumber, styles.statNumberOut]}>
               {inventoryData.outOfStock}
             </Text>
             <Text style={styles.statLabel}>Hết hàng</Text>
           </View>
+
+          <View style={styles.statCard}>
+            <View style={[styles.statIcon, styles.statNormal]}>
+              <Ionicons name="checkmark-circle-outline" size={20} color="#16A34A" />
+            </View>
+            <Text style={[styles.statNumber, styles.statNumberNormal]}>
+              {inventoryData.normalStock}
+            </Text>
+            <Text style={styles.statLabel}>Còn hàng</Text>
+          </View>
         </View>
 
-        {/* Out of Stock Section */}
-        {outOfStockProducts.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Ionicons name="alert-circle" size={20} color="#EF4444" />
-              <Text style={styles.sectionTitle}>Hết hàng ({outOfStockProducts.length})</Text>
-            </View>
+        {/* Search & Tabs */}
+        <View style={styles.filterSection}>
+          <View style={styles.searchContainer}>
+            <Ionicons name="search-outline" size={18} color="#6B7280" />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Tìm kiếm món..."
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholderTextColor="#9CA3AF"
+            />
+          </View>
+
+          <View style={styles.tabContainer}>
+            <TouchableOpacity
+              style={[
+                styles.tab,
+                activeTab === 'all' && styles.tabActive
+              ]}
+              onPress={() => setActiveTab('all')}
+            >
+              <Text style={[
+                styles.tabText,
+                activeTab === 'all' && styles.tabTextActive
+              ]}>
+                Tất cả
+              </Text>
+            </TouchableOpacity>
             
-            <View style={styles.productList}>
-              {outOfStockProducts.map((product) => (
-                <View key={product.id} style={styles.productItem}>
-                  <View style={styles.productInfo}>
-                    <Text style={styles.productName}>{product.name}</Text>
-                    <Text style={styles.productSubtext}>Đơn vị: {product.unit}</Text>
-                  </View>
-                  <View style={styles.productStatus}>
-                    <View style={[styles.statusBadge, { backgroundColor: '#FEE2E2' }]}>
-                      <Text style={[styles.statusText, { color: '#EF4444' }]}>
+            <TouchableOpacity
+              style={[
+                styles.tab,
+                activeTab === 'out' && styles.tabActive
+              ]}
+              onPress={() => setActiveTab('out')}
+            >
+              <Text style={[
+                styles.tabText,
+                activeTab === 'out' && styles.tabTextActive
+              ]}>
+                Hết hàng
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[
+                styles.tab,
+                activeTab === 'normal' && styles.tabActive
+              ]}
+              onPress={() => setActiveTab('normal')}
+            >
+              <Text style={[
+                styles.tabText,
+                activeTab === 'normal' && styles.tabTextActive
+              ]}>
+                Còn hàng
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Products List */}
+        <View style={styles.productsSection}>
+          <Text style={styles.sectionTitle}>
+            {activeTab === 'all' ? 'Tất cả món' : 
+             activeTab === 'out' ? 'Món hết hàng' : 'Món còn hàng'} 
+            ({filteredProducts.length})
+          </Text>
+
+          {filteredProducts.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Ionicons name="search-outline" size={48} color="#D1D5DB" />
+              <Text style={styles.emptyText}>
+                {searchQuery ? 'Không tìm thấy món phù hợp' : 'Không có món nào'}
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.productsList}>
+              {filteredProducts.map((product: any) => {
+                const colors = getStatusColor(product.status);
+                return (
+                  <View key={product.id.toString()} style={styles.productItem}>
+                    <View style={styles.productInfo}>
+                      <View style={[styles.statusIndicator, { backgroundColor: colors.bg }]}>
+                        <Ionicons
+                          name={colors.icon as any}
+                          size={16}
+                          color={colors.text}
+                        />
+                      </View>
+                      <Text style={styles.productName} numberOfLines={2}>
+                        {product.name}
+                      </Text>
+                    </View>
+                    <View style={[styles.statusBadge, { backgroundColor: colors.bg }]}>
+                      <Text style={[styles.statusText, { color: colors.text }]}>
                         {getStatusLabel(product.status)}
                       </Text>
                     </View>
                   </View>
-                </View>
-              ))}
+                );
+              })}
             </View>
-          </View>
-        )}
-
-        {/* Low Stock Section */}
-        {lowStockProducts.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Ionicons name="warning" size={20} color="#F59E0B" />
-              <Text style={styles.sectionTitle}>Sắp hết hàng ({lowStockProducts.length})</Text>
-            </View>
-            
-            <View style={styles.productList}>
-              {lowStockProducts.map((product) => (
-                <View key={product.id} style={styles.productItem}>
-                  <View style={styles.productInfo}>
-                    <Text style={styles.productName}>{product.name}</Text>
-                    <Text style={styles.productSubtext}>
-                      Tồn: {product.quantity} {product.unit} (tối thiểu: {product.minStock})
-                    </Text>
-                  </View>
-                  <View style={styles.productStatus}>
-                    <View style={[styles.statusBadge, { backgroundColor: '#FEF3C7' }]}>
-                      <Text style={[styles.statusText, { color: '#F59E0B' }]}>
-                        {getStatusLabel(product.status)}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* Normal Stock Section */}
-        {normalProducts.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Ionicons name="checkmark-circle" size={20} color="#10B981" />
-              <Text style={styles.sectionTitle}>Bình thường ({normalProducts.length})</Text>
-            </View>
-            
-            <View style={styles.productList}>
-              {normalProducts.slice(0, 5).map((product) => (
-                <View key={product.id} style={styles.productItem}>
-                  <View style={styles.productInfo}>
-                    <Text style={styles.productName}>{product.name}</Text>
-                    <Text style={styles.productSubtext}>
-                      Tồn: {product.quantity} {product.unit}
-                    </Text>
-                  </View>
-                  <View style={styles.productStatus}>
-                    <View style={[styles.statusBadge, { backgroundColor: '#D1FAE5' }]}>
-                      <Text style={[styles.statusText, { color: '#10B981' }]}>
-                        OK
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-              ))}
-              {normalProducts.length > 5 && (
-                <View style={styles.moreItem}>
-                  <Text style={styles.moreText}>
-                    +{normalProducts.length - 5} sản phẩm khác
-                  </Text>
-                </View>
-              )}
-            </View>
-          </View>
-        )}
+          )}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
-}
+};
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1E293B',
+    backgroundColor: '#FFFFFF',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#FFFFFF',
   },
   loadingText: {
     marginTop: 12,
     fontSize: 16,
     color: '#6B7280',
+    fontWeight: '500',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  backButton: {
+    padding: 4,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  headerRight: {
+    width: 32,
   },
   scrollContent: {
-    paddingHorizontal: 12,
-    paddingTop: 12,
+    flexGrow: 1,
     paddingBottom: 20,
   },
-  statsContainer: {
+  statsGrid: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    gap: 12,
   },
   statCard: {
     flex: 1,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 12,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 1,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 16,
   },
-  statValue: {
-    fontSize: 18,
+  statIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  statTotal: {
+    backgroundColor: '#E0E7FF',
+  },
+  statOut: {
+    backgroundColor: '#FEE2E2',
+  },
+  statNormal: {
+    backgroundColor: '#DCFCE7',
+  },
+  statNumber: {
+    fontSize: 20,
     fontWeight: '700',
-    color: '#3B82F6',
-    marginBottom: 4,
+    color: '#111827',
+    marginBottom: 2,
+  },
+  statNumberOut: {
+    color: '#DC2626',
+  },
+  statNumberNormal: {
+    color: '#16A34A',
   },
   statLabel: {
-    fontSize: 11,
-    color: '#64748B',
+    fontSize: 12,
+    color: '#6B7280',
     fontWeight: '500',
-    textAlign: 'center',
   },
-  section: {
-    marginBottom: 16,
+  filterSection: {
+    paddingHorizontal: 16,
+    marginBottom: 8,
   },
-  sectionHeader: {
+  searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 10,
-  },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1E293B',
-  },
-  productList: {
-    backgroundColor: '#fff',
+    backgroundColor: '#F9FAFB',
     borderRadius: 12,
-    overflow: 'hidden',
+    paddingHorizontal: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  searchInput: {
+    flex: 1,
+    height: 44,
+    fontSize: 16,
+    marginLeft: 8,
+    color: '#111827',
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 10,
+    padding: 4,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  tabActive: {
+    backgroundColor: '#FFFFFF',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 1,
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6B7280',
+  },
+  tabTextActive: {
+    color: '#111827',
+    fontWeight: '600',
+  },
+  productsSection: {
+    flex: 1,
+    paddingHorizontal: 16,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 12,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 48,
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#6B7280',
+    marginTop: 12,
+    textAlign: 'center',
+  },
+  productsList: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#F3F4F6',
   },
   productItem: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 12,
+    justifyContent: 'space-between',
     paddingVertical: 12,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+    borderBottomColor: '#F3F4F6',
   },
   productInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
     flex: 1,
+    marginRight: 12,
+  },
+  statusIndicator: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
   },
   productName: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#1E293B',
-    marginBottom: 2,
-  },
-  productSubtext: {
-    fontSize: 11,
-    color: '#94A3B8',
-  },
-  productStatus: {
-    marginLeft: 10,
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#111827',
+    lineHeight: 20,
   },
   statusBadge: {
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
+    paddingVertical: 6,
+    borderRadius: 8,
   },
   statusText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
   },
-  moreItem: {
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  moreText: {
-    fontSize: 12,
-    color: '#64748B',
-    fontWeight: '500',
-  },
 });
+
+export default InventoryDetailScreen;

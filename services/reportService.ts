@@ -70,12 +70,110 @@ export interface ProfitReport {
   operating_cost: number;
 }
 
+export interface Transaction {
+  id: string;
+  time: string;
+  amount: number;
+  items: number;
+  staff?: string;
+  table_name?: string;
+  status: 'completed' | 'cancelled' | 'pending';
+}
+
 // ============================================================================
 // HELPER FUNCTION: Format date
 // ============================================================================
 
 const formatDateForSQL = (date: Date): string => {
   return date.toISOString().split('T')[0];
+};
+
+// ============================================================================
+// GET TRANSACTIONS (Real data from database)
+// ============================================================================
+
+export const getTransactions = async (
+  startDate: Date = new Date(),
+  endDate: Date = new Date(),
+  limit: number = 20
+): Promise<Transaction[]> => {
+  try {
+    console.log('📋 Fetching transactions...');
+    
+    const startDateStr = formatDateForSQL(startDate);
+    const endDateStr = formatDateForSQL(endDate);
+    console.log(`📅 Date range: ${startDateStr} to ${endDateStr}`);
+
+    // First, try to get one record to see what columns exist
+    console.log('🔍 Checking orders table structure...');
+    const { data: sampleOrder, error: schemaError } = await supabase
+      .from('orders')
+      .select('*')
+      .limit(1);
+
+    if (!schemaError && sampleOrder && sampleOrder.length > 0) {
+      console.log('📦 Orders table columns:', Object.keys(sampleOrder[0]));
+      console.log('📦 Sample order:', sampleOrder[0]);
+    }
+
+    // Query orders table directly - try flexible select
+    const { data: orders, error } = await supabase
+      .from('orders')
+      .select('*')
+      .gte('created_at', startDateStr)
+      .lte('created_at', endDateStr)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      console.error('❌ Error fetching transactions:', error);
+      console.error('📝 Error details:', {
+        message: error.message,
+        hint: (error as any).hint,
+        details: (error as any).details,
+        code: (error as any).code,
+      });
+      // Return empty array on error instead of throwing
+      return [];
+    }
+
+    console.log(`📦 Raw orders data (${orders?.length || 0} items):`, orders);
+
+    // Transform to Transaction interface - handle different field names
+    const transactions: Transaction[] = (orders || []).map((order: any) => {
+      // Try different column names for amount
+      const amount = order.total_amount || order.amount || order.total || 0;
+      const itemCount = order.items_count || order.item_count || order.quantity || 0;
+      const userName = order.user_name || order.username || order.staff || order.cashier || 'Unknown';
+      
+      return {
+        id: order.id || '',
+        time: formatTime(order.created_at),
+        amount: Number(amount),
+        items: Number(itemCount),
+        staff: userName,
+        table_name: order.table_name || order.table_id,
+        status: order.status || 'completed',
+      };
+    });
+
+    console.log(`✅ Fetched ${transactions.length} transactions:`, transactions);
+    return transactions;
+  } catch (error) {
+    console.error('❌ getTransactions error:', error);
+    // Return empty array instead of throwing to prevent UI crash
+    return [];
+  }
+};
+
+const formatTime = (dateTimeStr: string): string => {
+  if (!dateTimeStr) return '--:--';
+  try {
+    const date = new Date(dateTimeStr);
+    return date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '--:--';
+  }
 };
 
 // ============================================================================
