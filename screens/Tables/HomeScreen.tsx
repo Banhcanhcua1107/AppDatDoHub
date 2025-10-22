@@ -20,10 +20,11 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppTabParamList, AppStackParamList, ROUTES } from '../../constants/routes';
 import { supabase } from '../../services/supabase';
 import OrderInfoBox from '../Menu/OrderInfoBox';
+import EmptyTableActionBox from '../Menu/EmptyTableActionBox';
 import ConfirmModal from '../../components/ConfirmModal';
 import ActionSheetModal from '../../components/ActionSheetModal';
 type TableStatus = 'Trống' | 'Đang phục vụ' | 'Đặt trước';
-type TableItemData = { id: string; name: string; status: TableStatus };
+type TableItemData = { id: string; name: string; status: TableStatus; seats?: number };
 
 const StatusLegend: React.FC<{ color: string; text: string }> = ({ color, text }) => (
   <View className="flex-row items-center mr-5">
@@ -57,11 +58,19 @@ const TableGridItem: React.FC<{
         onLongPress={onLongPress}
         style={({ pressed }) => [{ transform: [{ scale: pressed ? 0.98 : 1 }] }]}
       >
-        <View className="bg-white rounded-2xl p-4 flex-row items-center" style={styleSheet.shadow}>
-          <Icon name="tablet-landscape-outline" size={30} color={theme.color} />
-          <View className="ml-3 flex-1">
-            <Text className="text-base font-bold text-gray-800">{item.name}</Text>
+        <View className="bg-white rounded-2xl p-4" style={styleSheet.shadow}>
+          <View className="flex-row items-center mb-2">
+            <Icon name="reader-outline" size={30} color={theme.color} />
+            <Text className="text-base font-bold text-gray-800 ml-2">{item.name}</Text>
+          </View>
+          <View className="flex-row items-center justify-between">
             <Text className={`text-sm font-semibold ${theme.textColor}`}>{item.status}</Text>
+            {item.seats && (
+              <View className="flex-row items-center">
+                <Icon name="people-outline" size={14} color="#6B7280" />
+                <Text className="text-xs text-gray-600 ml-1">{item.seats} chỗ</Text>
+              </View>
+            )}
           </View>
         </View>
       </Pressable>
@@ -81,6 +90,8 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
   // [PHỤC HỒI] State để quản lý OrderInfoBox
   const [isBoxVisible, setBoxVisible] = useState(false);
   const [selectedTable, setSelectedTable] = useState<{ id: string; name: string } | null>(null);
+  const [emptyTableBoxVisible, setEmptyTableBoxVisible] = useState(false);
+  const [selectedEmptyTable, setSelectedEmptyTable] = useState<{ id: string; name: string } | null>(null);
   
   // State cho modals
   const [cancelReservationModal, setCancelReservationModal] = useState<{
@@ -97,7 +108,7 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
     setLoading(true);
     const { data, error } = await supabase
       .from('tables')
-      .select('id, name, status')
+      .select('id, name, status, seats')
       .order('id', { ascending: true });
     if (error) {
       Alert.alert('Lỗi', 'Không thể tải danh sách bàn.');
@@ -123,22 +134,14 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
     }, [fetchTables])
   );
 
-  const handleAddTable = async () => {
-    const lastTableNumber = tables.reduce((max, table) => {
-      const num = parseInt(table.name.replace('Bàn ', ''));
-      return isNaN(num) ? max : Math.max(max, num);
-    }, 0);
-    const newTableName = `Bàn ${String(lastTableNumber + 1).padStart(2, '0')}`;
-    const { error } = await supabase
-      .from('tables')
-      .insert([{ name: newTableName, status: 'Trống' }]);
-    if (error) Alert.alert('Lỗi', 'Không thể thêm bàn mới.');
-  };
+  // Hàm tạo bàn đã ẩn - chỉ admin có thể tạo thông qua hệ thống quản lý
+  // const handleAddTable = async () => { ... };
 
   // [SỬA LỖI TRIỆT ĐỂ] Thay đổi luồng xử lý khi nhấn vào bàn
   const handlePressTable = (table: TableItemData) => {
     if (table.status === 'Trống') {
-      navigation.navigate(ROUTES.MENU, { tableId: table.id, tableName: table.name });
+      setSelectedEmptyTable({ id: table.id, name: table.name });
+      setEmptyTableBoxVisible(true);
     } else if (table.status === 'Đang phục vụ') {
       setSelectedTable({ id: table.id, name: table.name });
       setBoxVisible(true);
@@ -156,6 +159,38 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
   const updateTableStatus = async (tableId: string, status: TableStatus) => {
     const { error } = await supabase.from('tables').update({ status: status }).eq('id', tableId);
     if (error) Alert.alert('Lỗi', `Không thể cập nhật trạng thái bàn thành "${status}".`);
+  };
+
+  const handleEmptyTableAction = (action: string, data?: any) => {
+    setEmptyTableBoxVisible(false);
+    if (!data?.tableId) {
+      return;
+    }
+
+    switch (action) {
+      case 'enter_table':
+        navigation.navigate(ROUTES.MENU, {
+          tableId: data.tableId,
+          tableName: data.tableName,
+        });
+        break;
+
+      case 'group_tables':
+        navigation.navigate(ROUTES.TABLE_SELECTION, {
+          mode: 'multiple',
+          action: 'group',
+          sourceRoute: ROUTES.HOME_TAB,
+          sourceTable: { id: data.tableId, name: data.tableName },
+        });
+        break;
+
+      case 'reserve_table':
+        updateTableStatus(data.tableId, 'Đặt trước');
+        break;
+
+      default:
+        break;
+    }
   };
 
   const handleOrderAction = (action: string, data?: any) => {
@@ -288,12 +323,7 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
         numColumns={2}
         contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: 100, paddingTop: 16 }}
       />
-      <TouchableOpacity
-        style={[styleSheet.fab, { bottom: insets.bottom > 0 ? insets.bottom + 10 : 20 }]}
-        onPress={handleAddTable}
-      >
-        <Icon name="add" size={30} color="#FFF" />
-      </TouchableOpacity>
+      {/* FAB ẩn - Chỉ admin mới có thể tạo bàn thông qua hệ thống quản lý */}
 
       {selectedTable && (
         <OrderInfoBox
@@ -302,6 +332,16 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
           tableId={selectedTable.id}
           tableName={selectedTable.name}
           onActionPress={handleOrderAction}
+        />
+      )}
+
+      {selectedEmptyTable && (
+        <EmptyTableActionBox
+          isVisible={emptyTableBoxVisible}
+          onClose={() => setEmptyTableBoxVisible(false)}
+          tableId={selectedEmptyTable.id}
+          tableName={selectedEmptyTable.name}
+          onAction={handleEmptyTableAction}
         />
       )}
 
