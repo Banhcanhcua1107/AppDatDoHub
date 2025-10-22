@@ -80,90 +80,19 @@ export interface Transaction {
   status: 'completed' | 'cancelled' | 'pending';
 }
 
+export interface InventoryProduct {
+  id: number;
+  name: string;
+  status: 'normal' | 'out';
+}
+
+
 // ============================================================================
-// HELPER FUNCTION: Format date
+// HELPER FUNCTIONS
 // ============================================================================
 
 const formatDateForSQL = (date: Date): string => {
   return date.toISOString().split('T')[0];
-};
-
-// ============================================================================
-// GET TRANSACTIONS (Real data from database)
-// ============================================================================
-
-export const getTransactions = async (
-  startDate: Date = new Date(),
-  endDate: Date = new Date(),
-  limit: number = 20
-): Promise<Transaction[]> => {
-  try {
-    console.log('📋 Fetching transactions...');
-    
-    const startDateStr = formatDateForSQL(startDate);
-    const endDateStr = formatDateForSQL(endDate);
-    console.log(`📅 Date range: ${startDateStr} to ${endDateStr}`);
-
-    // First, try to get one record to see what columns exist
-    console.log('🔍 Checking orders table structure...');
-    const { data: sampleOrder, error: schemaError } = await supabase
-      .from('orders')
-      .select('*')
-      .limit(1);
-
-    if (!schemaError && sampleOrder && sampleOrder.length > 0) {
-      console.log('📦 Orders table columns:', Object.keys(sampleOrder[0]));
-      console.log('📦 Sample order:', sampleOrder[0]);
-    }
-
-    // Query orders table directly - try flexible select
-    const { data: orders, error } = await supabase
-      .from('orders')
-      .select('*')
-      .gte('created_at', startDateStr)
-      .lte('created_at', endDateStr)
-      .order('created_at', { ascending: false })
-      .limit(limit);
-
-    if (error) {
-      console.error('❌ Error fetching transactions:', error);
-      console.error('📝 Error details:', {
-        message: error.message,
-        hint: (error as any).hint,
-        details: (error as any).details,
-        code: (error as any).code,
-      });
-      // Return empty array on error instead of throwing
-      return [];
-    }
-
-    console.log(`📦 Raw orders data (${orders?.length || 0} items):`, orders);
-
-    // Transform to Transaction interface - handle different field names
-    const transactions: Transaction[] = (orders || []).map((order: any) => {
-      // Try different column names for amount
-      const amount = order.total_amount || order.amount || order.total || 0;
-      const itemCount = order.items_count || order.item_count || order.quantity || 0;
-      const userName = order.user_name || order.username || order.staff || order.cashier || 'Unknown';
-      
-      return {
-        id: order.id || '',
-        time: formatTime(order.created_at),
-        amount: Number(amount),
-        items: Number(itemCount),
-        staff: userName,
-        table_name: order.table_name || order.table_id,
-        status: order.status || 'completed',
-      };
-    });
-
-    console.log(`✅ Fetched ${transactions.length} transactions:`, transactions);
-    return transactions;
-  } catch (error) {
-    console.error('❌ getTransactions error:', error);
-    // Return empty array instead of throwing to prevent UI crash
-    return [];
-  }
 };
 
 const formatTime = (dateTimeStr: string): string => {
@@ -177,6 +106,61 @@ const formatTime = (dateTimeStr: string): string => {
 };
 
 // ============================================================================
+// GET TRANSACTIONS (Real data from database) - FIXED
+// ============================================================================
+
+export const getTransactions = async (
+  startDate: Date = new Date(),
+  endDate: Date = new Date(),
+  limit: number = 20
+): Promise<Transaction[]> => {
+  try {
+    const startDateStr = `${formatDateForSQL(startDate)} 00:00:00`;
+    const endDateStr = `${formatDateForSQL(endDate)} 23:59:59`;
+
+    // Sử dụng select('*') để linh hoạt với các tên cột khác nhau
+    const { data: orders, error } = await supabase
+      .from('orders')
+      .select('*') 
+      .gte('created_at', startDateStr)
+      .lte('created_at', endDateStr)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      console.error('❌ Error fetching transactions:', error.message);
+      return [];
+    }
+    
+    // Xử lý dữ liệu trả về để khớp với interface `Transaction`
+    const transactions: Transaction[] = (orders || []).map((order: any) => {
+        // Tìm giá trị tổng tiền từ các tên cột có thể có
+        const amount = order.total_amount || order.amount || order.total || 0;
+        // Tìm số lượng sản phẩm
+        const itemCount = order.items_count || order.item_count || order.quantity || 0;
+        // Tìm tên nhân viên
+        const staffName = order.user_name || order.staff || order.cashier || 'Không rõ';
+
+        return {
+            id: order.id || '',
+            time: formatTime(order.created_at),
+            amount: Number(amount),
+            items: Number(itemCount),
+            staff: staffName,
+            table_name: order.table_name || 'Mang về',
+            status: order.status || 'completed',
+        };
+    });
+
+    return transactions;
+  } catch (err) {
+    console.error('❌ Exception in getTransactions:', err);
+    return [];
+  }
+};
+
+
+// ============================================================================
 // 1. GET SALES REPORT
 // ============================================================================
 
@@ -185,20 +169,12 @@ export const getSalesReport = async (
   endDate: Date = new Date()
 ): Promise<SalesReport> => {
   try {
-    console.log('📊 Fetching sales report...');
-    
-    const startDateStr = formatDateForSQL(startDate);
-    const endDateStr = formatDateForSQL(endDate);
-
     const { data, error } = await supabase.rpc('get_sales_report', {
-      p_start_date: startDateStr,
-      p_end_date: endDateStr,
+      p_start_date: formatDateForSQL(startDate),
+      p_end_date: formatDateForSQL(endDate),
     });
 
-    if (error) {
-      console.error('❌ Error fetching sales report:', error);
-      throw error;
-    }
+    if (error) throw error;
 
     return {
       total_revenue: Number(data?.total_revenue || 0),
@@ -219,15 +195,8 @@ export const getSalesReport = async (
 
 export const getInventoryReport = async (): Promise<InventoryReport> => {
   try {
-    console.log('📦 Fetching inventory report...');
-
     const { data, error } = await supabase.rpc('get_inventory_report');
-
-    if (error) {
-      console.error('❌ Error fetching inventory report:', error);
-      throw error;
-    }
-
+    if (error) throw error;
     return {
       total_items: Number(data?.total_items || 0),
       out_of_stock: Number(data?.out_of_stock || 0),
@@ -240,6 +209,29 @@ export const getInventoryReport = async (): Promise<InventoryReport> => {
   }
 };
 
+export const getMenuItemsStatus = async (): Promise<InventoryProduct[]> => {
+    try {
+        const { data, error } = await supabase
+            .from('menu_items')
+            .select('id, name, is_available')
+            .order('name', { ascending: true });
+
+        if (error) throw error;
+
+        const inventoryProducts: InventoryProduct[] = (data || []).map(item => ({
+            id: item.id,
+            name: item.name,
+            status: item.is_available ? 'normal' : 'out',
+        }));
+
+        return inventoryProducts;
+    } catch (error) {
+        console.error('❌ getMenuItemsStatus error:', error);
+        throw error;
+    }
+}
+
+
 // ============================================================================
 // 3. GET PURCHASE REPORT
 // ============================================================================
@@ -249,21 +241,11 @@ export const getPurchaseReport = async (
   endDate: Date = new Date()
 ): Promise<PurchaseReport> => {
   try {
-    console.log('🛒 Fetching purchase report...');
-
-    const startDateStr = formatDateForSQL(startDate);
-    const endDateStr = formatDateForSQL(endDate);
-
     const { data, error } = await supabase.rpc('get_purchase_report', {
-      p_start_date: startDateStr,
-      p_end_date: endDateStr,
+      p_start_date: formatDateForSQL(startDate),
+      p_end_date: formatDateForSQL(endDate),
     });
-
-    if (error) {
-      console.error('❌ Error fetching purchase report:', error);
-      throw error;
-    }
-
+    if (error) throw error;
     return {
       total_cost: Number(data?.total_cost || 0),
       cost_count: Number(data?.cost_count || 0),
@@ -284,21 +266,11 @@ export const getReceivablesReport = async (
   endDate: Date = new Date()
 ): Promise<ReceivablesReport> => {
   try {
-    console.log('💳 Fetching receivables report...');
-
-    const startDateStr = formatDateForSQL(startDate);
-    const endDateStr = formatDateForSQL(endDate);
-
     const { data, error } = await supabase.rpc('get_receivables_report', {
-      p_start_date: startDateStr,
-      p_end_date: endDateStr,
+      p_start_date: formatDateForSQL(startDate),
+      p_end_date: formatDateForSQL(endDate),
     });
-
-    if (error) {
-      console.error('❌ Error fetching receivables report:', error);
-      throw error;
-    }
-
+    if (error) throw error;
     return {
       customer_debt: Number(data?.customer_debt || 0),
       supplier_debt: Number(data?.supplier_debt || 0),
@@ -319,21 +291,11 @@ export const getCashFlowReport = async (
   endDate: Date = new Date()
 ): Promise<CashFlowReport> => {
   try {
-    console.log('💰 Fetching cash flow report...');
-
-    const startDateStr = formatDateForSQL(startDate);
-    const endDateStr = formatDateForSQL(endDate);
-
     const { data, error } = await supabase.rpc('get_cash_flow_report', {
-      p_start_date: startDateStr,
-      p_end_date: endDateStr,
+      p_start_date: formatDateForSQL(startDate),
+      p_end_date: formatDateForSQL(endDate),
     });
-
-    if (error) {
-      console.error('❌ Error fetching cash flow report:', error);
-      throw error;
-    }
-
+    if (error) throw error;
     return {
       cash_on_hand: Number(data?.cash_on_hand || 0),
       bank_deposit: Number(data?.bank_deposit || 0),
@@ -354,21 +316,11 @@ export const getProfitReport = async (
   endDate: Date = new Date()
 ): Promise<ProfitReport> => {
   try {
-    console.log('📈 Fetching profit report...');
-
-    const startDateStr = formatDateForSQL(startDate);
-    const endDateStr = formatDateForSQL(endDate);
-
     const { data, error } = await supabase.rpc('get_profit_report', {
-      p_start_date: startDateStr,
-      p_end_date: endDateStr,
+      p_start_date: formatDateForSQL(startDate),
+      p_end_date: formatDateForSQL(endDate),
     });
-
-    if (error) {
-      console.error('❌ Error fetching profit report:', error);
-      throw error;
-    }
-
+    if (error) throw error;
     return {
       gross_profit: Number(data?.gross_profit || 0),
       net_profit: Number(data?.net_profit || 0),
@@ -379,41 +331,6 @@ export const getProfitReport = async (
     };
   } catch (error) {
     console.error('❌ getProfitReport error:', error);
-    throw error;
-  }
-};
-
-// ============================================================================
-// COMBINED: Get all reports at once
-// ============================================================================
-
-export const getAllReports = async (
-  startDate: Date = new Date(),
-  endDate: Date = new Date()
-) => {
-  try {
-    console.log('🔄 Fetching all reports...');
-
-    const [sales, inventory, purchase, receivables, cashFlow, profit] =
-      await Promise.all([
-        getSalesReport(startDate, endDate),
-        getInventoryReport(),
-        getPurchaseReport(startDate, endDate),
-        getReceivablesReport(startDate, endDate),
-        getCashFlowReport(startDate, endDate),
-        getProfitReport(startDate, endDate),
-      ]);
-
-    return {
-      sales,
-      inventory,
-      purchase,
-      receivables,
-      cashFlow,
-      profit,
-    };
-  } catch (error) {
-    console.error('❌ getAllReports error:', error);
     throw error;
   }
 };
