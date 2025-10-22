@@ -41,6 +41,10 @@ import CancellationRequestsDetailScreen from '../screens/Kitchen/CancellationReq
 import CashierTabs from './CashierTabs';
 import DashboardScreen from '../screens/Cashier/DashboardScreen';
 import CashierReportScreen from '../screens/Cashier/CashierReportScreen';
+import ProfitDetailScreen from '../screens/Cashier/ProfitDetailScreen';
+import SalesDetailScreen from '../screens/Cashier/SalesDetailScreen';
+import InventoryDetailScreen from '../screens/Cashier/InventoryDetailScreen';
+import CashFlowDetailScreen from '../screens/Cashier/CashFlowDetailScreen';
 import PurchaseScreen from '../screens/Cashier/PurchaseScreen';
 import InventoryScreen from '../screens/Cashier/InventoryScreen';
 import CashFundScreen from '../screens/Cashier/CashFundScreen';
@@ -48,6 +52,8 @@ import BankFundScreen from '../screens/Cashier/BankFundScreen';
 import ExpensesScreen from '../screens/Cashier/ExpensesScreen';
 import PromotionsScreen from '../screens/Cashier/PromotionsScreen';
 import MenuManagementScreen from '../screens/Cashier/MenuManagementScreen';
+import TopItemsScreen from '../screens/Cashier/TopItemsScreen';
+import AllActivitiesScreen from '../screens/Cashier/AllActivitiesScreen';
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const AppStack = createNativeStackNavigator<AppStackParamList>();
@@ -70,6 +76,10 @@ export type CashierStackParamList = {
   CashierRoot: undefined; // Màn hình chứa các tab
   Dashboard: undefined; // Tổng quan
   CashierReport: undefined;
+  ProfitDetail: undefined; // [MỚI] Chi tiết lợi nhuận
+  SalesDetail: undefined; // [MỚI] Chi tiết doanh thu
+  InventoryDetail: undefined; // [MỚI] Chi tiết tồn kho
+  CashFlowDetail: undefined; // [MỚI] Chi tiết quỹ tiền
   Purchase: undefined;
   Inventory: undefined;
   CashFund: undefined;
@@ -77,6 +87,8 @@ export type CashierStackParamList = {
   Expenses: undefined;
   Promotions: undefined;
   MenuManagement: undefined;
+  TopItems: undefined; // [MỚI] Xem tất cả món bán chạy
+  AllActivities: undefined; // [MỚI] Xem tất cả hoạt động
   // Thêm các màn hình dùng chung
   ChangePassword: undefined;
   BillHistory: undefined;
@@ -155,6 +167,10 @@ const CashierNavigator = () => (
     <CashierStack.Screen name="CashierRoot" component={CashierTabs} />
     <CashierStack.Screen name="Dashboard" component={DashboardScreen} options={{ headerShown: true, title: 'Tổng quan' }} />
     <CashierStack.Screen name="CashierReport" component={CashierReportScreen} options={{ headerShown: true, title: 'Báo cáo' }} />
+    <CashierStack.Screen name="ProfitDetail" component={ProfitDetailScreen} options={{ headerShown: false }} />
+    <CashierStack.Screen name="SalesDetail" component={SalesDetailScreen} options={{ headerShown: false }} />
+    <CashierStack.Screen name="InventoryDetail" component={InventoryDetailScreen} options={{ headerShown: false }} />
+    <CashierStack.Screen name="CashFlowDetail" component={CashFlowDetailScreen} options={{ headerShown: false }} />
     <CashierStack.Screen name="Purchase" component={PurchaseScreen} options={{ headerShown: true, title: 'Mua hàng' }} />
     <CashierStack.Screen name="Inventory" component={InventoryScreen} options={{ headerShown: true, title: 'Kho' }} />
     <CashierStack.Screen name="CashFund" component={CashFundScreen} options={{ headerShown: true, title: 'Quỹ tiền mặt' }} />
@@ -162,6 +178,8 @@ const CashierNavigator = () => (
     <CashierStack.Screen name="Expenses" component={ExpensesScreen} options={{ headerShown: true, title: 'Chi phí' }} />
     <CashierStack.Screen name="Promotions" component={PromotionsScreen} options={{ headerShown: true, title: 'Khuyến mãi' }} />
     <CashierStack.Screen name="MenuManagement" component={MenuManagementScreen} options={{ headerShown: true, title: 'Thực đơn' }} />
+    <CashierStack.Screen name="TopItems" component={TopItemsScreen} options={{ headerShown: true, title: 'Món bán chạy' }} />
+    <CashierStack.Screen name="AllActivities" component={AllActivitiesScreen} options={{ headerShown: true, title: 'Hoạt động gần đây' }} />
     <CashierStack.Screen name="ChangePassword" component={ChangePasswordScreen} />
     <CashierStack.Screen name="BillHistory" component={BillHistoryScreen} />
     <CashierStack.Screen name="Menu" component={MenuScreen} />

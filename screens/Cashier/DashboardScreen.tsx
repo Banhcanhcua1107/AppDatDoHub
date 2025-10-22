@@ -12,6 +12,8 @@ import {
   RefreshControl,
   ActivityIndicator
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { 
   getDashboardData,
@@ -20,6 +22,7 @@ import {
   RecentActivity,
   Alert as DashboardAlert
 } from '../../services/dashboardService';
+import { CashierStackParamList } from '../../navigation/AppNavigator';
 // Uncomment để test
 // import { testAllDashboardFunctions } from '../../utils/testDashboard';
 
@@ -70,6 +73,7 @@ const QuickActionButton = ({
 );
 
 export default function DashboardScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<CashierStackParamList>>();
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -83,6 +87,32 @@ export default function DashboardScreen() {
   const [topItems, setTopItems] = useState<TopSellingItem[]>([]);
   const [activities, setActivities] = useState<RecentActivity[]>([]);
   const [alerts, setAlerts] = useState<DashboardAlert[]>([]);
+
+  // Handlers cho các quick action buttons
+  const handleDetailedReport = () => {
+    navigation.navigate('CashierReport');
+  };
+
+  const handleCashFund = () => {
+    navigation.navigate('CashFund');
+  };
+
+  const handleInventory = () => {
+    navigation.navigate('Inventory');
+  };
+
+  const handlePromotions = () => {
+    navigation.navigate('Promotions');
+  };
+
+  // Handlers cho "Xem tất cả"
+  const handleSeeAllTopItems = () => {
+    navigation.navigate('TopItems');
+  };
+
+  const handleSeeAllActivities = () => {
+    navigation.navigate('AllActivities');
+  };
 
   // Format currency
   const formatMoney = (amount: number) => {
@@ -238,25 +268,25 @@ export default function DashboardScreen() {
               icon="bar-chart-outline"
               label="Báo cáo chi tiết"
               color="#3B82F6"
-              onPress={() => {}}
+              onPress={handleDetailedReport}
             />
             <QuickActionButton
               icon="cash-outline"
               label="Sổ quỹ"
               color="#10B981"
-              onPress={() => {}}
+              onPress={handleCashFund}
             />
             <QuickActionButton
               icon="cube-outline"
               label="Kiểm kho"
               color="#F59E0B"
-              onPress={() => {}}
+              onPress={handleInventory}
             />
             <QuickActionButton
               icon="pricetag-outline"
               label="Khuyến mãi"
               color="#EF4444"
-              onPress={() => {}}
+              onPress={handlePromotions}
             />
           </View>
         </View>
@@ -265,7 +295,7 @@ export default function DashboardScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Món bán chạy</Text>
-            <TouchableOpacity>
+            <TouchableOpacity onPress={handleSeeAllTopItems}>
               <Text style={styles.seeAllText}>Xem tất cả</Text>
             </TouchableOpacity>
           </View>
@@ -294,7 +324,12 @@ export default function DashboardScreen() {
 
         {/* Recent Activity */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Hoạt động gần đây</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Hoạt động gần đây</Text>
+            <TouchableOpacity onPress={handleSeeAllActivities}>
+              <Text style={styles.seeAllText}>Xem tất cả</Text>
+            </TouchableOpacity>
+          </View>
           
           {activities.length === 0 ? (
             <Text style={styles.emptyText}>Chưa có hoạt động nào</Text>

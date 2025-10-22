@@ -1,213 +1,423 @@
-<div align="center">
+# 🍽️ AppDatDoHub - Restaurant Management System<div align="center">
 
-# 🍽️ AppDatDoHub
+
+
+A comprehensive React Native restaurant management application built with Expo, designed for seamless operations across kitchen, cashier, and service staff roles.# 🍽️ AppDatDoHub
+
 ## Hệ Thống Quản Lý Nhà Hàng Toàn Diện
 
+## ✨ Features
+
 [![Status](https://img.shields.io/badge/Status-Active_Development-brightgreen?style=for-the-badge)](https://github.com/Banhcanhcua1107/AppDatDoHub)
-[![Version](https://img.shields.io/badge/Version-1.0.0-blue?style=for-the-badge)](https://github.com/Banhcanhcua1107/AppDatDoHub/releases)
-[![React Native](https://img.shields.io/badge/React_Native-0.79.5-61dafb?style=for-the-badge&logo=react)](https://reactnative.dev)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178c6?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org)
-[![Expo](https://img.shields.io/badge/Expo-53.0.6-000?style=for-the-badge&logo=expo)](https://expo.dev)
-[![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
-> **Ứng dụng di động quản lý nhà hàng/quán ăn chuyên nghiệp**  
-> Tích hợp đơn hàng, bếp, thanh toán & báo cáo doanh số
+### 📊 Dashboard & Reports[![Version](https://img.shields.io/badge/Version-1.0.0-blue?style=for-the-badge)](https://github.com/Banhcanhcua1107/AppDatDoHub/releases)
 
-[🌐 Website](#) • [📖 Tài Liệu](#tài-liệu) • [🐛 Issues](https://github.com/Banhcanhcua1107/AppDatDoHub/issues) • [💬 Discussions](https://github.com/Banhcanhcua1107/AppDatDoHub/discussions)
+- Real-time cashier report with key metrics[![React Native](https://img.shields.io/badge/React_Native-0.79.5-61dafb?style=for-the-badge&logo=react)](https://reactnative.dev)
 
-</div>
+- Interactive date picker for custom date ranges[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178c6?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org)
 
----
+- Profit, sales, inventory, and cash flow analysis[![Expo](https://img.shields.io/badge/Expo-53.0.6-000?style=for-the-badge&logo=expo)](https://expo.dev)
 
-## 📌 Giới Thiệu
+- Horizontal metric cards with drill-down detail screens[![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
-**AppDatDoHub** là nền tảng di động **toàn diện** được xây dựng để quản lý hoạt động hàng ngày của nhà hàng, quán ăn. 
-Ứng dụng hỗ trợ **nhiều vai trò** (Nhân viên phục vụ, Bếp, Thu ngân, Quản lý) với các tính năng **riêng biệt** và **tích hợp tuyệt vời**.
 
-### 🎯 Mục Đích Chính
-- 📱 Quản lý đơn hàng trực tuyến, real-time
+
+### 🍽️ Table Management> **Ứng dụng di động quản lý nhà hàng/quán ăn chuyên nghiệp**  
+
+- Visual table layout with real-time status> Tích hợp đơn hàng, bếp, thanh toán & báo cáo doanh số
+
+- Quick order placement and management
+
+- Table selection interface[🌐 Website](#) • [📖 Tài Liệu](#tài-liệu) • [🐛 Issues](https://github.com/Banhcanhcua1107/AppDatDoHub/issues) • [💬 Discussions](https://github.com/Banhcanhcua1107/AppDatDoHub/discussions)
+
+
+
+### 🛒 Order Management</div>
+
+- Menu browsing and item customization
+
+- Shopping cart with split order support---
+
+- Order confirmation workflow
+
+- Bill generation and printing## 📌 Giới Thiệu
+
+
+
+### 👨‍🍳 Kitchen Display System (KDS)**AppDatDoHub** là nền tảng di động **toàn diện** được xây dựng để quản lý hoạt động hàng ngày của nhà hàng, quán ăn. 
+
+- Real-time order status updatesỨng dụng hỗ trợ **nhiều vai trò** (Nhân viên phục vụ, Bếp, Thu ngân, Quản lý) với các tính năng **riêng biệt** và **tích hợp tuyệt vời**.
+
+- Item availability management
+
+- Return/cancellation requests### 🎯 Mục Đích Chính
+
+- Processing reports and analytics- 📱 Quản lý đơn hàng trực tuyến, real-time
+
 - 👨‍🍳 Hiển thị Kitchen Display System (KDS) cho bếp
-- 💳 Quản lý thanh toán & quỹ tiền
-- 📊 Báo cáo doanh số & thống kê chi tiết
-- 🔔 Hệ thống thông báo theo thời gian thực
-- 📦 Quản lý kho hàng & menu
-- 🔐 Kiểm soát truy cập theo vai trò (RBAC)
 
----
+### 💳 Cashier Operations- 💳 Quản lý thanh toán & quỹ tiền
 
-## ✨ Tính Năng Chính
+- Point of sale (POS) interface- 📊 Báo cáo doanh số & thống kê chi tiết
 
-### � Quản Lý Xác Thực & Phân Quyền
+- Multiple payment methods- 🔔 Hệ thống thông báo theo thời gian thực
 
-<table>
-<tr>
-<td>
+- Discounts and promotions- 📦 Quản lý kho hàng & menu
+
+- Financial reconciliation- 🔐 Kiểm soát truy cập theo vai trò (RBAC)
+
+
+
+### 🔔 Notification System---
+
+- Real-time order notifications
+
+- Sound alerts for new orders## ✨ Tính Năng Chính
+
+- Return item notifications
+
+- Staff notifications with vibration feedback### � Quản Lý Xác Thực & Phân Quyền
+
+
+
+### 👤 User Authentication<table>
+
+- Role-based access control (Manager, Cashier, Kitchen Staff, Service Staff)<tr>
+
+- Secure login with OTP verification<td>
+
+- Password management
 
 - ✅ Đăng nhập/Đăng xuất an toàn
-- ✅ Đăng ký với xác thực OTP qua email
+
+## 🛠️ Tech Stack- ✅ Đăng ký với xác thực OTP qua email
+
 - ✅ Quên/Đặt lại mật khẩu
-- ✅ Quản lý phiên đăng nhập
-- ✅ Hỗ trợ 4 vai trò: Nhân viên, Bếp, Thu ngân, Admin
 
-</td>
-<td>
+- **Frontend:** React Native with Expo- ✅ Quản lý phiên đăng nhập
 
-```
-👤 Roles & Permissions
+- **State Management:** Zustand, Redux, Context API- ✅ Hỗ trợ 4 vai trò: Nhân viên, Bếp, Thu ngân, Admin
+
+- **Navigation:** React Navigation (native-stack)
+
+- **Database:** Supabase (PostgreSQL)</td>
+
+- **Styling:** NativeWind (Tailwind CSS), StyleSheet<td>
+
+- **Animations:** React Native Reanimated
+
+- **Notifications:** Expo notifications```
+
+- **Audio:** Expo AV (notification sounds)👤 Roles & Permissions
+
 ├── 👨‍💼 Nhân viên (Staff)
-├── 👨‍🍳 Bếp (Kitchen)
+
+## 📂 Project Structure├── 👨‍🍳 Bếp (Kitchen)
+
 ├── 💰 Thu ngân (Cashier)
-└── ⚙️ Admin
-```
 
-</td>
-</tr>
-</table>
+```└── ⚙️ Admin
 
-### 🍽️ Quản Lý Menu & Đơn Hàng
+├── screens/              # Screen components```
 
-<table>
-<tr>
-<td>
+│   ├── Auth/            # Login, registration, OTP screens
 
-- ✅ Menu phân loại theo danh mục
-- ✅ Tùy chỉnh chi tiết từng món
-- ✅ Giỏ hàng động, real-time
-- ✅ Chia đơn hàng cho nhiều khách
-- ✅ Lịch sử đơn hàng chi tiết
-- ✅ In hóa đơn trực tiếp
+│   ├── Cashier/         # Cashier dashboard and utilities</td>
 
-</td>
-<td>
+│   ├── Kitchen/         # Kitchen display system</tr>
 
-```
+│   ├── Menu/            # Menu browsing and ordering</table>
+
+│   ├── Orders/          # Order management
+
+│   ├── Tables/          # Table management### 🍽️ Quản Lý Menu & Đơn Hàng
+
+│   └── Profile/         # User profile
+
+├── components/          # Reusable UI components<table>
+
+├── services/            # API and business logic<tr>
+
+│   ├── api.ts          # Supabase API client<td>
+
+│   ├── reportService.ts # Report data fetching
+
+│   ├── orderService.ts # Order operations- ✅ Menu phân loại theo danh mục
+
+│   └── ...- ✅ Tùy chỉnh chi tiết từng món
+
+├── hooks/               # Custom React hooks- ✅ Giỏ hàng động, real-time
+
+├── context/             # React Context providers- ✅ Chia đơn hàng cho nhiều khách
+
+├── store/               # State management (Zustand)- ✅ Lịch sử đơn hàng chi tiết
+
+├── navigation/          # Navigation configuration- ✅ In hóa đơn trực tiếp
+
+├── utils/               # Utility functions
+
+└── constants/           # Constants and configuration</td>
+
+```<td>
+
+
+
+## 🚀 Getting Started```
+
 📋 Order Workflow
-1. Chọn menu
-2. Tùy chỉnh (ghi chú)
-3. Thêm vào giỏ
-4. Chọn bàn
+
+### Prerequisites1. Chọn menu
+
+- Node.js (v16 or higher)2. Tùy chỉnh (ghi chú)
+
+- npm or yarn3. Thêm vào giỏ
+
+- Expo CLI: `npm install -g expo-cli`4. Chọn bàn
+
 5. Xác nhận → Bếp nhận
+
+### Installation```
+
+
+
+1. **Clone the repository**</td>
+
+```bash</tr>
+
+git clone https://github.com/Banhcanhcua1107/AppDatDoHub.git</table>
+
+cd AppDatDoHub
+
+```### 🏠 Bàn Phục Vụ & Quản Lý Bàn
+
+
+
+2. **Install dependencies**<table>
+
+```bash<tr>
+
+npm install<td>
+
 ```
-
-</td>
-</tr>
-</table>
-
-### 🏠 Bàn Phục Vụ & Quản Lý Bàn
-
-<table>
-<tr>
-<td>
 
 - ✅ Sơ đồ bàn trực quan
-- ✅ Trạng thái bàn: Trống → Có khách → Có đơn
-- ✅ Tạo đơn cho bàn cụ thể
-- ✅ Chuyển/Gộp bàn
-- ✅ Thanh toán bàn riêng
-- ✅ Quản lý sức chứa
 
-</td>
-<td>
+3. **Configure environment**- ✅ Trạng thái bàn: Trống → Có khách → Có đơn
+
+Create a `.env` file with your Supabase credentials:- ✅ Tạo đơn cho bàn cụ thể
+
+```- ✅ Chuyển/Gộp bàn
+
+EXPO_PUBLIC_SUPABASE_URL=your_supabase_url- ✅ Thanh toán bàn riêng
+
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your_anon_key- ✅ Quản lý sức chứa
 
 ```
-🪑 Bàn Status
+
+</td>
+
+4. **Start the development server**<td>
+
+```bash
+
+npm start```
+
+```🪑 Bàn Status
+
 ├── 🟢 Trống (Available)
-├── 🟡 Có khách (Occupied)
-├── 🔵 Có đơn (Processing)
-└── 🔴 Bảo trì (Maintenance)
-```
 
-</td>
-</tr>
+5. **Run on platform**├── 🟡 Có khách (Occupied)
+
+```bash├── 🔵 Có đơn (Processing)
+
+# iOS└── 🔴 Bảo trì (Maintenance)
+
+npm run ios```
+
+
+
+# Android</td>
+
+npm run android</tr>
+
 </table>
 
-### 👨‍🍳 Kitchen Display System (KDS)
+# Web
+
+npm run web### 👨‍🍳 Kitchen Display System (KDS)
+
+```
 
 <table>
-<tr>
+
+## 📱 Key Screens<tr>
+
 <td>
 
-- ✅ Hiển thị tất cả đơn hàng
-- ✅ Trạng thái: Chờ → Đang làm → Sẵn sàng
-- ✅ Đánh dấu hàng hết/không có sẵn
+### Cashier Module
+
+- **Dashboard**: Real-time metrics and key performance indicators- ✅ Hiển thị tất cả đơn hàng
+
+- **Reports**: Detailed profit, sales, inventory, and cash flow analysis- ✅ Trạng thái: Chờ → Đang làm → Sẵn sàng
+
+- **Utilities**: Expense management, promotions, menu management- ✅ Đánh dấu hàng hết/không có sẵn
+
 - ✅ Thông báo tự động
-- ✅ Báo cáo xử lý đơn hàng
-- ✅ Lịch sử trả món
 
-</td>
+### Kitchen Module- ✅ Báo cáo xử lý đơn hàng
+
+- **KDS (Kitchen Display System)**: Real-time order display and management- ✅ Lịch sử trả món
+
+- **Return Management**: Handle customer return requests
+
+- **Processing Report**: Performance analytics for kitchen staff</td>
+
 <td>
 
-```
-⏱️ Item Status Flow
-🟦 Waiting (Chờ)
+### Service Staff Module
+
+- **Tables**: Visual table management and order placement```
+
+- **Menu**: Browse menu items and place orders⏱️ Item Status Flow
+
+- **Order Status**: Track order progress and delivery🟦 Waiting (Chờ)
+
    ↓
-🟨 In Progress (Đang làm)
-   ↓
-🟩 Completed (Sẵn sàng)
-   ↓
+
+### Manager Module🟨 In Progress (Đang làm)
+
+- **All Reports**: Comprehensive business analytics   ↓
+
+- **User Management**: Staff management and role assignment🟩 Completed (Sẵn sàng)
+
+- **System Settings**: Configuration and preferences   ↓
+
 🟪 Served (Phục vụ)
-```
 
-</td>
-</tr>
-</table>
+## 🔐 Authentication```
 
-### 💳 Quản Lý Thanh Toán
 
-<table>
+
+The app supports role-based authentication with the following user types:</td>
+
+- **Manager**: Full system access</tr>
+
+- **Cashier**: POS and financial operations</table>
+
+- **Kitchen Staff**: Order preparation and management
+
+- **Service Staff**: Table service and ordering### 💳 Quản Lý Thanh Toán
+
+
+
+## 📊 Database Schema<table>
+
 <tr>
+
+Key tables:<td>
+
+- `users`: User accounts and authentication
+
+- `orders`: Order records- ✅ Tính hóa đơn tạm tính tự động
+
+- `order_items`: Individual items in orders- ✅ Nhiều phương thức thanh toán
+
+- `tables`: Restaurant table configuration- ✅ Quản lý quỹ tiền mặt
+
+- `menu_items`: Menu item catalog- ✅ Quản lý quỹ ngân hàng
+
+- `return_notifications`: Item return notifications- ✅ Lịch sử giao dịch đầy đủ
+
+- `transactions`: Financial records- ✅ In biên lai thanh toán
+
+
+
+## 🔧 Configuration</td>
+
 <td>
 
-- ✅ Tính hóa đơn tạm tính tự động
-- ✅ Nhiều phương thức thanh toán
-- ✅ Quản lý quỹ tiền mặt
-- ✅ Quản lý quỹ ngân hàng
-- ✅ Lịch sử giao dịch đầy đủ
-- ✅ In biên lai thanh toán
+Key configuration files:
 
-</td>
-<td>
+- `app.json`: Expo configuration```
 
-```
-💵 Payment Methods
-├── 💵 Tiền mặt (Cash)
-├── 🏦 Ngân hàng (Bank)
+- `tailwind.config.js`: Tailwind styling💵 Payment Methods
+
+- `tsconfig.json`: TypeScript configuration├── 💵 Tiền mặt (Cash)
+
+- `babel.config.js`: Babel configuration├── 🏦 Ngân hàng (Bank)
+
 ├── 💳 Thẻ (Card)
-└── 📱 Điện tử (E-wallet)
+
+## 📚 API Services└── 📱 Điện tử (E-wallet)
+
 ```
 
-</td>
-</tr>
-</table>
+### Available RPC Functions
 
-### 📊 Báo Cáo & Thống Kê
+- `get_sales_report()`: Fetch sales data</td>
+
+- `get_profit_report()`: Fetch profit analysis</tr>
+
+- `get_inventory_report()`: Fetch inventory status</table>
+
+- `get_cash_flow_report()`: Fetch cash flow data
+
+- `get_purchase_report()`: Fetch purchase records### 📊 Báo Cáo & Thống Kê
+
+- `get_dashboard_data()`: Fetch dashboard metrics
 
 <table>
-<tr>
+
+## 🎨 UI/UX Highlights<tr>
+
 <td>
 
-- ✅ Dashboard real-time
-- ✅ Báo cáo doanh số theo ngày/tháng
-- ✅ Báo cáo chi phí & quỹ
-- ✅ Báo cáo kho hàng
+- Clean, modern interface optimized for mobile devices
+
+- Responsive design that adapts to different screen sizes- ✅ Dashboard real-time
+
+- Smooth animations and transitions- ✅ Báo cáo doanh số theo ngày/tháng
+
+- Intuitive navigation with bottom tab bars- ✅ Báo cáo chi phí & quỹ
+
+- Color-coded status indicators- ✅ Báo cáo kho hàng
+
 - ✅ Báo cáo xử lý từ bếp
-- ✅ Export dữ liệu
 
-</td>
+## 🤝 Contributing- ✅ Export dữ liệu
+
+
+
+Contributions are welcome! Please feel free to submit a Pull Request.</td>
+
 <td>
 
-```
-📈 Analytics
-├── 💰 Revenue
-├── 📉 Expenses
-├── 🍽️ Orders
-├── ⏱️ Speed
-└── 📦 Inventory
+## 📄 License
+
 ```
 
-</td>
-</tr>
-</table>
+This project is proprietary software. All rights reserved.📈 Analytics
+
+├── 💰 Revenue
+
+## 📧 Contact├── 📉 Expenses
+
+├── 🍽️ Orders
+
+For questions or support, please contact the development team.├── ⏱️ Speed
+
+└── 📦 Inventory
+
+---```
+
+
+
+**Last Updated:** October 22, 2025  </td>
+
+**Version:** 1.0.0  </tr>
+
+**Status:** Active Development</table>
+
 
 ### 🔔 Hệ Thống Thông Báo Real-time
 

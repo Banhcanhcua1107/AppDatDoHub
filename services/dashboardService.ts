@@ -109,8 +109,8 @@ export const getDashboardData = async () => {
     const activities: RecentActivity[] = activitiesRaw.map((act) => {
         let type: RecentActivity['type'] = 'order';
         const status = act.status || '';
-        const tableId = act.table_id || 'N/A';
-        const tableName = `Bàn ${tableId}`;
+        // Lấy tên bàn từ trường name nếu có, hoặc từ table_id
+        const tableName = act.name || `Bàn ${act.table_id || 'N/A'}`;
         let title = `${tableName} đã đặt món`;
 
         if (['completed', 'paid', 'closed'].includes(status)) {
