@@ -35,7 +35,6 @@ import KitchenSummaryDetailScreen from '../screens/Kitchen/KitchenSummaryDetailS
 import KitchenProcessingReportScreen from 'screens/Kitchen/KitchenProcessingReportScreen';
 import ItemAvailabilityScreen from 'screens/Kitchen/ItemAvailabilityScreen';
 import ReturnHistoryScreen from 'screens/Kitchen/ReturnHistoryScreen'; // [MỚI]
-import CancellationRequestsScreen from '../screens/Kitchen/CancellationRequestsScreen';
 import CancellationRequestsDetailScreen from '../screens/Kitchen/CancellationRequestsDetailScreen'; // [MỚI]
 // --- [THÊM] Import CashierTabs và các màn hình Thu ngân ---
 import CashierTabs from './CashierTabs';
@@ -156,7 +155,6 @@ const KitchenNavigator = () => (
     <KitchenStack.Screen name="KitchenProcessingReport" component={KitchenProcessingReportScreen} options={{ headerShown: false }} />
     <KitchenStack.Screen name="ItemAvailability" component={ItemAvailabilityScreen} options={{ headerShown: false }} />
     <KitchenStack.Screen name="ReturnHistory" component={ReturnHistoryScreen} options={{ headerShown: false }} />
-    <KitchenStack.Screen name="CancellationRequests" component={CancellationRequestsScreen} />
     <KitchenStack.Screen name="CancellationRequestsDetail" component={CancellationRequestsDetailScreen} />
   </KitchenStack.Navigator>
 );

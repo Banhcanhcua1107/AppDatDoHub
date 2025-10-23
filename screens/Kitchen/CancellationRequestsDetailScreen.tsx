@@ -1,6 +1,3 @@
-// screens/Kitchen/CancellationRequestsDetailScreen.tsx
-// MÀN HÌNH CHI TIẾT YÊU CẦU HỦY/TRẢ CỦA MỘT BÀN
-
 import React, { useState, useCallback } from 'react';
 import { View, Text, FlatList, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, SafeAreaView, StatusBar } from 'react-native';
 import { useFocusEffect, useRoute, useNavigation } from '@react-navigation/native';
@@ -10,6 +7,11 @@ import { supabase } from '../../services/supabase';
 import Icon from 'react-native-vector-icons/Ionicons';
 import Toast from 'react-native-toast-message';
 import { KitchenStackParamList } from '../../navigation/AppNavigator';
+// [THÊM] Import service để gửi thông báo
+import { 
+  sendCancellationApprovedNotification, 
+  sendCancellationRejectedNotification 
+} from '../../services/notificationService';
 
 type CancellationRequestsDetailScreenRouteProp = RouteProp<KitchenStackParamList, 'CancellationRequestsDetail'>;
 type CancellationRequestsDetailScreenNavigationProp = NativeStackNavigationProp<KitchenStackParamList>;
@@ -69,7 +71,6 @@ const CancellationRequestsDetailScreen = () => {
 
     if (error) {
       Alert.alert('Lỗi', 'Không thể tải danh sách yêu cầu hủy/trả món.');
-      console.error('Error fetching cancellation requests:', error.message);
     } else {
       setRequests(data as CancellationRequest[]);
     }
@@ -80,8 +81,8 @@ const CancellationRequestsDetailScreen = () => {
     useCallback(() => {
       fetchRequests();
       const channel = supabase
-        .channel(`public:cancellation_requests:detail:${orderId}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'cancellation_requests' }, () => {
+        .channel(`cancellation_requests_detail_screen:${orderId}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'cancellation_requests', filter: `order_id=eq.${orderId}` }, () => {
           fetchRequests();
         })
         .subscribe();
@@ -90,93 +91,136 @@ const CancellationRequestsDetailScreen = () => {
   );
   
   const handleApprove = async (requestId: string) => {
-      const request = requests.find(r => r.id === requestId);
-      if (!request) return;
+    // Bước 1: Tìm yêu cầu cụ thể trong state
+    const request = requests.find(r => r.id === requestId);
+    if (!request) {
+        // Trường hợp hiếm gặp, nhưng để đảm bảo an toàn
+        Toast.show({ type: 'error', text1: 'Không tìm thấy yêu cầu!' });
+        return;
+    }
 
-      // [OPTIMISTIC UPDATE] Xóa box ngay lập tức
-      setRequests(prev => prev.filter(r => r.id !== requestId));
+    // Bước 2: Cập nhật giao diện ngay lập tức (Optimistic Update)
+    setRequests(prev => prev.filter(r => r.id !== requestId));
 
-      try {
-        // Tạo return slip trước
+    try {
+        // --- BẮT ĐẦU CHUỖI TƯƠNG TÁC DATABASE ---
+
+        // Bước 3: Tạo một 'return_slip' (phiếu trả hàng) để ghi lại sự kiện này
         const { data: returnSlipData, error: slipError } = await supabase
-          .from('return_slips')
-          .insert({
-            order_id: request.order_id,
-            reason: request.reason,
-            type: 'approved_cancellation',
-            created_at: new Date().toISOString()
-          })
-          .select('id')
-          .single();
+            .from('return_slips')
+            .insert({
+                order_id: request.order_id, // Sử dụng order_id từ request
+                reason: `Duyệt yêu cầu: ${request.reason}`,
+                type: 'approved_cancellation',
+            })
+            .select('id')
+            .single();
 
         if (slipError) throw slipError;
 
-        // Cập nhật returned_quantity và tạo return_slip_items với unit_price
+        // Chuẩn bị dữ liệu để insert hàng loạt và tạo nội dung thông báo
         const returnSlipItemsToInsert = [];
-        
+        const approvedItemNames: string[] = [];
+
+        // Bước 4: Lặp qua từng món trong yêu cầu để cập nhật 'order_items'
         for (const item of request.requested_items) {
-          // Lấy thông tin order_item hiện tại để lấy unit_price và returned_quantity
-          const { data: currentItem, error: fetchError } = await supabase
-            .from('order_items')
-            .select('returned_quantity, unit_price')
-            .eq('id', item.order_item_id)
-            .single();
-          
-          if (fetchError) throw fetchError;
-          
-          // Tăng returned_quantity
-          const newReturnedQuantity = (currentItem.returned_quantity || 0) + item.quantity;
-          
-          const { error: updateError } = await supabase
-            .from('order_items')
-            .update({ returned_quantity: newReturnedQuantity })
-            .eq('id', item.order_item_id);
-          
-          if (updateError) throw updateError;
-          
-          // Thêm vào mảng return_slip_items với unit_price
-          returnSlipItemsToInsert.push({
-            return_slip_id: returnSlipData.id,
-            order_item_id: item.order_item_id,
-            quantity: item.quantity,
-            unit_price: currentItem.unit_price
-          });
+            // Lấy trạng thái hiện tại của order_item để có unit_price và returned_quantity
+            const { data: currentItem, error: fetchError } = await supabase
+                .from('order_items')
+                .select('returned_quantity, unit_price')
+                .eq('id', item.order_item_id)
+                .single();
+            
+            if (fetchError) throw fetchError;
+            
+            // Tính toán số lượng trả mới
+            const newReturnedQuantity = (currentItem.returned_quantity || 0) + item.quantity;
+            
+            // Cập nhật lại order_item với số lượng đã trả mới
+            const { error: updateError } = await supabase
+                .from('order_items')
+                .update({ returned_quantity: newReturnedQuantity })
+                .eq('id', item.order_item_id);
+            
+            if (updateError) throw updateError;
+            
+            // Thêm dữ liệu vào mảng để chuẩn bị insert vào 'return_slip_items'
+            returnSlipItemsToInsert.push({
+                return_slip_id: returnSlipData.id,
+                order_item_id: item.order_item_id,
+                quantity: item.quantity,
+                unit_price: currentItem.unit_price // Lưu lại giá tại thời điểm trả
+            });
+
+            // Thêm tên món vào mảng để tạo nội dung thông báo
+            approvedItemNames.push(`${item.name} (SL: ${item.quantity})`);
         }
         
-        // Insert tất cả return_slip_items
+        // Bước 5: Insert tất cả các chi tiết phiếu trả hàng (return_slip_items)
         const { error: itemsError } = await supabase
-          .from('return_slip_items')
-          .insert(returnSlipItemsToInsert);
+            .from('return_slip_items')
+            .insert(returnSlipItemsToInsert);
         if (itemsError) throw itemsError;
 
-        // Cập nhật status của cancellation_request
+        // Bước 6: Cập nhật trạng thái của yêu cầu hủy ban đầu thành 'approved'
         const { error: requestError } = await supabase
-          .from('cancellation_requests')
-          .update({ status: 'approved' })
-          .eq('id', requestId);
+            .from('cancellation_requests')
+            .update({ status: 'approved' })
+            .eq('id', requestId);
         if (requestError) throw requestError;
 
-        Toast.show({type: 'success', text1: 'Đã duyệt yêu cầu thành công.'});
-      } catch (error: any) {
-        Alert.alert('Lỗi', 'Không thể duyệt yêu cầu: ' + error.message);
-        // [ROLLBACK] Khôi phục lại nếu lỗi
+        // --- HOÀN TẤT TƯƠNG TÁC DATABASE ---
+
+        // Bước 7: Gửi thông báo cho nhân viên rằng yêu cầu đã được DUYỆT
+        await sendCancellationApprovedNotification(
+            request.order_id,
+            request.table_name,
+            approvedItemNames.join(', ')
+        );
+
+        // Bước 8: Hiển thị thông báo thành công cho người dùng (bếp)
+        Toast.show({ type: 'success', text1: 'Đã duyệt yêu cầu thành công.' });
+        
+        // Bước 9 (Cải thiện UX): Nếu đây là yêu cầu cuối cùng, tự động quay lại
+        if (requests.length === 1 && navigation.canGoBack()) {
+            navigation.goBack();
+        }
+
+    } catch (error: any) {
+        // XỬ LÝ LỖI: Nếu có bất kỳ bước nào ở trên thất bại
+        Alert.alert('Lỗi Thao Tác', 'Không thể duyệt yêu cầu: ' + error.message);
+        
+        // Rollback UI: Tải lại danh sách yêu cầu từ database để giao diện khớp với thực tế
         fetchRequests();
-      }
-  };
+    }
+};
   
   const handleReject = async (requestId: string) => {
-      // [OPTIMISTIC UPDATE] Xóa box ngay lập tức
-      setRequests(prev => prev.filter(r => r.id !== requestId));
-      
-      const { error } = await supabase.from('cancellation_requests').update({ status: 'rejected' }).eq('id', requestId);
-      if (error) {
-        Alert.alert('Lỗi', 'Không thể từ chối yêu cầu.');
-        // [ROLLBACK] Khôi phục lại nếu lỗi
-        fetchRequests();
-      } else {
-        Toast.show({type: 'info', text1: 'Đã từ chối yêu cầu.'});
-      }
-  };
+  const request = requests.find(r => r.id === requestId);
+  if (!request) return;
+
+  setRequests(prev => prev.filter(r => r.id !== requestId));
+  
+  try {
+    const { error } = await supabase.from('cancellation_requests').update({ status: 'rejected' }).eq('id', requestId);
+    if (error) throw error;
+    
+    // Gửi thông báo từ chối
+    const rejectedItemNames = request.requested_items.map(i => `${i.name} (x${i.quantity})`).join(', ');
+    await sendCancellationRejectedNotification(
+      request.order_id,
+      request.table_name,
+      rejectedItemNames
+    );
+    
+    Toast.show({ type: 'info', text1: 'Đã từ chối yêu cầu.' });
+    if (requests.length === 1) navigation.goBack();
+
+  } catch (error: any) {
+     Alert.alert('Lỗi', 'Không thể từ chối yêu cầu: ' + error.message);
+     fetchRequests(); // Rollback UI
+  }
+};
 
   if (loading) return <View style={styles.center}><ActivityIndicator size="large" /></View>;
 

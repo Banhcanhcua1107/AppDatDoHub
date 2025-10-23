@@ -23,7 +23,7 @@ import { AppTabParamList, AppStackParamList, ROUTES } from '../../constants/rout
 import Toast from 'react-native-toast-message';
 import { useNetwork } from '../../context/NetworkContext';
 import ConfirmModal from '../../components/ConfirmModal';
-import { playNotificationSound } from '../../utils/soundManager'; 
+// import { playNotificationSound } from '../../utils/soundManager'; 
 // --- [SỬA LỖI] Định nghĩa kiểu dữ liệu rõ ràng ---
 type TableInfo = { id: string; name: string };
 type ActiveOrder = {
@@ -160,27 +160,26 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
 
     // [MỚI] Subscribe realtime notification - Filter by order_id
     const channel = supabase
-      .channel(`return_notifications_${item.orderId}`)
+      .channel(`return_notifications_for_order_${item.orderId}`)
       .on(
         'postgres_changes',
         { 
-          event: '*', 
+          event: '*', // Lắng nghe mọi thay đổi để cập nhật UI
           schema: 'public', 
           table: 'return_notifications',
           filter: `order_id=eq.${item.orderId}`
         },
         (payload: any) => {
-          console.log(`[OrderScreen] Notification received for order ${item.orderId}:`, payload);
-          // [CẬP NHẬT] Phát âm thanh khi có thông báo mới
-          if (payload.eventType === 'INSERT') {
-            playNotificationSound();
-          }
+          // [XÓA] Không cần phát âm thanh ở đây nữa, NotificationContext đã xử lý
+          // if (payload.eventType === 'INSERT') {
+          //   playNotificationSound();
+          // }
+          
+          // Chỉ cần fetch lại số lượng để cập nhật huy hiệu
           fetchNotifications();
         }
       )
-      .subscribe((status) => {
-        console.log(`[OrderScreen] Subscription status for ${item.orderId}:`, status);
-      });
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);

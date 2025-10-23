@@ -13,23 +13,31 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import './global.css';
 import { Ionicons } from '@expo/vector-icons';
 
+// [THÊM] Import các thành phần cần thiết
+import { NotificationProvider } from './context/NotificationContext';
+import { initializeAudio } from './utils/soundManager';
+
 function AppContent() {
   const [fontsLoaded, setFontsLoaded] = useState(false);
 
   useEffect(() => {
-  const loadFonts = async () => {
-    try {
-      await Font.loadAsync({
-        ...Ionicons.font,
-      });
-    } catch (error) {
-      console.log('Font load warning:', error);
-    }
-    setFontsLoaded(true);
-  };
+    // [THÊM] Khởi tạo audio mode khi app bắt đầu.
+    // Việc này đảm bảo âm thanh có thể phát ngay cả khi điện thoại ở chế độ im lặng (iOS).
+    initializeAudio();
 
-  loadFonts();
-}, []);
+    const loadFonts = async () => {
+      try {
+        await Font.loadAsync({
+          ...Ionicons.font,
+        });
+      } catch (error) {
+        console.log('Font load warning:', error);
+      }
+      setFontsLoaded(true);
+    };
+
+    loadFonts();
+  }, []); // Mảng rỗng đảm bảo useEffect chỉ chạy một lần duy nhất
 
   if (!fontsLoaded) {
     return (
@@ -40,12 +48,16 @@ function AppContent() {
   }
 
   return (
-    <AuthProvider>
-      <NetworkProvider>
-        <AppNavigator />
-        <Toast config={toastConfig} />
-      </NetworkProvider>
-    </AuthProvider>
+    // [SỬA LỖI] Bao bọc toàn bộ cây component bằng NotificationProvider
+    // để bộ lắng nghe toàn cục có thể hoạt động ở bất kỳ đâu.
+    <NotificationProvider>
+      <AuthProvider>
+        <NetworkProvider>
+          <AppNavigator />
+          <Toast config={toastConfig} />
+        </NetworkProvider>
+      </AuthProvider>
+    </NotificationProvider>
   );
 }
 

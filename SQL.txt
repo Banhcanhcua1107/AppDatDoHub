@@ -1288,3 +1288,34 @@ EXECUTE FUNCTION public.create_item_ready_notification();
 
 -- BƯỚC 5: THÔNG BÁO HOÀN TẤT
 SELECT 'Hoàn thành! Toàn bộ logic tự động hóa cho Order đã được thiết lập.' AS status;
+
+////
+
+
+-- Bước 1: Thêm cột 'updated_at' vào bảng 'orders'
+-- TIMESTAMPTZ là kiểu dữ liệu tốt nhất cho việc lưu thời gian (timestamp with time zone)
+ALTER TABLE public.orders
+ADD COLUMN updated_at TIMESTAMPTZ DEFAULT NOW();
+
+-- Bước 2: Tạo một hàm trigger chung để tự động cập nhật timestamp
+-- (Có thể bạn đã có hàm này, chạy lại cũng không sao)
+CREATE OR REPLACE FUNCTION public.moddatetime()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Bước 3: Gắn trigger vào bảng 'orders'
+-- Trigger này sẽ tự động gọi hàm moddatetime() mỗi khi một order được cập nhật
+CREATE TRIGGER handle_updated_at
+BEFORE UPDATE ON public.orders
+FOR EACH ROW
+EXECUTE PROCEDURE public.moddatetime();
+
+-- (Tùy chọn) Gắn trigger tương tự cho các bảng khác nếu cần
+-- CREATE TRIGGER handle_updated_at
+-- BEFORE UPDATE ON public.order_items
+-- FOR EACH ROW
+-- EXECUTE PROCEDURE public.moddatetime();

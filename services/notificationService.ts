@@ -1,14 +1,28 @@
 // services/notificationService.ts
 /**
- * Service để quản lý tất cả thông báo từ bếp
- * Thống nhất cách gửi thông báo từ các screen khác nhau
+ * Service để quản lý tất cả các loại thông báo.
+ * Tái cấu trúc để thống nhất logic, dễ bảo trì và mở rộng.
  */
 
 import { supabase } from './supabase';
-import Toast from 'react-native-toast-message';
 
-export type NotificationType = 'return_item' | 'item_ready' | 'out_of_stock';
+// [CẬP NHẬT] Thêm các loại thông báo mới
+export type NotificationType = 
+  | 'return_item' 
+  | 'item_ready' 
+  | 'out_of_stock'
+  | 'cancellation_approved'
+  | 'cancellation_rejected';
 
+// Interface cho payload của một thông báo
+interface NotificationPayload {
+  order_id: string;
+  table_name: string;
+  item_name: string; // Nội dung chính của thông báo
+  notification_type: NotificationType;
+}
+
+// Interface cho một thông báo đầy đủ từ database
 export interface ReturnNotification {
   id: number;
   order_id: string;
@@ -20,292 +34,138 @@ export interface ReturnNotification {
   acknowledged_at?: string;
 }
 
+// [CẬP NHẬT] Bổ sung thông tin cho các loại thông báo mới
 export const NOTIFICATION_TYPE_INFO = {
   return_item: {
     label: 'Trả lại món',
     icon: 'arrow-undo-outline',
-    color: '#F97316', // Orange
-    description: 'Khách trả lại món này',
+    color: '#F97316',
   },
   item_ready: {
     label: 'Sẵn sàng phục vụ',
     icon: 'checkmark-circle-outline',
-    color: '#10B981', // Green
-    description: 'Món đã sẵn sàng, hãy phục vụ',
+    color: '#10B981',
   },
   out_of_stock: {
     label: 'Hết hàng',
     icon: 'alert-circle-outline',
-    color: '#DC2626', // Red
-    description: 'Hết hàng, cần báo cho khách',
+    color: '#DC2626',
+  },
+  cancellation_approved: {
+    label: 'Yêu cầu được duyệt',
+    icon: 'checkmark-done-circle-outline',
+    color: '#16A34A',
+  },
+  cancellation_rejected: {
+    label: 'Yêu cầu bị từ chối',
+    icon: 'close-circle-outline',
+    color: '#EF4444',
   },
 };
 
 /**
- * Gửi thông báo sẵn sàng phục vụ
- * Dùng khi bếp hoàn thành một món (chuyển từ in_progress -> served)
+ * [HÀM LÕI] Gửi một thông báo duy nhất.
+ * Các hàm public khác sẽ gọi hàm này.
  */
-export const sendItemReadyNotification = async (
-  orderId: string,
-  tableName: string,
-  itemName: string
-): Promise<boolean> => {
-  try {
-    const { error } = await supabase.from('return_notifications').insert({
-      order_id: orderId,
-      table_name: tableName,
-      item_name: itemName,
-      status: 'pending',
-      notification_type: 'item_ready',
-    });
+const sendNotification = async (payload: NotificationPayload) => {
+  const { error } = await supabase.from('return_notifications').insert({
+    ...payload,
+    status: 'pending',
+  });
 
-    if (error) throw error;
-
-    Toast.show({
-      type: 'success',
-      text1: '✓ Đã gửi thông báo',
-      text2: `${itemName} sẵn sàng phục vụ`,
-      visibilityTime: 2000,
-    });
-
-    return true;
-  } catch (error: any) {
-    console.error('Lỗi gửi thông báo sẵn sàng phục vụ:', error.message);
-    Toast.show({
-      type: 'error',
-      text1: 'Lỗi',
-      text2: 'Không thể gửi thông báo',
-      visibilityTime: 2000,
-    });
-    return false;
+  if (error) {
+    console.error('Lỗi gửi thông báo:', error.message);
+    // Ném lỗi để component gọi nó có thể bắt và xử lý
+    throw new Error(`Không thể gửi thông báo: ${error.message}`);
   }
 };
 
-/**
- * Gửi thông báo hết hàng
- * Dùng khi bếp báo hết một món (menu_items.is_available = false)
- */
-export const sendOutOfStockNotification = async (
-  orderId: string,
-  tableName: string,
-  itemName: string
-): Promise<boolean> => {
-  try {
-    const { error } = await supabase.from('return_notifications').insert({
-      order_id: orderId,
-      table_name: tableName,
-      item_name: itemName,
-      status: 'pending',
-      notification_type: 'out_of_stock',
-    });
+// --- CÁC HÀM GỬI THÔNG BÁO PUBLIC ---
 
-    if (error) throw error;
+export const sendItemReadyNotification = (orderId: string, tableName: string, itemName: string) => {
+  return sendNotification({
+    order_id: orderId,
+    table_name: tableName,
+    item_name: `Món sẵn sàng: ${itemName}`,
+    notification_type: 'item_ready',
+  });
+};
 
-    Toast.show({
-      type: 'info',
-      text1: '⚠️  Báo hết hàng',
-      text2: `${itemName} đã hết hàng`,
-      visibilityTime: 2000,
-    });
+export const sendOutOfStockNotification = (orderId: string, tableName: string, itemName: string) => {
+  return sendNotification({
+    order_id: orderId,
+    table_name: tableName,
+    item_name: `Hết món: ${itemName}`,
+    notification_type: 'out_of_stock',
+  });
+};
 
-    return true;
-  } catch (error: any) {
-    console.error('Lỗi gửi thông báo hết hàng:', error.message);
-    Toast.show({
-      type: 'error',
-      text1: 'Lỗi',
-      text2: 'Không thể gửi thông báo hết hàng',
-      visibilityTime: 2000,
-    });
-    return false;
-  }
+export const sendCancellationApprovedNotification = (orderId: string, tableName: string, itemDescription: string) => {
+  return sendNotification({
+    order_id: orderId,
+    table_name: tableName,
+    item_name: `Đã duyệt trả: ${itemDescription}`,
+    notification_type: 'cancellation_approved',
+  });
+};
+
+export const sendCancellationRejectedNotification = (orderId: string, tableName: string, itemDescription: string) => {
+  return sendNotification({
+    order_id: orderId,
+    table_name: tableName,
+    item_name: `Từ chối trả: ${itemDescription}`,
+    notification_type: 'cancellation_rejected',
+  });
 };
 
 /**
- * Gửi thông báo trả lại món
- * Dùng khi khách trả lại một món (create return_slip)
+ * Gửi nhiều thông báo cùng lúc (tối ưu hơn gọi lặp).
  */
-export const sendReturnItemNotification = async (
-  orderId: string,
-  tableName: string,
-  itemName: string,
-  quantity: number = 1
-): Promise<boolean> => {
-  try {
-    const { error } = await supabase.from('return_notifications').insert({
-      order_id: orderId,
-      table_name: tableName,
-      item_name: `${itemName} (x${quantity})`,
-      status: 'pending',
-      notification_type: 'return_item',
-    });
+export const sendBulkNotifications = async (notifications: NotificationPayload[]) => {
+  const payloadToInsert = notifications.map(n => ({ ...n, status: 'pending' }));
+  const { error } = await supabase.from('return_notifications').insert(payloadToInsert);
 
-    if (error) throw error;
-
-    Toast.show({
-      type: 'info',
-      text1: '↩️  Thông báo trả lại',
-      text2: `${itemName} x${quantity} - Khách trả lại`,
-      visibilityTime: 2000,
-    });
-
-    return true;
-  } catch (error: any) {
-    console.error('Lỗi gửi thông báo trả lại:', error.message);
-    Toast.show({
-      type: 'error',
-      text1: 'Lỗi',
-      text2: 'Không thể gửi thông báo trả lại',
-      visibilityTime: 2000,
-    });
-    return false;
-  }
-};
-
-/**
- * Gửi nhiều thông báo cùng lúc
- * Dùng khi hoàn thành toàn bộ order hoặc báo hết nhiều món
- */
-export const sendBulkNotifications = async (
-  notifications: {
-    orderId: string;
-    tableName: string;
-    itemName: string;
-    type: NotificationType;
-  }[]
-): Promise<boolean> => {
-  try {
-    const payload = notifications.map((n) => ({
-      order_id: n.orderId,
-      table_name: n.tableName,
-      item_name: n.itemName,
-      status: 'pending',
-      notification_type: n.type,
-    }));
-
-    const { error } = await supabase
-      .from('return_notifications')
-      .insert(payload);
-
-    if (error) throw error;
-
-    Toast.show({
-      type: 'success',
-      text1: `✓ Đã gửi ${notifications.length} thông báo`,
-      visibilityTime: 2000,
-    });
-
-    return true;
-  } catch (error: any) {
+  if (error) {
     console.error('Lỗi gửi bulk notifications:', error.message);
-    Toast.show({
-      type: 'error',
-      text1: 'Lỗi',
-      text2: 'Không thể gửi thông báo',
-      visibilityTime: 2000,
-    });
-    return false;
+    throw new Error(`Không thể gửi hàng loạt thông báo: ${error.message}`);
   }
 };
 
-/**
- * Lấy danh sách thông báo pending cho một order
- */
-export const getOrderNotifications = async (
-  orderId: string
-): Promise<ReturnNotification[]> => {
-  try {
-    const { data, error } = await supabase
-      .from('return_notifications')
-      .select('*')
-      .eq('order_id', orderId)
-      .eq('status', 'pending')
-      .order('created_at', { ascending: false });
 
-    if (error) throw error;
+// --- CÁC HÀM QUẢN LÝ THÔNG BÁO KHÁC (Giữ nguyên) ---
 
-    return data || [];
-  } catch (error: any) {
-    console.error('Lỗi lấy thông báo:', error.message);
-    return [];
-  }
-};
+export const acknowledgeNotification = async (notificationId: number) => {
+  const { error } = await supabase
+    .from('return_notifications')
+    .update({ status: 'acknowledged', acknowledged_at: new Date().toISOString() })
+    .eq('id', notificationId);
 
-/**
- * Đếm thông báo pending cho một order
- */
-export const getOrderNotificationCount = async (
-  orderId: string
-): Promise<number> => {
-  try {
-    const { count, error } = await supabase
-      .from('return_notifications')
-      .select('*', { count: 'exact', head: true })
-      .eq('order_id', orderId)
-      .eq('status', 'pending');
-
-    if (error) throw error;
-
-    return count || 0;
-  } catch (error: any) {
-    console.error('Lỗi đếm thông báo:', error.message);
-    return 0;
-  }
-};
-
-/**
- * Xác nhận (acknowledge) một thông báo
- */
-export const acknowledgeNotification = async (
-  notificationId: number
-): Promise<boolean> => {
-  try {
-    const { error } = await supabase
-      .from('return_notifications')
-      .update({
-        status: 'acknowledged',
-        acknowledged_at: new Date().toISOString(),
-      })
-      .eq('id', notificationId);
-
-    if (error) throw error;
-
-    return true;
-  } catch (error: any) {
+  if (error) {
     console.error('Lỗi xác nhận thông báo:', error.message);
-    return false;
+    throw new Error(error.message);
   }
 };
 
-/**
- * Xóa một thông báo
- */
-export const deleteNotification = async (
-  notificationId: number
-): Promise<boolean> => {
-  try {
-    const { error } = await supabase
-      .from('return_notifications')
-      .delete()
-      .eq('id', notificationId);
+export const deleteNotification = async (notificationId: number) => {
+  const { error } = await supabase.from('return_notifications').delete().eq('id', notificationId);
 
-    if (error) throw error;
-
-    return true;
-  } catch (error: any) {
+  if (error) {
     console.error('Lỗi xóa thông báo:', error.message);
-    return false;
+    throw new Error(error.message);
   }
 };
+
 
 export default {
+  // Hàm gửi
   sendItemReadyNotification,
   sendOutOfStockNotification,
-  sendReturnItemNotification,
+  sendCancellationApprovedNotification,
+  sendCancellationRejectedNotification,
   sendBulkNotifications,
-  getOrderNotifications,
-  getOrderNotificationCount,
+  // Hàm quản lý
   acknowledgeNotification,
   deleteNotification,
+  // Dữ liệu tĩnh
   NOTIFICATION_TYPE_INFO,
 };
