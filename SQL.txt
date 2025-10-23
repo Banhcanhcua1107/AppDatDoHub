@@ -1,0 +1,1290 @@
+-- =================================================================
+-- SCRIPT TỔNG THỂ CUỐI CÙNG: TÁI THIẾT LẬP TOÀN BỘ HỆ THỐNG
+-- =================================================================
+
+-- BƯỚC 1: DỌN DẸP SẠCH SẼ MỌI THỨ TỪ ĐẦU
+DROP TABLE IF EXISTS transactions CASCADE;
+DROP TABLE IF EXISTS return_slip_items CASCADE;
+DROP TABLE IF EXISTS return_slips CASCADE;
+DROP TABLE IF EXISTS return_notifications CASCADE;
+DROP TABLE IF EXISTS cancellation_requests CASCADE;
+DROP TABLE IF EXISTS order_items CASCADE;
+DROP TABLE IF EXISTS cart_items CASCADE;
+DROP TABLE IF EXISTS order_tables CASCADE;
+DROP TABLE IF EXISTS orders CASCADE;
+DROP TABLE IF EXISTS menu_item_options CASCADE;
+DROP TABLE IF EXISTS option_choices CASCADE;
+DROP TABLE IF EXISTS option_groups CASCADE;
+DROP TABLE IF EXISTS menu_items CASCADE;
+DROP TABLE IF EXISTS categories CASCADE;
+DROP TABLE IF EXISTS tables CASCADE;
+DROP TYPE IF EXISTS order_status_enum;
+DROP TYPE IF EXISTS payment_method_enum;
+
+-- BƯỚC 2: TẠO LẠI TOÀN BỘ CẤU TRÚC BẢNG (TABLES)
+-- 2.1. Bảng cơ bản
+CREATE TABLE categories (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), name TEXT NOT NULL UNIQUE);
+CREATE TABLE tables (id BIGSERIAL PRIMARY KEY, name TEXT NOT NULL, status TEXT DEFAULT 'Trống');
+
+-- 2.2. Bảng Menu và Tùy chọn (Options)
+CREATE TABLE menu_items (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), name TEXT NOT NULL, price NUMERIC(10, 0) NOT NULL, description TEXT, image_url TEXT, category_id UUID REFERENCES categories(id) ON DELETE SET NULL, is_available BOOLEAN DEFAULT TRUE, is_hot BOOLEAN DEFAULT FALSE, is_active BOOLEAN DEFAULT TRUE);
+CREATE TABLE option_groups (id BIGSERIAL PRIMARY KEY, name TEXT NOT NULL UNIQUE, type TEXT NOT NULL);
+CREATE TABLE option_choices (id BIGSERIAL PRIMARY KEY, group_id BIGINT NOT NULL REFERENCES option_groups(id) ON DELETE CASCADE, name TEXT NOT NULL, price_adjustment NUMERIC(10, 0) NOT NULL DEFAULT 0, UNIQUE(group_id, name));
+CREATE TABLE menu_item_options (menu_item_id UUID NOT NULL REFERENCES menu_items(id) ON DELETE CASCADE, option_group_id BIGINT NOT NULL REFERENCES option_groups(id) ON DELETE CASCADE, PRIMARY KEY (menu_item_id, option_group_id));
+
+-- 2.3. Bảng Order và các bảng liên quan
+CREATE TYPE order_status_enum AS ENUM ('pending', 'paid', 'closed', 'cancelled');
+CREATE TABLE orders (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), total_price NUMERIC(10, 0), status order_status_enum DEFAULT 'pending', is_provisional BOOLEAN DEFAULT FALSE, payment_method TEXT, created_at TIMESTAMPTZ DEFAULT NOW(), user_id UUID DEFAULT auth.uid() REFERENCES auth.users(id));
+CREATE TABLE order_items (id BIGSERIAL PRIMARY KEY, order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE, menu_item_id UUID REFERENCES menu_items(id) ON DELETE SET NULL, quantity INT NOT NULL, unit_price NUMERIC(10, 0) NOT NULL, customizations JSONB, status TEXT DEFAULT 'waiting', returned_quantity INT DEFAULT 0, created_at TIMESTAMPTZ DEFAULT NOW());
+CREATE TABLE order_tables (order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE, table_id BIGINT NOT NULL REFERENCES tables(id) ON DELETE CASCADE, PRIMARY KEY (order_id, table_id));
+CREATE TABLE cart_items (id BIGSERIAL PRIMARY KEY, table_id BIGINT NOT NULL REFERENCES tables(id), menu_item_id UUID NOT NULL REFERENCES menu_items(id) ON DELETE CASCADE, quantity INT NOT NULL, unit_price NUMERIC(10, 0) NOT NULL, total_price NUMERIC(10, 0) NOT NULL, customizations JSONB, unique_id TEXT UNIQUE, created_at TIMESTAMPTZ DEFAULT NOW(), user_id UUID DEFAULT auth.uid() REFERENCES auth.users(id));
+CREATE TYPE payment_method_enum AS ENUM ('cash', 'momo', 'transfer');
+CREATE TABLE transactions (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), order_id UUID NOT NULL REFERENCES orders(id), amount NUMERIC(10, 0) NOT NULL, payment_method payment_method_enum NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW());
+
+-- 2.4. Bảng cho chức năng Hủy/Trả món
+CREATE TABLE cancellation_requests (id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), order_id UUID NOT NULL REFERENCES orders(id), table_name TEXT, reason TEXT, requested_items JSONB, status TEXT DEFAULT 'pending', created_at TIMESTAMPTZ DEFAULT NOW());
+CREATE TABLE return_slips (id BIGSERIAL PRIMARY KEY, order_id UUID NOT NULL REFERENCES orders(id), reason TEXT, type TEXT, created_at TIMESTAMPTZ DEFAULT NOW());
+CREATE TABLE return_slip_items (id BIGSERIAL PRIMARY KEY, return_slip_id BIGINT NOT NULL REFERENCES return_slips(id) ON DELETE CASCADE, order_item_id BIGINT NOT NULL REFERENCES order_items(id) ON DELETE CASCADE, quantity INT NOT NULL, unit_price NUMERIC(10, 0) NOT NULL);
+CREATE TABLE return_notifications (id BIGSERIAL PRIMARY KEY, order_id UUID NOT NULL REFERENCES orders(id), table_name TEXT, item_name TEXT NOT NULL, status TEXT DEFAULT 'pending', acknowledged_at TIMESTAMPTZ, created_at TIMESTAMPTZ DEFAULT NOW(), notification_type TEXT);
+
+-- BƯỚC 3: TẠO CÁC HÀM LOGIC (RPC FUNCTIONS)
+-- Hàm hủy order
+CREATE OR REPLACE FUNCTION cancel_order_and_reset_tables(p_order_id UUID)
+RETURNS void AS $$
+DECLARE
+    table_ids_to_reset BIGINT[];
+BEGIN
+    -- Lấy danh sách các bàn liên quan đến order này
+    SELECT array_agg(table_id) INTO table_ids_to_reset
+    FROM order_tables
+    WHERE order_id = p_order_id;
+
+    -- Cập nhật trạng thái order thành 'cancelled'
+    UPDATE orders SET status = 'cancelled' WHERE id = p_order_id;
+
+    -- Nếu có bàn liên quan, cập nhật trạng thái của chúng thành 'Trống'
+    IF array_length(table_ids_to_reset, 1) > 0 THEN
+        UPDATE tables SET status = 'Trống' WHERE id = ANY(table_ids_to_reset);
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Hàm gửi tạm tính
+CREATE OR REPLACE FUNCTION send_provisional_bill(p_order_id UUID)
+RETURNS void AS $$
+BEGIN
+    UPDATE orders
+    SET is_provisional = true
+    WHERE id = p_order_id;
+END;
+$$ LANGUAGE plpgsql;
+-- Thêm các hàm RPC khác nếu bạn đã tạo (vd: handle_table_transfer, handle_order_split...)
+
+-- BƯỚC 4: THIẾT LẬP DỮ LIỆU MẪU (BÀN, MENU, OPTIONS)
+-- 4.1. Thêm bàn mẫu
+INSERT INTO tables (name) VALUES ('Bàn 01'), ('Bàn 02'), ('Bàn 03'), ('Bàn 04'), ('Bàn 05'), ('Bàn 06'), ('Bàn 07'), ('Bàn 08'), ('Mang về');
+
+-- 4.2. Thêm danh mục
+INSERT INTO categories (name) VALUES 
+    ('Cà phê & Matcha'), ('Cơm'), ('Bún & Mì'), ('Bánh Mì'),
+    ('Nước Giải Khát'), ('Nước Ép'), ('Món Ăn Vặt'), ('Trà Sữa'), ('Trà Trái Cây');
+
+-- 4.3. Thêm toàn bộ menu
+INSERT INTO menu_items (name, image_url, description, price, category_id, is_available, is_hot) VALUES 
+    ('Cà phê Latte', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1751505651/coffee_house/img-1751505653457-244061120.png', 'Cà phê pha tươi và sữa hấp', 40000, (SELECT id FROM categories WHERE name = 'Cà phê & Matcha'), TRUE, TRUE),
+    ('Cà phê Mocha', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1751505674/coffee_house/img-1751505680292-177449698.png', 'Espresso với sữa và kem tươi', 55000, (SELECT id FROM categories WHERE name = 'Cà phê & Matcha'), TRUE, FALSE),
+    ('Mocha Trắng', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1751505701/coffee_house/img-1751505706709-713500935.png', 'Espresso, sô cô la trắng, sữa và kem', 50000, (SELECT id FROM categories WHERE name = 'Cà phê & Matcha'), TRUE, FALSE),
+    ('Americano', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1751505730/coffee_house/img-1751505736325-489166129.png', 'Espresso và lớp crema nhẹ', 39000, (SELECT id FROM categories WHERE name = 'Cà phê & Matcha'), TRUE, FALSE),
+    ('Cappuccino', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1751505816/coffee_house/img-1751505821927-690322814.png', 'Espresso và lớp bọt sữa mịn màng', 49000, (SELECT id FROM categories WHERE name = 'Cà phê & Matcha'), TRUE, TRUE),
+    ('Latte Vani', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1751505846/coffee_house/img-1751505851491-667969632.png', 'Espresso, sữa và hương vani', 40000, (SELECT id FROM categories WHERE name = 'Cà phê & Matcha'), TRUE, FALSE),
+    ('Latte Caramel', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1751505864/coffee_house/img-1751505869988-949004997.png', 'Espresso, sữa và caramel', 55000, (SELECT id FROM categories WHERE name = 'Cà phê & Matcha'), TRUE, TRUE),
+    ('Macchiato', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1751505889/coffee_house/img-1751505895177-578048562.png', 'Espresso đậm với sữa và bọt', 30000, (SELECT id FROM categories WHERE name = 'Cà phê & Matcha'), TRUE, FALSE),
+    ('Matcha Latte', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1751505908/coffee_house/img-1751505914136-123797714.png', 'Trà Xanh với sữa', 50000, (SELECT id FROM categories WHERE name = 'Cà phê & Matcha'), TRUE, FALSE),
+    ('Matcha Sting', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1751505928/coffee_house/img-1751505934911-147176583.png', 'Trà Xanh với sting', 49000, (SELECT id FROM categories WHERE name = 'Cà phê & Matcha'), TRUE, FALSE),
+    ('Mocha Đá', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1751505951/coffee_house/img-1751505955421-530401437.png', 'Espresso, mocha đắng, sữa và đá', 50000, (SELECT id FROM categories WHERE name = 'Cà phê & Matcha'), TRUE, FALSE),
+    ('Latte Gừng', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1751505969/coffee_house/img-1751505974702-535833856.png', 'Espresso, sữa và hương gừng', 49000, (SELECT id FROM categories WHERE name = 'Cà phê & Matcha'), TRUE, FALSE),
+    ('Cơm gà chiên giòn', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1759220388/hq720_bebk8x.jpg', 'Cơm gà chiên giòn', 50000, (SELECT id FROM categories WHERE name = 'Cơm'), TRUE, FALSE),
+    ('Cơm sườn bì chả', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1759220388/com-tam-suon-bi-cha-chay_mm33de.webp', 'Cơm sườn bì chả', 60000, (SELECT id FROM categories WHERE name = 'Cơm'), TRUE, FALSE),
+    ('Cơm chiên dương châu', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1759220387/cach-lam-com-chien-duong-chau-ngon-gion-don-gian-tai-nha-202205241534361909_kh8rma.jpg', 'Cơm chiên dương châu', 55000, (SELECT id FROM categories WHERE name = 'Cơm'), TRUE, FALSE),
+    ('Bún bò', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1759220266/unnamed_bnm5rw.png', 'Bún bò', 55000, (SELECT id FROM categories WHERE name = 'Bún & Mì'), TRUE, FALSE),
+    ('Bún thịt nướng', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1759220265/maxresdefault_d5r150.jpg', 'Bún thịt nướng', 50000, (SELECT id FROM categories WHERE name = 'Bún & Mì'), TRUE, FALSE),
+    ('Phở bò', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1759220264/bun-bo-hue-1_da318989e7c2493f9e2c3e010e722466_azksib.jpg', 'Phở bò', 60000, (SELECT id FROM categories WHERE name = 'Bún & Mì'), TRUE, FALSE),
+    ('Mì xào hải sản', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1759219782/Thanh-pham-1-3557-1679473358_syfo4u.jpg', 'Mì xào hải sản', 65000, (SELECT id FROM categories WHERE name = 'Bún & Mì'), TRUE, FALSE),
+    ('Mì quảng', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1759219781/mi-hoanh-thanh-xa-xiu-0062_apzx7g.jpg', 'Mì quảng', 55000, (SELECT id FROM categories WHERE name = 'Bún & Mì'), TRUE, FALSE),
+    ('Mì xào bò', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1759219780/mi_y_xao_thit_bo_thumb_1_ac7005a87d_mrmmxr.webp', 'Mì xào bò', 50000, (SELECT id FROM categories WHERE name = 'Bún & Mì'), TRUE, FALSE),
+    ('Bánh mì ốp la', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1759219660/bm_opla_8847c2f03b184e1b845b604fa9aa115c_rymco3.png', 'Bánh mì ốp la', 30000, (SELECT id FROM categories WHERE name = 'Bánh Mì'), TRUE, FALSE),
+    ('Bánh mì thịt nướng', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1759219659/cach-lam-banh-mi-thit-nuong-cuc-don-gian-bang-chai-nhua-co-san-tai-nha-202108201640593483_h78wac.jpg', 'Bánh mì thịt nướng', 35000, (SELECT id FROM categories WHERE name = 'Bánh Mì'), TRUE, FALSE),
+    ('Bánh mì chả lụa', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1759219659/banh_mi_ga_xe_2b55e9c8e4_esb10y.webp', 'Bánh mì chả lụa', 25000, (SELECT id FROM categories WHERE name = 'Bánh Mì'), TRUE, FALSE),
+    ('Pepsi', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1759219244/8934588670114-2.jpg_mbledv.webp', 'Nước ngọt Pepsi', 20000, (SELECT id FROM categories WHERE name = 'Nước Giải Khát'), TRUE, FALSE),
+    ('7up', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1759219205/0102356_b54eefe81219486aa7b92e205b102f14_tx3dlm.jpg', 'Nước ngọt 7 Up', 20000, (SELECT id FROM categories WHERE name = 'Nước Giải Khát'), TRUE, FALSE),
+    ('Nước suối', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1759219209/chai-nuoc-suoi-aquafina-500ml_dgq80t.jpg', 'Nước suối tinh khiết', 15000, (SELECT id FROM categories WHERE name = 'Nước Giải Khát'), TRUE, FALSE),
+    ('Ép ổi', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1759219068/nuoc-ep-oi-bo-duong_uuu9gm.webp', 'Nước ép ổi nguyên chất', 30000, (SELECT id FROM categories WHERE name = 'Nước Ép'), TRUE, FALSE),
+    ('Ép cam & cà rốt', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1759218789/nuoc-ep-tao-ca-rot-_osjhf4.jpg', 'Nước ép cam và cà rốt', 35000, (SELECT id FROM categories WHERE name = 'Nước Ép'), TRUE, FALSE),
+    ('Ép dứa', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1759218401/nuoc_ep_cam_dua_9_3c1e453889_pjfrgy.webp', 'Nước ép dứa tươi', 30000, (SELECT id FROM categories WHERE name = 'Nước Ép'), TRUE, FALSE),
+    ('Khoai tây chiên', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1759217710/bi-quyet-chien-khoai-tay-thom-ngon-gion-rum-an-hoai-khong-chan-6_ipzvzl.jpg', 'Khoai tây chiên giòn rụm', 30000, (SELECT id FROM categories WHERE name = 'Món Ăn Vặt'), TRUE, FALSE),
+    ('Trà sữa trân châu', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1759218401/cach-lam-tran-chau-tra-sua_1_bkm5hw.webp', 'Hương vị trà sữa truyền thống', 35000, (SELECT id FROM categories WHERE name = 'Trà Sữa'), TRUE, TRUE),
+    ('Trà sữa đường đen', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1759217281/sua_tuoi_tran_chau_duong_den_6e622e3e514c4e5b9d1d46a80b210853_bu7rko.jpg', 'Sữa tươi cùng trân châu đường đen', 40000, (SELECT id FROM categories WHERE name = 'Trà Sữa'), TRUE, FALSE),
+    ('Trà vải hoa hồng', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1759217436/cach-lam-tra-vai-hoa-hong-thanh-mat-giai-nhiet-cho-ngay-nang-nong-202108270014109911_u177fj.jpg', 'Trà vải thơm hương hoa hồng', 40000, (SELECT id FROM categories WHERE name = 'Trà Trái Cây'), TRUE, FALSE),
+    ('Trà đào cam sả', 'https://res.cloudinary.com/dp0th1tjn/image/upload/v1759217404/tra-dao-cam-sa_o9o7mi.webp', 'Thức uống giải nhiệt sảng khoái', 45000, (SELECT id FROM categories WHERE name = 'Trà Trái Cây'), TRUE, TRUE);
+
+-- 4.4. Thêm tùy chọn và liên kết
+INSERT INTO option_groups (name, type) VALUES ('Chọn size', 'single'), ('Mức đường', 'single'), ('Topping', 'multiple'), ('Món ăn kèm', 'multiple');
+INSERT INTO option_choices (group_id, name, price_adjustment) VALUES
+    ((SELECT id FROM option_groups WHERE name = 'Chọn size'), 'Size M (Mặc định)', 0),
+    ((SELECT id FROM option_groups WHERE name = 'Chọn size'), 'Size L', 7000),
+    ((SELECT id FROM option_groups WHERE name = 'Mức đường'), '100% Đường', 0),
+    ((SELECT id FROM option_groups WHERE name = 'Mức đường'), '70% Đường', 0),
+    ((SELECT id FROM option_groups WHERE name = 'Mức đường'), '50% Đường', 0),
+    ((SELECT id FROM option_groups WHERE name = 'Topping'), 'Trân châu đen', 7000),
+    ((SELECT id FROM option_groups WHERE name = 'Topping'), 'Thạch trái cây', 5000),
+    ((SELECT id FROM option_groups WHERE name = 'Topping'), 'Kem phô mai', 10000),
+    ((SELECT id FROM option_groups WHERE name = 'Món ăn kèm'), 'Thêm trứng ốp la', 10000),
+    ((SELECT id FROM option_groups WHERE name = 'Món ăn kèm'), 'Thêm chả', 15000);
+
+-- Liên kết cho đồ uống
+INSERT INTO menu_item_options (menu_item_id, option_group_id) SELECT m.id, og.id FROM menu_items m JOIN categories c ON m.category_id = c.id CROSS JOIN option_groups og WHERE c.name IN ('Cà phê & Matcha', 'Trà Sữa', 'Trà Trái Cây', 'Nước Ép') AND og.name IN ('Chọn size', 'Mức đường', 'Topping');
+-- Liên kết cho đồ ăn
+INSERT INTO menu_item_options (menu_item_id, option_group_id) SELECT m.id, og.id FROM menu_items m JOIN categories c ON m.category_id = c.id CROSS JOIN option_groups og WHERE c.name IN ('Cơm', 'Bún & Mì', 'Bánh Mì') AND og.name IN ('Món ăn kèm');
+
+-- BƯỚC 5: BẬT RLS VÀ TẠO CÁC POLICY CẦN THIẾT
+ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE menu_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE option_groups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE option_choices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE menu_item_options ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tables ENABLE ROW LEVEL SECURITY;
+ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE order_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE order_tables ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cart_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cancellation_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE return_slips ENABLE ROW LEVEL SECURITY;
+ALTER TABLE return_slip_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE return_notifications ENABLE ROW LEVEL SECURITY;
+
+-- Tạo Policy cho phép người dùng đã đăng nhập có thể ĐỌC (SELECT) dữ liệu công khai
+CREATE POLICY "Allow authenticated read access" ON categories FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow authenticated read access" on menu_items FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow authenticated read access" on option_groups FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow authenticated read access" on option_choices FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow authenticated read access" on menu_item_options FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow authenticated read access" on tables FOR SELECT TO authenticated USING (true);
+
+-- Tạo Policy cho phép người dùng QUẢN LÝ (tất cả hành động) dữ liệu của chính họ
+CREATE POLICY "Allow users to manage their own data" ON orders FOR ALL TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Allow users to manage their own cart items" ON cart_items FOR ALL TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+-- Tạo Policy linh hoạt hơn cho các bảng liên quan
+CREATE POLICY "Allow full access for authenticated users" ON order_items FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Allow full access for authenticated users" ON order_tables FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Allow full access for authenticated users" ON transactions FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Allow full access for authenticated users" ON cancellation_requests FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Allow full access for authenticated users" ON return_slips FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Allow full access for authenticated users" ON return_slip_items FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Allow full access for authenticated users" ON return_notifications FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+
+-- BƯỚC 6: THÔNG BÁO HOÀN TẤT
+SELECT 'Hoàn thành! Toàn bộ hệ thống đã được thiết lập lại thành công.' AS status;
+
+
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+
+-- =================================================================
+-- SCRIPT HOÀN CHỈNH: SỬA LỖI VÀ CẬP NHẬT BẢNG `tables`
+-- =================================================================
+
+-- BƯỚC 1: XÓA BẢNG `tables` CŨ ĐỂ TẠO LẠI VỚI CẤU TRÚC MỚI
+-- Cảnh báo: Lệnh này sẽ xóa các bàn cũ và các liên kết tới nó.
+-- Nhưng nó cần thiết để thêm cột `seats` một cách sạch sẽ.
+DROP TABLE IF EXISTS tables CASCADE;
+
+
+-- BƯỚC 2: TẠO LẠI BẢNG `tables` VỚI CẤU TRÚC ĐẦY ĐỦ
+CREATE TABLE tables (
+    id BIGSERIAL PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    status TEXT DEFAULT 'Trống', -- 'Trống', 'Đang phục vụ', 'Đặt trước'
+    seats INT -- [CẬP NHẬT] Thêm cột để lưu số ghế
+);
+
+
+-- BƯỚC 3: THÊM LẠI DỮ LIỆU 12 BÀN CỦA BẠN
+INSERT INTO tables (name, seats) VALUES
+    ('Bàn 01', 4),
+    ('Bàn 02', 4),
+    ('Bàn 03', 4),
+    ('Bàn 04', 4),
+    ('Bàn 05', 4),
+    ('Bàn 06', 4),
+    ('Bàn 07', 6),
+    ('Bàn 08', 6),
+    ('Bàn 09', 6),
+    ('Bàn 10', 6),
+    ('Bàn 11', 6),
+    ('Bàn 12', 6);
+
+
+-- BƯỚC 4: THIẾT LẬP LẠI LIÊN KẾT KHÓA NGOẠI (Cần thiết sau khi xóa CASCADE)
+-- Các bảng khác cần tham chiếu lại đến bảng `tables` mới
+ALTER TABLE cart_items
+ADD CONSTRAINT cart_items_table_id_fkey
+FOREIGN KEY (table_id) REFERENCES tables(id);
+
+ALTER TABLE order_tables
+ADD CONSTRAINT order_tables_table_id_fkey
+FOREIGN KEY (table_id) REFERENCES tables(id) ON DELETE CASCADE;
+
+
+-- BƯỚC 5: BẬT RLS VÀ TẠO POLICY CHO PHÉP ĐỌC (QUAN TRỌNG NHẤT)
+-- Bật Row Level Security cho bảng `tables`
+ALTER TABLE tables ENABLE ROW LEVEL SECURITY;
+
+-- Tạo quy tắc cho phép BẤT KỲ người dùng nào đã đăng nhập (authenticated)
+-- đều có quyền ĐỌC (SELECT) tất cả dữ liệu từ bảng `tables`.
+CREATE POLICY "Allow authenticated read access for everyone"
+ON public.tables
+FOR SELECT
+TO authenticated
+USING (true);
+
+-- BƯỚC 6: THÔNG BÁO HOÀN TẤT
+SELECT 'Hoàn thành! Đã sửa lỗi và cập nhật thành công bảng `tables`.' AS status;
+
+
+
+
+
+
+
+
+
+///////////
+-- =================================================================
+-- SCRIPT TẠO TRIGGER TỰ ĐỘNG CẬP NHẬT TRẠNG THÁI BÀN
+-- =================================================================
+
+-- BƯỚC 1: TẠO HÀM (FUNCTION) SẼ ĐƯỢC TRIGGER GỌI
+-- Hàm này có nhiệm vụ cập nhật status của bàn liên quan thành 'Đang phục vụ'
+CREATE OR REPLACE FUNCTION public.update_table_status_on_order_link()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- NEW.table_id là ID của bàn vừa được thêm vào bảng order_tables
+    UPDATE public.tables
+    SET status = 'Đang phục vụ'
+    WHERE id = NEW.table_id;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+
+-- BƯỚC 2: TẠO TRIGGER TRÊN BẢNG `order_tables`
+-- Trigger này sẽ tự động gọi hàm `update_table_status_on_order_link`
+-- MỖI KHI CÓ MỘT DÒNG MỚI ĐƯỢC THÊM VÀO (INSERT) bảng `order_tables`
+CREATE TRIGGER trigger_on_new_order_table_link
+AFTER INSERT ON public.order_tables
+FOR EACH ROW
+EXECUTE FUNCTION public.update_table_status_on_order_link();
+
+
+-- BƯỚC 3: THÔNG BÁO HOÀN TẤT
+SELECT 'Hoàn thành! Trigger tự động cập nhật trạng thái bàn đã được tạo.' AS status;
+
+//////////
+-- =================================================================
+-- SCRIPT HOÀN CHỈNH: TỰ ĐỘNG HÓA CẬP NHẬT TRẠNG THÁI BÀN
+-- =================================================================
+
+-- BƯỚC 1: DỌN DẸP TRIGGER VÀ HÀM CŨ (Nếu đã tồn tại để tránh lỗi)
+DROP TRIGGER IF EXISTS trigger_on_new_order_table_link ON public.order_tables;
+DROP FUNCTION IF EXISTS public.update_table_status_on_order_link();
+
+DROP TRIGGER IF EXISTS trigger_on_order_status_change ON public.orders;
+DROP FUNCTION IF EXISTS public.reset_table_status_on_order_close();
+
+
+-- BƯỚC 2: TẠO LOGIC TỰ ĐỘNG CHUYỂN SANG "ĐANG PHỤC VỤ"
+-- 2.1. Tạo hàm (function) được kích hoạt khi có liên kết order-bàn mới
+CREATE OR REPLACE FUNCTION public.update_table_status_on_insert_order_tables()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Cập nhật trạng thái của bàn (có ID là NEW.table_id) thành 'Đang phục vụ'
+    UPDATE public.tables
+    SET status = 'Đang phục vụ'
+    WHERE id = NEW.table_id;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 2.2. Tạo trigger trên bảng `order_tables`
+-- Trigger này sẽ gọi hàm trên MỖI KHI một dòng mới được INSERT vào `order_tables`
+CREATE TRIGGER trigger_on_new_order_table_link
+AFTER INSERT ON public.order_tables
+FOR EACH ROW
+EXECUTE FUNCTION public.update_table_status_on_insert_order_tables();
+
+
+-- BƯỚC 3: TẠO LOGIC TỰ ĐỘNG CHUYỂN VỀ "TRỐNG"
+-- 3.1. Tạo hàm được kích hoạt khi trạng thái order thay đổi
+CREATE OR REPLACE FUNCTION public.reset_table_status_on_order_close()
+RETURNS TRIGGER AS $$
+DECLARE
+    table_ids_to_reset BIGINT[];
+BEGIN
+    -- Chỉ thực hiện khi trạng thái MỚI là 'closed' hoặc 'cancelled'
+    IF NEW.status IN ('closed', 'cancelled') THEN
+        -- Lấy danh sách ID các bàn liên quan đến order này
+        SELECT array_agg(table_id)
+        INTO table_ids_to_reset
+        FROM public.order_tables
+        WHERE order_id = NEW.id;
+
+        -- Nếu tìm thấy bàn, cập nhật trạng thái của chúng thành 'Trống'
+        IF array_length(table_ids_to_reset, 1) > 0 THEN
+            UPDATE public.tables
+            SET status = 'Trống'
+            WHERE id = ANY(table_ids_to_reset);
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 3.2. Tạo trigger trên bảng `orders`
+-- Trigger này sẽ gọi hàm trên MỖI KHI một dòng trong bảng `orders` được UPDATE
+CREATE TRIGGER trigger_on_order_status_change
+AFTER UPDATE OF status ON public.orders -- Chỉ kích hoạt khi cột `status` thay đổi
+FOR EACH ROW
+WHEN (OLD.status IS DISTINCT FROM NEW.status) -- Điều kiện: chỉ chạy khi giá trị status thực sự khác đi
+EXECUTE FUNCTION public.reset_table_status_on_order_close();
+
+
+-- BƯỚC 4: THÔNG BÁO HOÀN TẤT
+SELECT 'Hoàn thành! Hệ thống tự động cập nhật trạng thái bàn đã được thiết lập.' AS status;
+
+////
+
+
+-- =================================================================
+-- SCRIPT HOÀN CHỈNH: TẠO CÁC HÀM LOGIC (RPC) QUẢN LÝ BÀN/ORDER
+-- =================================================================
+
+-- BƯỚC 1: DỌN DẸP CÁC HÀM CŨ ĐỂ CÀI ĐẶT LẠI (An toàn để chạy nhiều lần)
+DROP FUNCTION IF EXISTS public.handle_table_transfer(bigint, bigint);
+DROP FUNCTION IF EXISTS public.handle_table_grouping(uuid, bigint[]);
+DROP FUNCTION IF EXISTS public.handle_order_merge(uuid, bigint[]);
+DROP FUNCTION IF EXISTS public.handle_order_split(uuid, bigint, jsonb);
+
+-- BƯỚC 2: [SỬA LỖI] TẠO HÀM `handle_table_transfer` (CHUYỂN BÀN)
+-- Di chuyển toàn bộ order và giỏ hàng từ bàn nguồn sang bàn đích.
+CREATE OR REPLACE FUNCTION public.handle_table_transfer(
+    source_table_id_input bigint,
+    target_table_id_input bigint
+)
+RETURNS void AS $$
+DECLARE
+    order_id_to_move uuid;
+BEGIN
+    -- 1. Tìm order 'pending' hoặc 'paid' duy nhất của bàn nguồn
+    SELECT order_id INTO order_id_to_move
+    FROM public.order_tables
+    JOIN public.orders ON orders.id = order_tables.order_id
+    WHERE order_tables.table_id = source_table_id_input
+    AND orders.status IN ('pending', 'paid')
+    LIMIT 1;
+
+    -- 2. Nếu có order, cập nhật liên kết sang bàn đích
+    IF order_id_to_move IS NOT NULL THEN
+        UPDATE public.order_tables
+        SET table_id = target_table_id_input
+        WHERE table_id = source_table_id_input AND order_id = order_id_to_move;
+    END IF;
+    
+    -- 3. Chuyển toàn bộ giỏ hàng (cart_items) từ bàn nguồn sang bàn đích
+    UPDATE public.cart_items
+    SET table_id = target_table_id_input
+    WHERE table_id = source_table_id_input;
+
+    -- 4. Cập nhật trạng thái của hai bàn
+    UPDATE public.tables
+    SET status = 'Trống'
+    WHERE id = source_table_id_input;
+
+    UPDATE public.tables
+    SET status = 'Đang phục vụ'
+    WHERE id = target_table_id_input;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- BƯỚC 3: TẠO HÀM `handle_table_grouping` (GỘP BÀN)
+-- Thêm các bàn TRỐNG vào một order đã tồn tại.
+CREATE OR REPLACE FUNCTION public.handle_table_grouping(
+    source_order_id_input uuid,
+    target_table_ids_input bigint[]
+)
+RETURNS void AS $$
+DECLARE
+    target_id bigint;
+BEGIN
+    FOREACH target_id IN ARRAY target_table_ids_input
+    LOOP
+        -- 1. Thêm liên kết mới vào order_tables
+        INSERT INTO public.order_tables (order_id, table_id)
+        VALUES (source_order_id_input, target_id);
+
+        -- 2. Cập nhật trạng thái bàn mới (Trigger đã có cũng sẽ làm việc này,
+        -- nhưng viết ở đây để đảm bảo logic)
+        UPDATE public.tables
+        SET status = 'Đang phục vụ'
+        WHERE id = target_id;
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- BƯỚC 4: TẠO HÀM `handle_order_merge` (GHÉP ORDER)
+-- Gộp các món từ order của các bàn đích vào order của bàn nguồn.
+CREATE OR REPLACE FUNCTION public.handle_order_merge(
+    source_order_id_input uuid,
+    target_table_ids_input bigint[]
+)
+RETURNS void AS $$
+DECLARE
+    target_order_id uuid;
+BEGIN
+    -- 1. Tìm các order đang 'pending' của các bàn đích
+    FOR target_order_id IN
+        SELECT ot.order_id
+        FROM public.order_tables ot
+        JOIN public.orders o ON ot.order_id = o.id
+        WHERE ot.table_id = ANY(target_table_ids_input) AND o.status = 'pending'
+    LOOP
+        -- 2. Chuyển tất cả order_items từ order đích sang order nguồn
+        UPDATE public.order_items
+        SET order_id = source_order_id_input
+        WHERE order_id = target_order_id;
+        
+        -- 3. Hủy order đích (trigger sẽ tự động dọn bàn)
+        UPDATE public.orders
+        SET status = 'cancelled'
+        WHERE id = target_order_id;
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- BƯỚC 5: TẠO HÀM `handle_order_split` (TÁCH ORDER)
+-- Tách một số món từ order nguồn sang một order mới cho bàn đích.
+CREATE OR REPLACE FUNCTION public.handle_order_split(
+    source_order_id_input uuid,
+    target_table_id_input bigint,
+    items_to_move_input jsonb -- Định dạng: '[{"item_id": 123, "quantity": 2}, ...]'
+)
+RETURNS void AS $$
+DECLARE
+    new_order_id uuid;
+    item_record jsonb;
+    source_item_id bigint;
+    quantity_to_move int;
+    source_item_record public.order_items;
+BEGIN
+    -- 1. Tạo một order mới
+    INSERT INTO public.orders (status) VALUES ('pending')
+    RETURNING id INTO new_order_id;
+
+    -- 2. Liên kết order mới với bàn đích (trigger sẽ tự động set bàn 'Đang phục vụ')
+    INSERT INTO public.order_tables (order_id, table_id)
+    VALUES (new_order_id, target_table_id_input);
+
+    -- 3. Lặp qua danh sách các món cần tách
+    FOR item_record IN SELECT * FROM jsonb_array_elements(items_to_move_input)
+    LOOP
+        source_item_id := (item_record->>'item_id')::bigint;
+        quantity_to_move := (item_record->>'quantity')::int;
+
+        -- Lấy thông tin đầy đủ của món gốc
+        SELECT * INTO source_item_record FROM public.order_items WHERE id = source_item_id;
+
+        -- 4. Xử lý logic tách
+        IF source_item_record.quantity > quantity_to_move THEN
+            -- Nếu chỉ tách một phần: Cập nhật số lượng món gốc
+            UPDATE public.order_items
+            SET quantity = quantity - quantity_to_move
+            WHERE id = source_item_id;
+
+            -- Và tạo một món mới cho order mới
+            INSERT INTO public.order_items (order_id, menu_item_id, quantity, unit_price, customizations, status)
+            VALUES (new_order_id, source_item_record.menu_item_id, quantity_to_move, source_item_record.unit_price, source_item_record.customizations, source_item_record.status);
+        
+        ELSE
+            -- Nếu tách toàn bộ: Chỉ cần cập nhật order_id của món đó
+            UPDATE public.order_items
+            SET order_id = new_order_id
+            WHERE id = source_item_id;
+        END IF;
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- BƯỚC 6: THÔNG BÁO HOÀN TẤT
+SELECT 'Hoàn thành! Các hàm RPC đã được tạo và cập nhật thành công.' AS status;
+
+////
+
+
+
+-- =================================================================
+-- SCRIPT CẬP NHẬT TOÀN BỘ HÀM RPC VỚI QUYỀN THỰC THI ĐÚNG
+-- =================================================================
+
+-- BƯỚC 1: DỌN DẸP CÁC HÀM CŨ ĐỂ CÀI ĐẶT LẠI
+DROP FUNCTION IF EXISTS public.handle_table_transfer(bigint, bigint);
+DROP FUNCTION IF EXISTS public.handle_table_grouping(uuid, bigint[]);
+DROP FUNCTION IF EXISTS public.handle_order_merge(uuid, bigint[]);
+DROP FUNCTION IF EXISTS public.handle_order_split(uuid, bigint, jsonb);
+-- Dọn dẹp cả hàm hủy order cũ nếu có
+DROP FUNCTION IF EXISTS public.cancel_order_and_reset_tables(uuid);
+
+-- BƯỚC 2: TẠO LẠI HÀM `handle_table_transfer` (CHUYỂN BÀN) VỚI `SECURITY DEFINER`
+CREATE OR REPLACE FUNCTION public.handle_table_transfer(
+    source_table_id_input bigint,
+    target_table_id_input bigint
+)
+RETURNS void AS $$
+DECLARE
+    order_id_to_move uuid;
+BEGIN
+    SELECT order_id INTO order_id_to_move
+    FROM public.order_tables
+    JOIN public.orders ON orders.id = order_tables.order_id
+    WHERE order_tables.table_id = source_table_id_input
+    AND orders.status IN ('pending', 'paid')
+    LIMIT 1;
+
+    IF order_id_to_move IS NOT NULL THEN
+        UPDATE public.order_tables
+        SET table_id = target_table_id_input
+        WHERE table_id = source_table_id_input AND order_id = order_id_to_move;
+    END IF;
+    
+    UPDATE public.cart_items
+    SET table_id = target_table_id_input
+    WHERE table_id = source_table_id_input;
+
+    UPDATE public.tables SET status = 'Trống' WHERE id = source_table_id_input;
+    UPDATE public.tables SET status = 'Đang phục vụ' WHERE id = target_table_id_input;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER; -- SỬA LỖI: THÊM DÒNG NÀY
+
+
+-- BƯỚC 3: TẠO LẠI CÁC HÀM KHÁC VỚI `SECURITY DEFINER`
+-- Hàm `handle_table_grouping` (GỘP BÀN)
+CREATE OR REPLACE FUNCTION public.handle_table_grouping(
+    source_order_id_input uuid,
+    target_table_ids_input bigint[]
+)
+RETURNS void AS $$
+DECLARE
+    target_id bigint;
+BEGIN
+    FOREACH target_id IN ARRAY target_table_ids_input
+    LOOP
+        INSERT INTO public.order_tables (order_id, table_id)
+        VALUES (source_order_id_input, target_id);
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER; -- SỬA LỖI: THÊM DÒNG NÀY
+
+-- Hàm `handle_order_merge` (GHÉP ORDER)
+CREATE OR REPLACE FUNCTION public.handle_order_merge(
+    source_order_id_input uuid,
+    target_table_ids_input bigint[]
+)
+RETURNS void AS $$
+DECLARE
+    target_order_id uuid;
+BEGIN
+    FOR target_order_id IN
+        SELECT ot.order_id
+        FROM public.order_tables ot
+        JOIN public.orders o ON ot.order_id = o.id
+        WHERE ot.table_id = ANY(target_table_ids_input) AND o.status = 'pending'
+    LOOP
+        UPDATE public.order_items SET order_id = source_order_id_input WHERE order_id = target_order_id;
+        UPDATE public.orders SET status = 'cancelled' WHERE id = target_order_id;
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER; -- SỬA LỖI: THÊM DÒNG NÀY
+
+-- Hàm `handle_order_split` (TÁCH ORDER)
+CREATE OR REPLACE FUNCTION public.handle_order_split(
+    source_order_id_input uuid,
+    target_table_id_input bigint,
+    items_to_move_input jsonb
+)
+RETURNS void AS $$
+DECLARE
+    new_order_id uuid;
+    item_record jsonb;
+    source_item_id bigint;
+    quantity_to_move int;
+    source_item_record public.order_items;
+BEGIN
+    INSERT INTO public.orders (status) VALUES ('pending') RETURNING id INTO new_order_id;
+    INSERT INTO public.order_tables (order_id, table_id) VALUES (new_order_id, target_table_id_input);
+
+    FOR item_record IN SELECT * FROM jsonb_array_elements(items_to_move_input)
+    LOOP
+        source_item_id := (item_record->>'item_id')::bigint;
+        quantity_to_move := (item_record->>'quantity')::int;
+        SELECT * INTO source_item_record FROM public.order_items WHERE id = source_item_id;
+
+        IF source_item_record.quantity > quantity_to_move THEN
+            UPDATE public.order_items SET quantity = quantity - quantity_to_move WHERE id = source_item_id;
+            INSERT INTO public.order_items (order_id, menu_item_id, quantity, unit_price, customizations, status)
+            VALUES (new_order_id, source_item_record.menu_item_id, quantity_to_move, source_item_record.unit_price, source_item_record.customizations, source_item_record.status);
+        ELSE
+            UPDATE public.order_items SET order_id = new_order_id WHERE id = source_item_id;
+        END IF;
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER; -- SỬA LỖI: THÊM DÒNG NÀY
+
+-- Hàm `cancel_order_and_reset_tables` (HỦY ORDER)
+CREATE OR REPLACE FUNCTION public.cancel_order_and_reset_tables(p_order_id uuid)
+RETURNS void AS $$
+DECLARE
+    table_ids_to_reset BIGINT[];
+BEGIN
+    SELECT array_agg(table_id) INTO table_ids_to_reset
+    FROM order_tables
+    WHERE order_id = p_order_id;
+
+    UPDATE orders SET status = 'cancelled' WHERE id = p_order_id;
+
+    IF array_length(table_ids_to_reset, 1) > 0 THEN
+        UPDATE tables SET status = 'Trống' WHERE id = ANY(table_ids_to_reset);
+    END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER; -- SỬA LỖI: THÊM DÒNG NÀY
+
+
+-- BƯỚC 4: THÔNG BÁO HOÀN TẤT
+SELECT 'Hoàn thành! Toàn bộ các hàm RPC đã được cập nhật với quyền thực thi chính xác.' AS status;
+
+////
+
+-- =================================================================
+-- SCRIPT SỬA LỖI HÀM `handle_order_split`
+-- =================================================================
+
+-- BƯỚC 1: XÓA CẢ HAI PHIÊN BẢN HÀM CŨ ĐỂ GIẢI QUYẾT XUNG ĐỘT
+-- Xóa hàm có tham số đầu vào là `uuid` (nếu tồn tại)
+DROP FUNCTION IF EXISTS public.handle_order_split(uuid, bigint, jsonb);
+
+-- Xóa hàm có tham số đầu vào là `bigint` (phiên bản gây lỗi)
+DROP FUNCTION IF EXISTS public.handle_order_split(bigint, bigint, jsonb);
+
+
+-- BƯỚC 2: TẠO LẠI MỘT PHIÊN BẢN HÀM DUY NHẤT VÀ CHÍNH XÁC
+-- Tham số đầu vào `source_order_id_input` phải là kiểu `uuid`
+CREATE OR REPLACE FUNCTION public.handle_order_split(
+    source_order_id_input uuid,
+    target_table_id_input bigint,
+    items_to_move_input jsonb -- Định dạng: '[{"item_id": 123, "quantity": 2}, ...]'
+)
+RETURNS void AS $$
+DECLARE
+    new_order_id uuid;
+    item_record jsonb;
+    source_item_id bigint;
+    quantity_to_move int;
+    source_item_record public.order_items;
+BEGIN
+    -- 1. Tạo một order mới
+    INSERT INTO public.orders (status) VALUES ('pending')
+    RETURNING id INTO new_order_id;
+
+    -- 2. Liên kết order mới với bàn đích (trigger sẽ tự động set bàn 'Đang phục vụ')
+    INSERT INTO public.order_tables (order_id, table_id)
+    VALUES (new_order_id, target_table_id_input);
+
+    -- 3. Lặp qua danh sách các món cần tách
+    FOR item_record IN SELECT * FROM jsonb_array_elements(items_to_move_input)
+    LOOP
+        source_item_id := (item_record->>'item_id')::bigint;
+        quantity_to_move := (item_record->>'quantity')::int;
+
+        -- Lấy thông tin đầy đủ của món gốc
+        SELECT * INTO source_item_record FROM public.order_items WHERE id = source_item_id;
+
+        -- 4. Xử lý logic tách
+        IF source_item_record.quantity > quantity_to_move THEN
+            -- Nếu chỉ tách một phần: Cập nhật số lượng món gốc
+            UPDATE public.order_items
+            SET quantity = quantity - quantity_to_move
+            WHERE id = source_item_id;
+
+            -- Và tạo một món mới cho order mới
+            INSERT INTO public.order_items (order_id, menu_item_id, quantity, unit_price, customizations, status)
+            VALUES (new_order_id, source_item_record.menu_item_id, quantity_to_move, source_item_record.unit_price, source_item_record.customizations, source_item_record.status);
+        
+        ELSE
+            -- Nếu tách toàn bộ: Chỉ cần cập nhật order_id của món đó sang order mới
+            UPDATE public.order_items
+            SET order_id = new_order_id
+            WHERE id = source_item_id;
+        END IF;
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+
+-- BƯỚC 3: THÔNG BÁO HOÀN TẤT
+SELECT 'Hoàn thành! Đã sửa lỗi và tạo lại hàm "handle_order_split" thành công.' AS status;
+
+////
+-- Hàm hủy order và tự động reset trạng thái bàn
+CREATE OR REPLACE FUNCTION public.cancel_order_and_reset_tables(p_order_id uuid)
+RETURNS void AS $$
+DECLARE
+    -- Khai báo một biến mảng để lưu danh sách ID của các bàn cần reset
+    table_ids_to_reset BIGINT[];
+BEGIN
+    -- 1. Lấy danh sách ID của tất cả các bàn liên quan đến order này
+    --    và lưu vào biến `table_ids_to_reset`
+    SELECT array_agg(table_id) INTO table_ids_to_reset
+    FROM order_tables
+    WHERE order_id = p_order_id;
+
+    -- 2. Cập nhật trạng thái của order trong bảng `orders` thành 'cancelled'
+    UPDATE orders SET status = 'cancelled' WHERE id = p_order_id;
+
+    -- 3. Kiểm tra xem có bàn nào cần reset không
+    IF array_length(table_ids_to_reset, 1) > 0 THEN
+        -- Nếu có, cập nhật trạng thái của tất cả các bàn đó thành 'Trống'
+        UPDATE tables SET status = 'Trống' WHERE id = ANY(table_ids_to_reset);
+    END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+/////
+
+
+
+-- =================================================================
+-- SCRIPT SỬA LỖI XUNG ĐỘT HÀM `cancel_order_and_reset_tables`
+-- =================================================================
+
+-- BƯỚC 1: XÓA CẢ HAI PHIÊN BẢN HÀM CŨ ĐỂ GIẢI QUYẾT XUNG ĐỘT
+-- Xóa hàm có tham số đầu vào là `uuid` (nếu tồn tại)
+DROP FUNCTION IF EXISTS public.cancel_order_and_reset_tables(uuid);
+
+-- Xóa hàm có tham số đầu vào là `bigint` (phiên bản gây lỗi)
+DROP FUNCTION IF EXISTS public.cancel_order_and_reset_tables(bigint);
+
+
+-- BƯỚC 2: TẠO LẠI MỘT PHIÊN BẢN HÀM DUY NHẤT VÀ CHÍNH XÁC
+-- Tham số đầu vào `p_order_id` phải là kiểu `uuid`
+CREATE OR REPLACE FUNCTION public.cancel_order_and_reset_tables(p_order_id uuid)
+RETURNS void AS $$
+DECLARE
+    table_ids_to_reset BIGINT[];
+BEGIN
+    -- Lấy danh sách ID của tất cả các bàn liên quan đến order này
+    SELECT array_agg(table_id) INTO table_ids_to_reset
+    FROM public.order_tables
+    WHERE order_id = p_order_id;
+
+    -- Cập nhật trạng thái của order thành 'cancelled'
+    UPDATE public.orders SET status = 'cancelled' WHERE id = p_order_id;
+
+    -- Nếu có bàn liên quan, cập nhật trạng thái của chúng thành 'Trống'
+    IF array_length(table_ids_to_reset, 1) > 0 THEN
+        UPDATE public.tables SET status = 'Trống' WHERE id = ANY(table_ids_to_reset);
+    END IF;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+
+-- BƯỚC 3: THÔNG BÁO HOÀN TẤT
+SELECT 'Hoàn thành! Đã sửa lỗi và tạo lại hàm "cancel_order_and_reset_tables" thành công.' AS status;
+
+
+
+/////// BẾP barStyle
+
+-- =================================================================
+-- SCRIPT HOÀN CHỈNH: SỬA LỖI VÀ TỰ ĐỘNG HÓA LOGIC BẾP & THÔNG BÁO
+-- =================================================================
+
+-- BƯỚC 1: DỌN DẸP CÁC PHIÊN BẢN CŨ ĐỂ TRÁNH XUNG ĐỘT
+-- Xóa trigger và hàm cũ nếu đã tồn tại
+DROP TRIGGER IF EXISTS trigger_after_return_slip_insert ON public.return_slips;
+DROP FUNCTION IF EXISTS public.create_return_notification_on_slip_insert();
+
+-- Xóa bảng `return_notifications` cũ để tạo lại với cấu trúc đúng
+DROP TABLE IF EXISTS public.return_notifications CASCADE;
+
+
+-- BƯỚC 2: TẠO LẠI BẢNG `return_notifications` VỚI CẤU TRÚC CHÍNH XÁC
+-- Cập nhật từ `item_name TEXT` thành `item_names TEXT[]` để khớp với code React Native
+CREATE TABLE public.return_notifications (
+    id BIGSERIAL PRIMARY KEY,
+    order_id UUID NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
+    table_name TEXT,
+    item_names TEXT[] NOT NULL, -- [SỬA LỖI] Đổi thành mảng TEXT
+    status TEXT DEFAULT 'pending', -- 'pending', 'acknowledged'
+    acknowledged_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    notification_type TEXT -- Vd: 'item_ready', 'item_returned'
+);
+
+-- Bật RLS và tạo Policy cho bảng mới
+ALTER TABLE public.return_notifications ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow full access for authenticated users" ON public.return_notifications
+FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+
+-- BƯỚC 3: TẠO HÀM VÀ TRIGGER TỰ ĐỘNG TẠO THÔNG BÁO CHO NHÂN VIÊN
+-- Hàm này sẽ được kích hoạt mỗi khi một phiếu trả (return_slips) được tạo
+CREATE OR REPLACE FUNCTION public.create_return_notification_on_slip_insert()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_table_name TEXT;
+    v_item_names TEXT[];
+BEGIN
+    -- Lấy tên bàn từ order liên quan
+    SELECT string_agg(t.name, ', ')
+    INTO v_table_name
+    FROM public.order_tables ot
+    JOIN public.tables t ON ot.table_id = t.id
+    WHERE ot.order_id = NEW.order_id;
+    
+    -- Lấy danh sách tên các món đã được trả trong phiếu này
+    SELECT array_agg(rsi.customizations->>'name')
+    INTO v_item_names
+    FROM public.return_slip_items rsi_link
+    JOIN public.order_items rsi ON rsi_link.order_item_id = rsi.id
+    WHERE rsi_link.return_slip_id = NEW.id;
+
+    -- Tạo một thông báo mới trong bảng `return_notifications`
+    INSERT INTO public.return_notifications (order_id, table_name, item_names, notification_type)
+    VALUES (NEW.order_id, v_table_name, v_item_names, 'item_returned');
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Tạo trigger: Gọi hàm trên SAU KHI (AFTER) một dòng mới được THÊM VÀO (INSERT) `return_slips`
+CREATE TRIGGER trigger_after_return_slip_insert
+AFTER INSERT ON public.return_slips
+FOR EACH ROW
+EXECUTE FUNCTION public.create_return_notification_on_slip_insert();
+
+
+-- BƯỚC 4: THIẾT LẬP PUBLICATION CHO SUPABASE REALTIME (QUAN TRỌNG NHẤT)
+-- Lệnh này bảo Supabase "hãy theo dõi và phát sóng tất cả thay đổi" trên các bảng được chỉ định.
+-- Xóa publication cũ nếu có để tạo lại
+DROP PUBLICATION IF EXISTS supabase_realtime;
+
+-- Tạo publication cho TẤT CẢ các bảng cần thiết
+CREATE PUBLICATION supabase_realtime FOR TABLE
+    orders,
+    order_items,
+    tables,
+    menu_items,
+    cancellation_requests,
+    return_slips,
+    return_notifications;
+    -- Thêm các bảng khác nếu cần theo dõi realtime trong tương lai
+
+
+-- BƯỚC 5: THÔNG BÁO HOÀN TẤT
+SELECT 'Hoàn thành! Đã sửa lỗi và thiết lập lại logic cho Bếp/Bar thành công.' AS status;
+
+
+///
+
+-- =================================================================
+-- SCRIPT SỬA LỖI POLICY CHO BẢNG `orders`
+-- =================================================================
+
+-- BƯỚC 1: XÓA POLICY CŨ QUÁ HẠN CHẾ TRÊN BẢNG `orders`
+-- Policy này chỉ cho phép người tạo order được xem order đó.
+DROP POLICY IF EXISTS "Allow users to manage their own data" ON public.orders;
+DROP POLICY IF EXISTS "Allow users to manage their own orders" ON public.orders; -- Tên policy có thể khác
+
+
+-- BƯỚC 2: TẠO POLICY MỚI CHO PHÉP TẤT CẢ NHÂN VIÊN XEM VÀ SỬA ORDER
+-- Policy này cho phép mọi người dùng đã đăng nhập có thể thực hiện mọi hành động.
+-- Điều này hợp lý trong môi trường nội bộ của nhà hàng.
+CREATE POLICY "Allow full access for authenticated users"
+ON public.orders
+FOR ALL          -- Cho phép mọi hành động (SELECT, INSERT, UPDATE, DELETE)
+TO authenticated -- Áp dụng cho bất kỳ người dùng nào đã đăng nhập
+USING (true)
+WITH CHECK (true);
+
+
+-- BƯỚC 3: THÔNG BÁO HOÀN TẤT
+SELECT 'Hoàn thành! Đã sửa lỗi policy trên bảng "orders". Màn hình bếp sẽ hiển thị các order ngay bây giờ.' AS status;/
+///
+
+
+
+-- =================================================================
+-- BƯỚC 6 (CẢI TIẾN): THIẾT LẬP RLS VÀ POLICIES AN TOÀN
+-- =================================================================
+
+-- Bật RLS cho tất cả các bảng (giữ nguyên)
+ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tables ENABLE ROW LEVEL SECURITY;
+-- ... (và các bảng khác)
+
+-- DỌN DẸP POLICIES CŨ TRƯỚC KHI TẠO LẠI
+DROP POLICY IF EXISTS "Allow authenticated read access" ON public.categories;
+DROP POLICY IF EXISTS "Allow authenticated read access" ON public.menu_items;
+DROP POLICY IF EXISTS "Allow authenticated read access" ON public.option_groups;
+DROP POLICY IF EXISTS "Allow authenticated read access" ON public.option_choices;
+DROP POLICY IF EXISTS "Allow authenticated read access" ON public.menu_item_options;
+DROP POLICY IF EXISTS "Allow full access for authenticated users" ON public.tables;
+DROP POLICY IF EXISTS "Allow users to manage their own orders" ON public.orders;
+DROP POLICY IF EXISTS "Allow full access for authenticated users" ON public.orders; -- Thêm dòng này để dọn dẹp policy mới
+DROP POLICY IF EXISTS "Allow users to manage their own cart items" ON public.cart_items;
+DROP POLICY IF EXISTS "Allow full access for authenticated users" ON public.order_items;
+DROP POLICY IF EXISTS "Allow full access for authenticated users" ON public.order_tables;
+DROP POLICY IF EXISTS "Allow full access for authenticated users" ON public.transactions;
+DROP POLICY IF EXISTS "Allow full access for authenticated users" ON public.cancellation_requests;
+DROP POLICY IF EXISTS "Allow full access for authenticated users" ON public.return_slips;
+DROP POLICY IF EXISTS "Allow full access for authenticated users" ON public.return_slip_items;
+DROP POLICY IF EXISTS "Allow full access for authenticated users" ON public.return_notifications;
+
+
+-- TẠO LẠI CÁC POLICIES
+-- Cho phép đọc dữ liệu công khai (menu, bàn...)
+CREATE POLICY "Allow authenticated read access" ON public.categories FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow authenticated read access" ON public.menu_items FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow authenticated read access" ON public.option_groups FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow authenticated read access" ON public.option_choices FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow authenticated read access" ON public.menu_item_options FOR SELECT TO authenticated USING (true);
+
+-- Cho phép toàn quyền trên các bảng còn lại cho người dùng đã đăng nhập
+CREATE POLICY "Allow full access for authenticated users" ON public.tables FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Allow full access for authenticated users" ON public.orders FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Allow full access for authenticated users" ON public.cart_items FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Allow full access for authenticated users" ON public.order_items FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Allow full access for authenticated users" ON public.order_tables FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Allow full access for authenticated users" ON public.transactions FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Allow full access for authenticated users" ON public.cancellation_requests FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Allow full access for authenticated users" ON public.return_slips FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Allow full access for authenticated users" ON public.return_slip_items FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Allow full access for authenticated users" ON public.return_notifications FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+
+
+-- =================================================================
+-- SCRIPT SỬA LỖI POLICY CHO BẢNG `menu_items` (Báo hết/Báo còn)
+-- =================================================================
+
+-- BƯỚC 1: XÓA POLICY CŨ CHỈ CHO PHÉP ĐỌC
+DROP POLICY IF EXISTS "Allow authenticated read access" ON public.menu_items;
+
+
+-- BƯỚC 2: TẠO POLICY MỚI CHO PHÉP TOÀN QUYỀN (CRUD)
+-- Điều này cho phép nhân viên bếp cập nhật trạng thái `is_available`
+CREATE POLICY "Allow full access for authenticated users"
+ON public.menu_items
+FOR ALL          -- Cho phép mọi hành động (SELECT, INSERT, UPDATE, DELETE)
+TO authenticated -- Cho tất cả người dùng đã đăng nhập
+USING (true)
+WITH CHECK (true);
+
+
+-- BƯỚC 3: THÔNG BÁO HOÀN TẤT
+SELECT 'Hoàn thành! Đã sửa lỗi policy trên bảng "menu_items". Chức năng Báo hết/Báo còn sẽ hoạt động.' AS status;
+
+
+
+-- =================================================================
+-- SCRIPT SỬA LỖI DATABASE CHO BẢNG `return_notifications`
+-- Mục tiêu: Đồng bộ cấu trúc bảng với code `notificationService.ts`
+-- =================================================================
+
+-- BƯỚC 1: DỌN DẸP SẠCH SẼ CÁC PHIÊN BẢN CŨ
+-- Xóa trigger và hàm tự động không còn cần thiết (vì code đã xử lý)
+DROP TRIGGER IF EXISTS trigger_after_return_slip_insert ON public.return_slips;
+DROP FUNCTION IF EXISTS public.create_return_notification_on_slip_insert();
+
+-- Xóa bảng `return_notifications` cũ để tạo lại với cấu trúc đúng
+DROP TABLE IF EXISTS public.return_notifications CASCADE;
+
+
+-- BƯỚC 2: TẠO LẠI BẢNG `return_notifications` VỚI CẤU TRÚC ĐÚNG
+-- Cấu trúc này khớp hoàn toàn với những gì code của bạn đang yêu cầu
+CREATE TABLE public.return_notifications (
+    id BIGSERIAL PRIMARY KEY,
+    order_id UUID NOT NULL REFERENCES public.orders(id) ON DELETE CASCADE,
+    table_name TEXT,
+    item_name TEXT NOT NULL, -- [SỬA LỖI] Đổi lại thành `item_name` kiểu TEXT
+    status TEXT DEFAULT 'pending', 
+    acknowledged_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    notification_type TEXT
+);
+
+
+-- BƯỚC 3: BẬT LẠI RLS VÀ TẠO POLICY CHO BẢNG MỚI
+ALTER TABLE public.return_notifications ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow full access for authenticated users" 
+ON public.return_notifications
+FOR ALL TO authenticated 
+USING (true) 
+WITH CHECK (true);
+
+
+-- BƯỚC 4: CẬP NHẬT PUBLICATION ĐỂ ĐẢM BẢO REALTIME HOẠT ĐỘNG
+-- Lệnh này đảm bảo mọi thay đổi trên bảng mới sẽ được phát đi
+ALTER PUBLICATION supabase_realtime ADD TABLE public.return_notifications;
+
+
+-- BƯỚC 5: THÔNG BÁO HOÀN TẤT
+SELECT 'Hoàn thành! Đã sửa lỗi bảng `return_notifications` thành công.' AS status;
+
+////
+
+
+-- =================================================================
+-- SCRIPT SỬA LỖI TOÀN DIỆN (PHIÊN BẢN CẢI TIẾN)
+-- An toàn để chạy nhiều lần mà không gây lỗi.
+-- =================================================================
+
+-- BƯỚC 1: DỌN DẸP SẠCH SẼ CÁC TRIGGER GÂY LỖI
+DROP TRIGGER IF EXISTS trigger_create_notification_on_request ON public.cancellation_requests;
+DROP FUNCTION IF EXISTS public.create_cancellation_notification();
+DROP TRIGGER IF EXISTS trigger_after_return_slip_insert ON public.return_slips;
+DROP FUNCTION IF EXISTS public.create_return_notification_on_slip_insert();
+DROP FUNCTION IF EXISTS public.create_notification_after_kitchen_approval(); -- Xóa cả hàm mới để tạo lại
+
+-- BƯỚC 2: TẠO LẠI HÀM VÀ TRIGGER ĐÚNG TRÊN BẢNG `return_slips`
+CREATE OR REPLACE FUNCTION public.create_notification_after_kitchen_approval()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_table_name TEXT;
+    v_item_names TEXT[];
+BEGIN
+    IF NEW.type = 'approved_cancellation' THEN
+        SELECT string_agg(t.name, ', ') INTO v_table_name
+        FROM public.order_tables ot
+        JOIN public.tables t ON ot.table_id = t.id
+        WHERE ot.order_id = NEW.order_id;
+        
+        SELECT array_agg(oi.customizations->>'name') INTO v_item_names
+        FROM public.return_slip_items rsi
+        JOIN public.order_items oi ON rsi.order_item_id = oi.id
+        WHERE rsi.return_slip_id = NEW.id;
+
+        IF array_length(v_item_names, 1) > 0 THEN
+            INSERT INTO public.return_notifications (order_id, table_name, item_names, notification_type)
+            VALUES (NEW.order_id, v_table_name, v_item_names, 'return_item');
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER trigger_after_return_slip_insert
+AFTER INSERT ON public.return_slips
+FOR EACH ROW
+EXECUTE FUNCTION public.create_notification_after_kitchen_approval();
+
+
+-- BƯỚC 3: THIẾT LẬP LẠI PUBLICATION MỘT CÁCH AN TOÀN
+-- Xóa publication cũ đi nếu nó tồn tại
+DROP PUBLICATION IF EXISTS supabase_realtime;
+
+-- Tạo lại publication mới với đầy đủ các bảng cần thiết cho toàn bộ hệ thống
+CREATE PUBLICATION supabase_realtime FOR TABLE 
+    public.orders, 
+    public.order_items, 
+    public.tables, 
+    public.menu_items, 
+    public.cancellation_requests, 
+    public.return_slips, 
+    public.return_notifications;
+
+
+-- BƯỚC 4: THÔNG BÁO HOÀN TẤT
+SELECT 'Hoàn thành! Đã cập nhật lại logic và publication thành công.' AS status;
+
+
+
+-- =================================================================
+-- SCRIPT SỬA LỖI TRIGGER: TÁCH RIÊNG UPDATE VÀ DELETE
+-- =================================================================
+
+-- BƯỚC 1: DỌN DẸP SẠCH SẼ HÀM VÀ TRIGGER CŨ
+DROP TRIGGER IF EXISTS trigger_update_order_timestamp ON public.order_items;
+DROP FUNCTION IF EXISTS public.update_order_timestamp_on_item_change();
+
+
+-- BƯỚC 2: TẠO LẠI HÀM SẼ ĐƯỢC CÁC TRIGGER GỌI
+-- Hàm này không thay đổi, nó vẫn có nhiệm vụ cập nhật `updated_at` của order cha.
+CREATE OR REPLACE FUNCTION public.update_order_timestamp_on_item_change()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Sử dụng OLD.order_id là an toàn cho cả UPDATE và DELETE
+    UPDATE public.orders
+    SET updated_at = NOW()
+    WHERE id = OLD.order_id;
+    
+    RETURN NULL; -- Giá trị trả về của AFTER trigger không quan trọng
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+
+-- BƯỚC 3: TẠO HAI TRIGGER RIÊNG BIỆT
+
+-- TRIGGER 1: Chỉ dành cho sự kiện UPDATE
+-- Trigger này có điều kiện WHEN để tối ưu hóa, chỉ chạy khi quantity thay đổi.
+CREATE TRIGGER trigger_on_item_update
+AFTER UPDATE ON public.order_items
+FOR EACH ROW
+WHEN (OLD.quantity IS DISTINCT FROM NEW.quantity OR OLD.returned_quantity IS DISTINCT FROM NEW.returned_quantity)
+EXECUTE FUNCTION public.update_order_timestamp_on_item_change();
+
+
+-- TRIGGER 2: Chỉ dành cho sự kiện DELETE
+-- Trigger này KHÔNG có điều kiện WHEN vì một khi đã DELETE là luôn cần cập nhật.
+CREATE TRIGGER trigger_on_item_delete
+AFTER DELETE ON public.order_items
+FOR EACH ROW
+EXECUTE FUNCTION public.update_order_timestamp_on_item_change();
+
+
+-- BƯỚC 4: THÔNG BÁO HOÀN TẤT
+SELECT 'Hoàn thành! Đã sửa lỗi và tách trigger thành công.' AS status;
+
+////
+
+
+-- =================================================================
+-- SCRIPT HOÀN CHỈNH: TỰ ĐỘNG HÓA CẬP NHẬT VÀ THÔNG BÁO CHO ORDER
+-- =================================================================
+
+-- BƯỚC 1: DỌN DẸP CÁC PHIÊN BẢN HÀM/TRIGGER CŨ ĐỂ TRÁNH XUNG ĐỘT
+DROP TRIGGER IF EXISTS trigger_update_order_timestamp ON public.order_items;
+DROP TRIGGER IF EXISTS trigger_on_item_update ON public.order_items;
+DROP TRIGGER IF EXISTS trigger_on_item_delete ON public.order_items;
+DROP FUNCTION IF EXISTS public.update_order_timestamp_on_item_change();
+
+DROP TRIGGER IF EXISTS trigger_notify_and_update_order_on_menu_change ON public.menu_items;
+DROP FUNCTION IF EXISTS public.handle_menu_item_availability_change();
+
+DROP TRIGGER IF EXISTS trigger_notify_on_item_completed ON public.order_items;
+DROP FUNCTION IF EXISTS public.create_item_ready_notification();
+
+
+-- BƯỚC 2: TẠO TRIGGER TỰ ĐỘNG CẬP NHẬT `orders` KHI `order_items` THAY ĐỔI
+-- Mục tiêu: Khi trả món hoặc hủy món, `OrderScreen` và `OrderInfoBox` sẽ tự cập nhật.
+CREATE OR REPLACE FUNCTION public.update_order_timestamp_on_item_change()
+RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE public.orders SET updated_at = NOW() WHERE id = OLD.order_id;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Trigger cho sự kiện UPDATE (vd: tăng returned_quantity)
+CREATE TRIGGER trigger_on_item_update
+AFTER UPDATE ON public.order_items
+FOR EACH ROW
+WHEN (OLD.quantity IS DISTINCT FROM NEW.quantity OR OLD.returned_quantity IS DISTINCT FROM NEW.returned_quantity)
+EXECUTE FUNCTION public.update_order_timestamp_on_item_change();
+
+-- Trigger cho sự kiện DELETE (vd: hủy món đã gửi bếp)
+CREATE TRIGGER trigger_on_item_delete
+AFTER DELETE ON public.order_items
+FOR EACH ROW
+EXECUTE FUNCTION public.update_order_timestamp_on_item_change();
+
+
+-- BƯỚC 3: TẠO TRIGGER TỰ ĐỘNG TẠO THÔNG BÁO "HẾT MÓN" VÀ CẬP NHẬT `orders`
+-- Mục tiêu: Khi bếp báo hết món, các order đang chờ món đó sẽ tự động tạo thông báo và `OrderScreen` sẽ cập nhật lại.
+CREATE OR REPLACE FUNCTION public.handle_menu_item_availability_change()
+RETURNS TRIGGER AS $$
+DECLARE
+    affected_order RECORD;
+BEGIN
+    -- Chỉ chạy khi trạng thái `is_available` thay đổi thành `false` (hết hàng)
+    IF OLD.is_available = TRUE AND NEW.is_available = FALSE THEN
+        -- Lặp qua tất cả các order_items đang ở trạng thái 'waiting' của món vừa hết hàng
+        FOR affected_order IN
+            SELECT oi.order_id, string_agg(t.name, ', ') as table_name
+            FROM public.order_items oi
+            JOIN public.orders o ON oi.order_id = o.id
+            JOIN public.order_tables ot ON o.id = ot.order_id
+            JOIN public.tables t ON ot.table_id = t.id
+            WHERE oi.menu_item_id = NEW.id AND oi.status = 'waiting'
+            GROUP BY oi.order_id
+        LOOP
+            -- Tạo thông báo "Hết hàng" cho nhân viên
+            INSERT INTO public.return_notifications (order_id, table_name, item_name, notification_type, status)
+            VALUES (affected_order.order_id, affected_order.table_name, NEW.name, 'out_of_stock', 'pending');
+            
+            -- "Chạm" vào order để kích hoạt Realtime cho OrderScreen
+            UPDATE public.orders SET updated_at = NOW() WHERE id = affected_order.order_id;
+        END LOOP;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER trigger_notify_and_update_order_on_menu_change
+AFTER UPDATE OF is_available ON public.menu_items
+FOR EACH ROW
+EXECUTE FUNCTION public.handle_menu_item_availability_change();
+
+
+-- BƯỚC 4: TẠO TRIGGER TỰ ĐỘNG TẠO THÔNG BÁO "SẴN SÀNG PHỤC VỤ"
+-- Mục tiêu: Khi bếp chuyển trạng thái món sang "completed", tự động tạo thông báo cho nhân viên.
+CREATE OR REPLACE FUNCTION public.create_item_ready_notification()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_table_name TEXT;
+BEGIN
+    -- Chỉ chạy khi trạng thái món chuyển thành 'completed'
+    IF OLD.status <> 'completed' AND NEW.status = 'completed' THEN
+        -- Lấy tên bàn
+        SELECT string_agg(t.name, ', ') INTO v_table_name
+        FROM public.order_tables ot
+        JOIN public.tables t ON ot.table_id = t.id
+        WHERE ot.order_id = NEW.order_id;
+
+        -- Tạo thông báo "Sẵn sàng phục vụ"
+        INSERT INTO public.return_notifications (order_id, table_name, item_name, notification_type, status)
+        VALUES (NEW.order_id, v_table_name, NEW.customizations->>'name', 'item_ready', 'pending');
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER trigger_notify_on_item_completed
+AFTER UPDATE OF status ON public.order_items
+FOR EACH ROW
+EXECUTE FUNCTION public.create_item_ready_notification();
+
+
+-- BƯỚC 5: THÔNG BÁO HOÀN TẤT
+SELECT 'Hoàn thành! Toàn bộ logic tự động hóa cho Order đã được thiết lập.' AS status;

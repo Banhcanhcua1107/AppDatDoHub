@@ -1,6 +1,6 @@
 // screens/Menu/OrderInfoBox.tsx
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react'; // <-- [SỬA LỖI] ĐÂY LÀ DÒNG BỊ THIẾU
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import { supabase } from '../../services/supabase';
 import Toast from 'react-native-toast-message';
 import ConfirmModal from '../../components/ConfirmModal';
 
+// --- Interfaces (Giữ nguyên) ---
 interface OrderInfoBoxProps {
   isVisible: boolean;
   onClose: () => void;
@@ -38,6 +39,7 @@ interface OrderDetails {
   is_provisional?: boolean;
 }
 
+// --- Components (Giữ nguyên) ---
 const MenuActionItem: React.FC<{ item: MenuItemProps; onPress: (action: string) => void }> = ({
   item,
   onPress,
@@ -72,36 +74,41 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({
     try {
       const { data, error } = await supabase
         .from('orders')
-        .select(`id, created_at, is_provisional, order_items(quantity, unit_price), order_tables!inner(table_id)`)
+        .select(`id, created_at, is_provisional, order_items(quantity, unit_price, returned_quantity, menu_items(is_available)), order_tables!inner(table_id)`)
         .eq('order_tables.table_id', tableId)
         .in('status', ['pending', 'paid'])
         .single();
 
       if (data) {
-        const totalItems = data.order_items.reduce((sum, item) => sum + item.quantity, 0);
-        const totalPrice = data.order_items.reduce(
-          (sum, item) => sum + item.quantity * item.unit_price,
+        const billableItems = data.order_items.filter(
+          (item: any) => item.menu_items?.is_available !== false
+        );
+
+        const totalItems = billableItems.reduce(
+          (sum, item) => sum + (item.quantity - (item.returned_quantity || 0)),
+          0
+        );
+        const totalPrice = billableItems.reduce(
+          (sum, item) => sum + (item.quantity - (item.returned_quantity || 0)) * item.unit_price,
           0
         );
         const orderTime = new Date(data.created_at).toLocaleTimeString('vi-VN', {
           hour: '2-digit',
           minute: '2-digit',
         });
-        setOrderDetails({ 
-          orderId: data.id, 
-          totalItems, 
-          totalPrice, 
+        setOrderDetails({
+          orderId: data.id,
+          totalItems,
+          totalPrice,
           orderTime,
-          is_provisional: data.is_provisional 
+          is_provisional: data.is_provisional,
         });
       } else if (error && error.code === 'PGRST116') {
         const { data: cartData, error: cartError } = await supabase
           .from('cart_items')
           .select('quantity, total_price')
           .eq('table_id', tableId);
-
         if (cartError) throw cartError;
-
         if (cartData && cartData.length > 0) {
           const totalItems = cartData.reduce((sum, item) => sum + item.quantity, 0);
           const totalPrice = cartData.reduce((sum, item) => sum + item.total_price, 0);
@@ -124,21 +131,30 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({
       setLoading(false);
     }
   }, [tableId, onClose]);
+  
   useEffect(() => {
     if (isVisible) {
       fetchOrderDetails();
     }
   }, [isVisible, fetchOrderDetails]);
 
+  useEffect(() => {
+      if (!tableId) return;
+      const channel = supabase
+          .channel(`order_info_box_${tableId}`)
+          .on('postgres_changes', { event: '*', schema: 'public' }, () => {
+              fetchOrderDetails();
+          })
+          .subscribe();
+      return () => {
+          supabase.removeChannel(channel);
+      };
+  }, [tableId, fetchOrderDetails]);
+
   const menuActions: MenuItemProps[] = [
     { icon: 'notifications-outline', text: 'Kiểm tra lên món', action: 'check_served_status' },
     { icon: 'cash-outline', text: 'Thanh toán', action: 'go_to_payment' },
-    {
-      icon: 'swap-horizontal-outline',
-      text: 'Chuyển bàn',
-      action: 'transfer_table',
-      color: '#3B82F6',
-    },
+    { icon: 'swap-horizontal-outline', text: 'Chuyển bàn', action: 'transfer_table', color: '#3B82F6' },
     { icon: 'layers-outline', text: 'Ghép Order (Thêm món)', action: 'merge_order' },
     { icon: 'apps-outline', text: 'Gộp Bàn (Chung bill)', action: 'group_tables', color: '#10B981' },
     { icon: 'git-compare-outline', text: 'Tách order', action: 'split_order' },
@@ -147,120 +163,59 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({
 
   const handleActionPress = (action: string) => {
     setMenuVisible(false);
-    
-    // Xử lý action cancel_order riêng với modal xác nhận
     if (action === 'cancel_order') {
       setTimeout(() => setCancelModalVisible(true), 200);
       return;
     }
-    
-    // Các action khác
-    setTimeout(
-      () => handleParentAction(action, { tableId, tableName, orderId: orderDetails?.orderId }),
-      200
-    );
+    setTimeout(() => handleParentAction(action, { tableId, tableName, orderId: orderDetails?.orderId }), 200);
   };
+
   const handleQuickAction = (action: string) => {
     onClose();
-    setTimeout(
-      () => handleParentAction(action, { tableId, tableName, orderId: orderDetails?.orderId }),
-      200
-    );
+    setTimeout(() => handleParentAction(action, { tableId, tableName, orderId: orderDetails?.orderId }), 200);
   };
 
   const handleConfirmCancelOrder = async () => {
     setCancelModalVisible(false);
-    
     if (!orderDetails?.orderId) {
-      Toast.show({
-        type: 'error',
-        text1: 'Lỗi',
-        text2: 'Không tìm thấy thông tin order để hủy'
-      });
+      Toast.show({ type: 'error', text1: 'Lỗi', text2: 'Không tìm thấy thông tin order để hủy' });
       return;
     }
-
     try {
-      const { error } = await supabase.rpc('cancel_order_and_reset_tables', {
-        p_order_id: orderDetails.orderId
-      });
-      
+      const { error } = await supabase.rpc('cancel_order_and_reset_tables', { p_order_id: orderDetails.orderId });
       if (error) throw error;
-
-      Toast.show({
-        type: 'success',
-        text1: 'Đã hủy order',
-        text2: `Order cho ${tableName} đã được hủy thành công.`
-      });
-      
+      Toast.show({ type: 'success', text1: 'Đã hủy order', text2: `Order cho ${tableName} đã được hủy thành công.` });
       onClose();
     } catch (err: any) {
-      Toast.show({
-        type: 'error',
-        text1: 'Lỗi hủy order',
-        text2: err.message
-      });
+      Toast.show({ type: 'error', text1: 'Lỗi hủy order', text2: err.message });
     }
   };
 
   const handleToggleProvisionalBill = async () => {
     if (!orderDetails?.orderId) {
-      Toast.show({
-        type: 'error',
-        text1: 'Lỗi',
-        text2: 'Không tìm thấy thông tin order'
-      });
+      Toast.show({ type: 'error', text1: 'Lỗi', text2: 'Không tìm thấy thông tin order' });
       return;
     }
-
-    // Nếu đã bật tạm tính rồi thì REFRESH lại data
     if (orderDetails.is_provisional) {
       setIsTogglingProvisional(true);
       try {
-        // Fetch lại dữ liệu mới nhất từ database
         await fetchOrderDetails();
-        
-        Toast.show({
-          type: 'success',
-          text1: 'Đã cập nhật',
-          text2: `Dữ liệu bàn ${tableName} đã được làm mới.`
-        });
+        Toast.show({ type: 'success', text1: 'Đã cập nhật', text2: `Dữ liệu bàn ${tableName} đã được làm mới.` });
       } catch (err: any) {
-        Toast.show({
-          type: 'error',
-          text1: 'Lỗi',
-          text2: 'Không thể cập nhật: ' + err.message
-        });
+        Toast.show({ type: 'error', text1: 'Lỗi', text2: 'Không thể cập nhật: ' + err.message });
       } finally {
         setIsTogglingProvisional(false);
       }
       return;
     }
-
     setIsTogglingProvisional(true);
     try {
-      const { error } = await supabase
-        .from('orders')
-        .update({ is_provisional: true })
-        .eq('id', orderDetails.orderId);
-      
+      const { error } = await supabase.from('orders').update({ is_provisional: true }).eq('id', orderDetails.orderId);
       if (error) throw error;
-
-      Toast.show({
-        type: 'success',
-        text1: 'Đã thêm vào Tạm tính',
-        text2: `Bàn ${tableName} đã được thêm vào tab Tạm tính`
-      });
-
-      // Cập nhật lại orderDetails để UI phản ánh ngay
+      Toast.show({ type: 'success', text1: 'Đã thêm vào Tạm tính', text2: `Bàn ${tableName} đã được thêm vào tab Tạm tính` });
       setOrderDetails(prev => prev ? { ...prev, is_provisional: true } : null);
-      
     } catch (err: any) {
-      Toast.show({
-        type: 'error',
-        text1: 'Lỗi',
-        text2: 'Không thể thêm vào tạm tính: ' + err.message
-      });
+      Toast.show({ type: 'error', text1: 'Lỗi', text2: 'Không thể thêm vào tạm tính: ' + err.message });
     } finally {
       setIsTogglingProvisional(false);
     }
@@ -274,10 +229,7 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({
       return (
         <View style={styles.noOrderContainer}>
           <Text style={styles.noOrderText}>Bàn chưa có order.</Text>
-          <TouchableOpacity
-            style={styles.newOrderButton}
-            onPress={() => handleQuickAction('add_new_order')}
-          >
+          <TouchableOpacity style={styles.newOrderButton} onPress={() => handleQuickAction('add_new_order')}>
             <Icon name="add-circle-outline" size={20} color="#FFFFFF" />
             <Text style={styles.newOrderButtonText}>Tạo Order Mới</Text>
           </TouchableOpacity>
@@ -308,31 +260,17 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({
           </View>
         </View>
         <View style={styles.actionsContainer}>
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => handleQuickAction('go_to_payment')}
-          >
+          <TouchableOpacity style={styles.actionButton} onPress={() => handleQuickAction('go_to_payment')}>
             <Icon name="cash-outline" size={24} color="#555" />
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => handleQuickAction('add_items')}
-          >
+          <TouchableOpacity style={styles.actionButton} onPress={() => handleQuickAction('add_items')}>
             <Icon name="restaurant-outline" size={24} color="#555" />
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={handleToggleProvisionalBill}
-            disabled={isTogglingProvisional}
-          >
+          <TouchableOpacity style={styles.actionButton} onPress={handleToggleProvisionalBill} disabled={isTogglingProvisional}>
             {isTogglingProvisional ? (
               <ActivityIndicator size="small" color="#3B82F6" />
             ) : (
-              <Icon 
-                name={orderDetails.is_provisional ? "checkmark-done-outline" : "receipt-outline"}
-                size={24} 
-                color={orderDetails.is_provisional ? '#2E8540' : '#555'} 
-              />
+              <Icon name={orderDetails.is_provisional ? "checkmark-done-outline" : "receipt-outline"} size={24} color={orderDetails.is_provisional ? '#2E8540' : '#555'} />
             )}
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionButton} onPress={() => setMenuVisible(true)}>
@@ -361,12 +299,7 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({
           )}
         </View>
       </View>
-      <Modal
-        transparent={true}
-        visible={menuVisible}
-        animationType="fade"
-        onRequestClose={() => setMenuVisible(false)}
-      >
+      <Modal transparent={true} visible={menuVisible} animationType="fade" onRequestClose={() => setMenuVisible(false)}>
         <Pressable style={styles.menuOverlay} onPress={() => setMenuVisible(false)}>
           <View style={styles.menuContainer}>
             {menuActions.map((item) => (
@@ -375,8 +308,6 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({
           </View>
         </Pressable>
       </Modal>
-
-      {/* Modal xác nhận hủy order */}
       <ConfirmModal
         isVisible={isCancelModalVisible}
         title="Xác nhận Hủy Order"

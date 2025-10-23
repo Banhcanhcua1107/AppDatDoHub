@@ -320,29 +320,33 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
     try {
       // [CẬP NHẬT] Lấy thêm cột is_provisional
       const { data, error } = await supabase
-        .from('orders')
-        .select(
-          `
-          id, 
-          created_at, 
-          is_provisional,
-          order_items(quantity, unit_price, returned_quantity), 
-          order_tables(tables(id, name))
+      .from('orders')
+      .select(
         `
-        )
-        .in('status', ['pending', 'paid']);
+        id, 
+        created_at, 
+        is_provisional,
+        order_items(quantity, unit_price, returned_quantity, menu_items(is_available)), 
+        order_tables(tables(id, name))
+      `
+      )
+      .in('status', ['pending', 'paid']);
 
       if (error) throw error;
 
       const formattedOrders: ActiveOrder[] = data
         .map((order) => {
           // [SỬA LỖI TẠI ĐÂY] Tính lại tổng tiền và số lượng sau khi trừ món trả
-          const totalPrice = order.order_items.reduce(
-            (sum, item) => sum + (item.quantity - item.returned_quantity) * item.unit_price,
+          const billableItems = order.order_items.filter(
+            (item: any) => item.menu_items?.is_available !== false
+          );
+
+          const totalPrice = billableItems.reduce(
+            (sum, item) => sum + (item.quantity - (item.returned_quantity || 0)) * item.unit_price,
             0
           );
-          const totalItemCount = order.order_items.reduce(
-              (sum, item) => sum + (item.quantity - item.returned_quantity),
+          const totalItemCount = billableItems.reduce(
+              (sum, item) => sum + (item.quantity - (item.returned_quantity || 0)),
               0
           );
           const tables = order.order_tables.map((ot: any) => ot.tables).filter(Boolean);
