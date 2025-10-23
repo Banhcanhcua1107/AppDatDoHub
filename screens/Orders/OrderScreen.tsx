@@ -23,7 +23,6 @@ import { AppTabParamList, AppStackParamList, ROUTES } from '../../constants/rout
 import Toast from 'react-native-toast-message';
 import { useNetwork } from '../../context/NetworkContext';
 import ConfirmModal from '../../components/ConfirmModal';
-// import { playNotificationSound } from '../../utils/soundManager'; 
 // --- [SỬA LỖI] Định nghĩa kiểu dữ liệu rõ ràng ---
 type TableInfo = { id: string; name: string };
 type ActiveOrder = {

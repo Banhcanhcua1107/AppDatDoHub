@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   StatusBar,
-  Vibration,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -34,16 +33,12 @@ const ReturnNotificationScreen = () => {
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [notifications, setNotifications] = useState<ReturnNotification[]>([]);
-  const previousCountRef = useRef(0);
   
   // [THÊM MỚI] Lấy orderId từ route params
   const filteredOrderId = route.params?.orderId;
 
-  // Phát rung khi có thông báo mới
-  const playNotificationAlert = () => {
-    // Rung 3 lần: 500ms rung, 200ms dừng, 500ms rung, 200ms dừng, 500ms rung
-    Vibration.vibrate([0, 500, 200, 500, 200, 500]);
-  };
+  // [CẬP NHẬT] Xóa playNotificationAlert() - NotificationContext đã xử lý âm thanh và rung
+  // Màn hình này chỉ dùng để hiển thị danh sách thông báo, không phát âm thanh
 
   const fetchNotifications = useCallback(async () => {
     try {
@@ -61,15 +56,7 @@ const ReturnNotificationScreen = () => {
 
       if (error) throw error;
 
-      const newCount = data?.filter(n => n.status === 'pending').length || 0;
-      const previousCount = previousCountRef.current;
-
-      // Phát rung nếu có thông báo mới
-      if (newCount > previousCount) {
-        playNotificationAlert();
-      }
-
-      previousCountRef.current = newCount;
+      // [CẬP NHẬT] Chỉ update state, không phát rung
       setNotifications(data || []);
     } catch (err: any) {
       console.error('Error fetching return notifications:', err.message);

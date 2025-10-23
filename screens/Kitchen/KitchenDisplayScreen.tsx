@@ -284,6 +284,7 @@ const KitchenDisplayScreen = () => {
         .subscribe();
       
       // [THÊM] Lắng nghe cancellation_requests - khi nhân viên yêu cầu hủy
+      // [LƯU Ý] Âm thanh được phát bởi NotificationContext, đây chỉ để cập nhật UI
       const cancellationChannel = supabase
         .channel('public:cancellation_requests:kitchen_display')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'cancellation_requests' }, () => {

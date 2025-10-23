@@ -82,6 +82,16 @@ const sendNotification = async (payload: NotificationPayload) => {
 
 // --- CÁC HÀM GỬI THÔNG BÁO PUBLIC ---
 
+export const sendReturnItemNotification = (orderId: string, tableName: string, itemName: string, quantity?: number) => {
+  const quantityText = quantity ? ` (SL: ${quantity})` : '';
+  return sendNotification({
+    order_id: orderId,
+    table_name: tableName,
+    item_name: `Khách yêu cầu trả: ${itemName}${quantityText}`,
+    notification_type: 'return_item',
+  });
+};
+
 export const sendItemReadyNotification = (orderId: string, tableName: string, itemName: string) => {
   return sendNotification({
     order_id: orderId,
@@ -158,6 +168,7 @@ export const deleteNotification = async (notificationId: number) => {
 
 export default {
   // Hàm gửi
+  sendReturnItemNotification,
   sendItemReadyNotification,
   sendOutOfStockNotification,
   sendCancellationApprovedNotification,

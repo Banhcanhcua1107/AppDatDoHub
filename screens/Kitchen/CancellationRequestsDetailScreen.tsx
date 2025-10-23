@@ -80,6 +80,7 @@ const CancellationRequestsDetailScreen = () => {
   useFocusEffect(
     useCallback(() => {
       fetchRequests();
+      // [LƯU Ý] Âm thanh được phát bởi NotificationContext, đây chỉ để cập nhật UI
       const channel = supabase
         .channel(`cancellation_requests_detail_screen:${orderId}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'cancellation_requests', filter: `order_id=eq.${orderId}` }, () => {
@@ -172,6 +173,8 @@ const CancellationRequestsDetailScreen = () => {
         // --- HOÀN TẤT TƯƠNG TÁC DATABASE ---
 
         // Bước 7: Gửi thông báo cho nhân viên rằng yêu cầu đã được DUYỆT
+        // [LƯU Ý] Âm thanh được phát bởi NotificationContext khi INSERT return_notifications
+        // Screen này chỉ gửi dữ liệu, không phát âm thanh
         await sendCancellationApprovedNotification(
             request.order_id,
             request.table_name,
@@ -206,6 +209,8 @@ const CancellationRequestsDetailScreen = () => {
     if (error) throw error;
     
     // Gửi thông báo từ chối
+    // [LƯU Ý] Âm thanh được phát bởi NotificationContext khi INSERT return_notifications
+    // Screen này chỉ gửi dữ liệu, không phát âm thanh
     const rejectedItemNames = request.requested_items.map(i => `${i.name} (x${i.quantity})`).join(', ');
     await sendCancellationRejectedNotification(
       request.order_id,

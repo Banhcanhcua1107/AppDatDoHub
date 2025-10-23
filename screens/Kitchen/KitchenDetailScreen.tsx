@@ -261,6 +261,14 @@ const KitchenDetailScreen = () => {
 
       if (error) throw error;
       
+      // [FIX] Kiểm tra data không null trước khi forEach
+      if (!data) {
+        console.warn('[KitchenDetail] Không có dữ liệu order_items');
+        setItems([]);
+        setLoading(false);
+        return;
+      }
+      
       // [CẬP NHẬT] Tạo item riêng cho các món đã trả (giống OrderConfirmationScreen)
       const allItems: KitchenDetailItem[] = [];
       
@@ -359,6 +367,7 @@ const KitchenDetailScreen = () => {
         .subscribe();
       
       // [MỚI] Lắng nghe cancellation requests thay đổi
+      // [LƯU Ý] Âm thanh được phát bởi NotificationContext, đây chỉ để cập nhật UI
       const cancellationChannel = supabase
         .channel(`public:cancellation_requests:detail:${orderId}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'cancellation_requests' }, () => {
