@@ -1,0 +1,1 @@
+INSERT INTO "public"."return_slip_items" ("id", "return_slip_id", "order_item_id", "quantity", "unit_price") VALUES ('1', '1', '11', '1', '40000'), ('2', '5', '16', '1', '67000');

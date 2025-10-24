@@ -1,0 +1,1 @@
+INSERT INTO "public"."profiles" ("id", "email", "full_name", "role") VALUES ('147f85a5-5966-4195-90da-bf128785ad8a', 'haidangnakar11@gmail.com', null, 'nhan_vien'), ('74edba1d-69de-4529-8029-9b5e8925cf10', 'banhcanhcuah2l@gmail.com', null, 'bep'), ('b1830fab-020b-4ba8-a7df-c0e5b6571dfd', '2205ct0010@dhv.edu.vn', null, 'thu_ngan');

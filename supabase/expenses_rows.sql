@@ -1,0 +1,1 @@
+INSERT INTO "public"."expenses" ("id", "description", "amount", "expense_date", "created_at") VALUES ('64b36802-1b58-492a-9b13-56387e9ada0c', 'Tiền điện tháng này', '500000', '2025-10-22', '2025-10-22 14:08:43.034262+00'), ('ea008fa2-69fe-4f9f-986c-f10b2be11f67', 'Nhập đá viên', '50000', '2025-10-22', '2025-10-22 14:08:43.034262+00');

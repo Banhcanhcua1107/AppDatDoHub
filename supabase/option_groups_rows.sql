@@ -1,0 +1,1 @@
+INSERT INTO "public"."option_groups" ("id", "name", "type") VALUES ('1', 'Chọn size', 'single'), ('2', 'Mức đường', 'single'), ('3', 'Topping', 'multiple'), ('4', 'Món ăn kèm', 'multiple');
