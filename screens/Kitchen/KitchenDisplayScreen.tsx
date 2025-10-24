@@ -156,7 +156,7 @@ const KitchenDisplayScreen = () => {
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<OrderTicket[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<OrderTicket | null>(null);
-  const [isReturnModalVisible, setReturnModalVisible] = useState(false);
+  const [isCompleteModalVisible, setCompleteModalVisible] = useState(false); // [THÊM] Modal xác nhận hoàn thành
   const [cancellationsByOrder, setCancellationsByOrder] = useState<Record<string, number>>({}); // [CẬP NHẬT] Map order_id -> count
   const navigation = useNavigation<KitchenDisplayNavigationProp>();
 
@@ -319,44 +319,55 @@ const KitchenDisplayScreen = () => {
 
   const handleReturnOrder = (ticket: OrderTicket) => {
     setSelectedTicket(ticket);
-    setReturnModalVisible(true);
+    setCompleteModalVisible(true); // [CẬP NHẬT] Mở modal xác nhận thay vì trực tiếp trả
   };
 
-  const handleConfirmReturnOrder = async () => {
+  // [THÊM] Hàm xử lý khi bấm "Hoàn thành tất cả"
+  const handleConfirmCompleteAll = async () => {
     if (!selectedTicket) return;
-    const originalOrders = orders;
-    const ticketToReturn = selectedTicket;
-
-    // [FIX] Chỉ lọc món đã hoàn thành để trả
-    const completedItems = ticketToReturn.items.filter(item => item.status === STATUS.COMPLETED);
     
-    if (completedItems.length === 0) {
-      Alert.alert('Thông báo', 'Không có món nào đã hoàn thành để trả cho khách.');
-      setReturnModalVisible(false);
-      setSelectedTicket(null);
-      return;
-    }
-
-    setReturnModalVisible(false);
-    setSelectedTicket(null);
+    setCompleteModalVisible(false);
     
     try {
-      const itemIds = completedItems.map(item => item.id);
+      // [CẬP NHẬT] Lọc tất cả món chưa trả (không phải SERVED) để chuyển sang SERVED
+      // Bao gồm: PENDING (chưa làm), IN_PROGRESS (đang làm), COMPLETED (đã xong)
+      const itemsToServe = selectedTicket.items.filter(
+        item => item.status !== STATUS.SERVED && item.status !== STATUS.RETURNED
+      );
+      
+      if (itemsToServe.length === 0) {
+        Alert.alert('Thông báo', 'Tất cả món đã được trả cho khách rồi.');
+        setSelectedTicket(null);
+        return;
+      }
 
-      // [FIX] Chỉ update món completed sang 'served' (đã trả cho khách)
+      const itemIds = itemsToServe.map(item => item.id);
+
+      // [CẬP NHẬT] Update UI trước
+      setOrders(currentOrders =>
+        currentOrders.map(order =>
+          order.order_id === selectedTicket.order_id
+            ? {
+                ...order,
+                items: order.items.map(item =>
+                  itemIds.includes(item.id) ? { ...item, status: STATUS.SERVED } : item
+                ),
+              }
+            : order
+        )
+      );
+
+      // [CẬP NHẬT] Update database - chuyển tất cả sang SERVED
       const { error: updateError } = await supabase
         .from('order_items')
         .update({ status: STATUS.SERVED })
         .in('id', itemIds);
       if (updateError) throw updateError;
 
-      // [XÓA] Không tạo return_notifications ở đây
-      // return_notifications chỉ được tạo khi NHÂN VIÊN gửi yêu cầu trả món
-      
+      setSelectedTicket(null);
     } catch (err: any) {
-      console.error("Error returning items to customer:", err.message);
-      Alert.alert('Lỗi', 'Không thể trả món. Vui lòng thử lại.');
-      setOrders(originalOrders);
+      console.error("Error completing all items:", err.message);
+      Alert.alert('Lỗi', 'Không thể hoàn thành. Vui lòng thử lại.');
     }
   };
 
@@ -402,16 +413,20 @@ const KitchenDisplayScreen = () => {
         }
       />
 
-      {/* Modal xác nhận trả món */}
+      {/* Modal xác nhận hoàn thành */}
       <ConfirmModal
-        isVisible={isReturnModalVisible}
-        title="Xác nhận trả món"
-        message={selectedTicket ? `Bạn có chắc chắn muốn trả món cho ${selectedTicket.table_name}?` : ''}
+        isVisible={isCompleteModalVisible}
+        title="Xác nhận hoàn thành"
+        message={selectedTicket ? `Bạn có chắc chắn muốn trả toàn bộ đơn của ${selectedTicket.table_name}?` : ''}
         confirmText="Xác nhận"
         cancelText="Hủy"
-        onClose={() => setReturnModalVisible(false)}
-        onConfirm={handleConfirmReturnOrder}
+        variant="success"
+        onClose={() => setCompleteModalVisible(false)}
+        onConfirm={handleConfirmCompleteAll}
       />
+
+      {/* Modal xác nhận trả món - XÓA */}
+      {/* Không còn dùng nữa */}
     </SafeAreaView>
   );
 };
