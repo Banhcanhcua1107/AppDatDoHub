@@ -56,8 +56,13 @@ const ReturnNotificationScreen = () => {
 
       if (error) throw error;
 
-      // [CẬP NHẬT] Chỉ update state, không phát rung
-      setNotifications(data || []);
+      // [FIX] Lọc bỏ notification_type = 'return_item' (đó là nhân viên gửi cho bếp, không phải cho nhân viên)
+      // Chỉ giữ: 'item_ready', 'out_of_stock', 'cancellation_approved', 'cancellation_rejected'
+      const filteredData = (data || []).filter(
+        (notification: ReturnNotification) => notification.notification_type !== 'return_item'
+      );
+
+      setNotifications(filteredData);
     } catch (err: any) {
       console.error('Error fetching return notifications:', err.message);
     } finally {

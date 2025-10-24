@@ -142,11 +142,14 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
   React.useEffect(() => {
     const fetchNotifications = async () => {
       try {
+        // [FIX] Lọc bỏ 'return_item' (notification từ nhân viên gửi cho bếp, không phải cho nhân viên)
+        // Chỉ lấy: item_ready, out_of_stock, cancellation_approved, cancellation_rejected
         const { count, error } = await supabase
           .from('return_notifications')
           .select('*', { count: 'exact', head: true })
           .eq('order_id', item.orderId)
-          .eq('status', 'pending');
+          .eq('status', 'pending')
+          .neq('notification_type', 'return_item');
         
         if (error) throw error;
         setNotificationCount(count || 0);
@@ -169,13 +172,11 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
           filter: `order_id=eq.${item.orderId}`
         },
         (payload: any) => {
-          // [XÓA] Không cần phát âm thanh ở đây nữa, NotificationContext đã xử lý
-          // if (payload.eventType === 'INSERT') {
-          //   playNotificationSound();
-          // }
-          
-          // Chỉ cần fetch lại số lượng để cập nhật huy hiệu
-          fetchNotifications();
+          // [FIX] Chỉ fetch lại nếu notification_type KHÔNG phải 'return_item'
+          // return_item là nhân viên gửi cho bếp, không cần update badge ở OrderScreen
+          if (payload.new?.notification_type !== 'return_item') {
+            fetchNotifications();
+          }
         }
       )
       .subscribe();

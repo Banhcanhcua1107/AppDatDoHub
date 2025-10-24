@@ -28,7 +28,7 @@ interface CancellationRequest {
 const RequestCard = ({ item, onApprove, onReject }: { item: CancellationRequest; onApprove: () => void; onReject: () => void; }) => (
   <View style={styles.card}>
     <View style={styles.cardHeader}>
-        <Text style={styles.cardTitle}>Bàn {item.table_name}</Text>
+        <Text style={styles.cardTitle}>{item.table_name}</Text>
         <Text style={styles.timestamp}>{new Date(item.created_at).toLocaleTimeString('vi-VN')}</Text>
     </View>
     <Text style={styles.reason}><Text style={{fontWeight: 'bold'}}>Lý do:</Text> {item.reason}</Text>
@@ -173,8 +173,10 @@ const CancellationRequestsDetailScreen = () => {
         // --- HOÀN TẤT TƯƠNG TÁC DATABASE ---
 
         // Bước 7: Gửi thông báo cho nhân viên rằng yêu cầu đã được DUYỆT
-        // [LƯU Ý] Âm thanh được phát bởi NotificationContext khi INSERT return_notifications
-        // Screen này chỉ gửi dữ liệu, không phát âm thanh
+        // [QUAN TRỌNG] Khi gửi notification, bếp sẽ không nghe âm thanh vì:
+        // - NotificationContext chỉ phát âm thanh cho staff khi notification_type là từ bếp
+        // - Bếp tự gửi notification (self-trigger) → NotificationContext sẽ bỏ qua
+        // - Chỉ nhân viên khác (ở OrderScreen) mới nghe tiếng "ting-ting"
         await sendCancellationApprovedNotification(
             request.order_id,
             request.table_name,
@@ -209,8 +211,10 @@ const CancellationRequestsDetailScreen = () => {
     if (error) throw error;
     
     // Gửi thông báo từ chối
-    // [LƯU Ý] Âm thanh được phát bởi NotificationContext khi INSERT return_notifications
-    // Screen này chỉ gửi dữ liệu, không phát âm thanh
+    // [QUAN TRỌNG] Khi gửi notification, bếp sẽ không nghe âm thanh vì:
+    // - NotificationContext chỉ phát âm thanh cho staff khi notification_type là từ bếp
+    // - Bếp tự gửi notification (self-trigger) → NotificationContext sẽ bỏ qua
+    // - Chỉ nhân viên khác (ở OrderScreen) mới nghe tiếng "ting-ting"
     const rejectedItemNames = request.requested_items.map(i => `${i.name} (x${i.quantity})`).join(', ');
     await sendCancellationRejectedNotification(
       request.order_id,
