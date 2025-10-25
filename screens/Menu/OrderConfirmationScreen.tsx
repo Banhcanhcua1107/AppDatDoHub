@@ -1,5 +1,5 @@
 // --- START OF FILE OrderConfirmationScreen.tsx ---
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef  } from 'react';
 import {
   View,
   Text,
@@ -28,6 +28,9 @@ import PaymentMethodBox from '../../components/PaymentMethodBox';
 import BillContent from '../../components/BillContent';
 import { BillItem } from '../Orders/ProvisionalBillScreen';
 import ConfirmModal from '../../components/ConfirmModal';
+import ZaloPayQRModal from '../../components/ZaloPayQRModal';
+import axios from 'axios';
+import VietQRModal from '../../components/VietQRModal'
 
 interface OrderSection {
   title: string;
@@ -285,6 +288,17 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
   const [pendingPaymentAction, setPendingPaymentAction] = useState<'keep' | 'end' | null>(null);
   const [isBillModalVisible, setBillModalVisible] = useState(false);
   
+
+  const [isZaloPayModalVisible, setZaloPayModalVisible] = useState(false);
+  const [zaloPayQRValue, setZaloPayQRValue] = useState<string | null>(null);
+  const [isLoadingZaloPayQR, setIsLoadingZaloPayQR] = useState(false);
+
+
+  const [isVietQRModalVisible, setVietQRModalVisible] = useState(false);
+  const [vietQRValue, setVietQRValue] = useState<string | null>(null);
+  const [isLoadingVietQR, setIsLoadingVietQR] = useState(false);
+
+
   // State cho Confirm Modals
   const [cancelItemModal, setCancelItemModal] = useState<{
     visible: boolean;
@@ -292,6 +306,8 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
   }>({ visible: false, item: null });
   
   const [closeSessionModal, setCloseSessionModal] = useState(false);
+
+  const previousBillRef = useRef<number>(0);
   
   const fetchAllData = useCallback(
     async (isInitialLoad = true) => {
@@ -487,11 +503,40 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
   useFocusEffect(
     useCallback(() => {
       fetchAllData(true);
+
+      const channelId = routeOrderId || initialTableId;
+
+      if (!channelId) {
+        console.warn("Không thể đăng ký Realtime vì không có orderId hoặc tableId.");
+        return; // Dừng lại nếu không có ID
+      }
       const channel = supabase
-        .channel(`public:order_confirmation_v2:${activeOrderId || initialTableId}`)
-        .on('postgres_changes', { event: '*', schema: 'public' }, () => {
-          fetchAllData(false);
-        })
+        .channel(`orders_channel:${channelId}`)
+        .on(
+          'postgres_changes',
+          { 
+          event: 'UPDATE', 
+          schema: 'public', 
+          table: 'orders',
+          filter: `id=eq.${activeOrderId}` // Thêm bộ lọc filter
+          },
+          (payload) => {
+            console.log('[Realtime] Cập nhật orders:', payload);
+
+            const newStatus = payload.new?.status;
+            const oldStatus = payload.old?.status;
+            
+            // Chỉ trigger thanh toán thành công nếu status THỰC SỰ thay đổi từ pending/other thành paid
+            if (oldStatus !== newStatus && newStatus === 'paid') {
+              Toast.show({
+                type: 'success',
+                text1: 'Thanh toán thành công!',
+                text2: 'Đang chuẩn bị hóa đơn để in...',
+              });
+            }
+            fetchAllData(false);
+          }
+        )
         .subscribe();
       
       // [MỚI] Lắng nghe thay đổi trên bảng menu_items (khi bếp báo hết món)
@@ -512,7 +557,7 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
         supabase.removeChannel(channel);
         supabase.removeChannel(menuItemsChannel);
       };
-    }, [fetchAllData, activeOrderId, initialTableId])
+    }, [fetchAllData, activeOrderId, initialTableId, routeOrderId])
   );
 
   const handleUpdateQuantity = async (item: DisplayItem, newQuantity: number) => {
@@ -825,6 +870,124 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
   const hasNewItems = newItemsFromCart.length > 0;
   const totalBill = billableItems.reduce((sum, item) => sum + item.totalPrice, 0);
 
+   const handleNavigateToPrint = useCallback(async (orderId: string, paymentMethod: 'cash' | 'transfer') => {
+  try {
+    console.log('🔄 [handleNavigateToPrint] Starting, orderId:', orderId, 'method:', paymentMethod);
+    setLoading(true);
+
+    const { data: orderData, error: orderError } = await supabase
+      .from('orders')
+      .select('id, created_at, order_tables!inner(tables(id, name))')
+      .eq('id', orderId)
+      .single();
+    
+    console.log('🔄 [handleNavigateToPrint] Order data fetched:', orderData?.id);
+    if (orderError) throw orderError;
+    
+    const { data: itemsData, error: itemsError } = await supabase
+      .from('order_items')
+      .select('quantity, unit_price, customizations, returned_quantity')
+      .eq('order_id', orderId);
+      
+    console.log('🔄 [handleNavigateToPrint] Items data fetched:', itemsData?.length);
+    if (itemsError) throw itemsError;
+
+    const items: BillItem[] = itemsData
+      .map((item: any) => {
+        const remainingQuantity = item.quantity - (item.returned_quantity || 0);
+        if (remainingQuantity <= 0) return null;
+        
+        return {
+          name: item.customizations?.name || 'Món đã xóa',
+          unit_price: item.unit_price,
+          quantity: remainingQuantity,
+          totalPrice: item.unit_price * remainingQuantity
+        };
+      })
+      .filter((item): item is BillItem => item !== null);
+    
+    const finalPrice = items.reduce((sum, item) => sum + item.totalPrice, 0);
+    const totalItemCount = items.reduce((sum, item) => sum + item.quantity, 0);
+    
+    const order = {
+      orderId: orderData.id,
+      createdAt: orderData.created_at,
+      tables: orderData.order_tables.map((ot: any) => ({
+        id: ot.tables.id,
+        name: ot.tables.name
+      })),
+      totalPrice: finalPrice,
+      totalItemCount
+    };
+
+    console.log('🔄 [handleNavigateToPrint] About to navigate to PrintPreview');
+    console.log('   - shouldNavigateToHome:', pendingPaymentAction === 'end');
+
+    // Điều hướng đến màn hình in bill
+    // `shouldNavigateToHome` sẽ quyết định nút "Đóng" trên màn hình in sẽ làm gì
+    navigation.navigate('PrintPreview', { 
+      order, 
+      items, 
+      paymentMethod,
+      shouldNavigateToHome: pendingPaymentAction === 'end' 
+    });
+    
+    console.log('✅ [handleNavigateToPrint] Navigation completed');
+
+  } catch (error: any) {
+    console.error('❌ [handleNavigateToPrint] Error:', error);
+    Toast.show({ type: 'error', text1: 'Lỗi lấy thông tin in bill', text2: error.message });
+  } finally {
+    setLoading(false);
+    // Reset pendingPaymentAction sau khi navigation hoàn tất
+    console.log('🔄 [handleNavigateToPrint] Resetting pendingPaymentAction');
+    setPendingPaymentAction(null);
+  }
+}, [navigation, pendingPaymentAction]);
+
+ useEffect(() => {
+  const handlePaymentCompleted = async () => {
+    const wasJustPaidViaWebhook = previousBillRef.current > 0 && totalBill === 0;
+
+    if (wasJustPaidViaWebhook) {
+      if (isVietQRModalVisible) {
+        setVietQRModalVisible(false);
+      }
+
+      console.log('✅ Phát hiện thanh toán hoàn tất qua webhook!');
+
+      Toast.show({
+        type: 'success',
+        text1: 'Thanh toán thành công!',
+        text2: 'Đang xử lý hóa đơn...',
+        visibilityTime: 2000,
+      });
+
+      // LOGIC MỚI: Kiểm tra và thực hiện hành động "Kết thúc" hay "Giữ phiên"
+      if (pendingPaymentAction === 'end' && activeOrderId) {
+        console.log("Thực hiện hành động 'Kết thúc phiên' sau khi thanh toán webhook...");
+        
+        // Gọi hàm đóng bàn. Hàm này sẽ tự động điều hướng về màn hình chính sau khi hoàn tất.
+        // Chúng ta sử dụng previousBillRef.current để lấy số tiền chính xác ngay trước khi nó về 0.
+        await handleEndSessionAfterPayment(activeOrderId, previousBillRef.current, 'Chuyển khoản');
+
+      } else if (activeOrderId) {
+        // Nếu là 'keep' (hoặc không xác định), chỉ chuyển đến trang in
+        setTimeout(() => {
+          handleNavigateToPrint(activeOrderId, 'transfer');
+        }, 500);
+      }
+    }
+  };
+
+  handlePaymentCompleted();
+
+  // Luôn cập nhật giá trị của ref cho lần render tiếp theo
+  previousBillRef.current = totalBill;
+
+});
+
+
   const sendNewItemsToKitchen = async (): Promise<string | null> => {
     if (!hasNewItems) return activeOrderId;
     if (!isOnline) {
@@ -897,6 +1060,10 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
           .eq('id', representativeTable.id)
           .throwOnError();
         setActiveOrderId(orderIdToUse);
+
+        const orderCode = orderIdToUse!.slice(-6);
+        await supabase.from("orders").update({ order_code: orderCode }).eq("id", orderIdToUse);
+        console.log("✅ Đã tạo order_code:", orderCode);
       }
       const itemsToInsert = newItemsFromCart.map((item) => ({
         order_id: orderIdToUse,
@@ -941,52 +1108,80 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
   };
 
   const handlePayment = async () => {
-    if (!isOnline) {
+  if (!isOnline) {
     Toast.show({
       type: 'error',
       text1: 'Không có kết nối mạng',
-      text2: 'Chức năng thanh toán yêu cầu phải có mạng để đảm bảo tính chính xác.',
+      text2: 'Chức năng thanh toán yêu cầu phải có mạng.',
     });
-    return; // Dừng hàm ngay tại đây
+    return;
   }
   
-  if (billableItems.length === 0 && !hasNewItems) { // Sửa lại điều kiện một chút
+  if (billableItems.length === 0 && !hasNewItems) {
     Alert.alert('Thông báo', 'Không có món nào cần thanh toán.');
     return;
   }
 
-    setLoading(true);
-    let finalOrderId = activeOrderId;
-    if (hasNewItems) {
-      const returnedOrderId = await sendNewItemsToKitchen();
-      if (!returnedOrderId) {
-        setLoading(false);
-        return;
-      }
-      finalOrderId = returnedOrderId;
-    }
+  setLoading(true);
+  let finalOrderId = activeOrderId;
 
-    if (!finalOrderId) {
-      Alert.alert('Lỗi', 'Không tìm thấy order để thanh toán.');
+  if (hasNewItems) {
+    const returnedOrderId = await sendNewItemsToKitchen();
+    if (!returnedOrderId) {
       setLoading(false);
       return;
     }
+    finalOrderId = returnedOrderId;
+  }
 
-    const { data: finalItemsData } = await supabase
-      .from('order_items')
-      .select('quantity, unit_price, returned_quantity')
-      .eq('order_id', finalOrderId);
-    const finalBillToPay = (finalItemsData || []).reduce((sum, item) => {
-      const remainingQty = item.quantity - item.returned_quantity;
-      return sum + remainingQty * item.unit_price;
-    }, 0);
-
+  if (!finalOrderId) {
+    Alert.alert('Lỗi', 'Không tìm thấy order để thanh toán.');
     setLoading(false);
-    
-    // Lưu thông tin thanh toán và hiển thị modal
-    setPaymentInfo({ orderId: finalOrderId, amount: finalBillToPay });
-    setPaymentModalVisible(true);
-  };
+    return;
+  }
+  
+  // ✅ LOGIC MỚI: Đảm bảo order_code tồn tại trước khi thanh toán
+  try {
+    const { data: orderData, error: orderError } = await supabase
+      .from('orders')
+      .select('order_code')
+      .eq('id', finalOrderId)
+      .single();
+
+    if (orderError) throw orderError;
+
+    // Nếu không có order_code, tạo mới nó
+    if (!orderData || !orderData.order_code) {
+      console.log(`Order ${finalOrderId} chưa có order_code. Đang tạo...`);
+      const newOrderCode = finalOrderId.slice(-6);
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update({ order_code: newOrderCode })
+        .eq('id', finalOrderId);
+      if (updateError) throw updateError;
+      console.log(`✅ Đã tạo order_code: ${newOrderCode}`);
+    }
+  } catch(error: any) {
+    Toast.show({ type: 'error', text1: 'Lỗi chuẩn bị thanh toán', text2: error.message });
+    setLoading(false);
+    return;
+  }
+  // KẾT THÚC LOGIC MỚI
+
+  const { data: finalItemsData } = await supabase
+    .from('order_items')
+    .select('quantity, unit_price, returned_quantity')
+    .eq('order_id', finalOrderId);
+
+  const finalBillToPay = (finalItemsData || []).reduce((sum, item) => {
+    const remainingQty = item.quantity - item.returned_quantity;
+    return sum + remainingQty * item.unit_price;
+  }, 0);
+
+  setLoading(false);
+  setPaymentInfo({ orderId: finalOrderId, amount: finalBillToPay });
+  setPaymentModalVisible(true);
+};
 
   const handleKeepSessionAfterPayment = async (orderId: string, finalBill: number, paymentMethod: string) => {
     setLoading(true);
@@ -1001,11 +1196,11 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         .eq('id', orderId)
         .throwOnError();
       
-      Toast.show({
-        type: 'success',
-        text1: 'Thanh toán thành công',
-        text2: `Đã thanh toán ${finalBill.toLocaleString('vi-VN')}đ qua ${paymentMethod === 'cash' ? 'Tiền mặt' : paymentMethod === 'momo' ? 'Momo' : 'Chuyển khoản'}`
-      });
+     Toast.show({
+      type: 'success',
+      text1: 'Thanh toán thành công',
+      text2: `Đã thanh toán ${finalBill.toLocaleString('vi-VN')}đ qua ${paymentMethod === 'cash' ? 'Tiền mặt' : paymentMethod === 'zalopay' ? 'ZaloPay' : 'Chuyển khoản'}`
+    });
     } catch (error: any) {
       Toast.show({
         type: 'error',
@@ -1017,39 +1212,46 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
     }
   };
 
-  const handleEndSessionAfterPayment = async (orderId: string, finalBill: number, paymentMethod: string) => {
+  const handleEndSessionAfterPayment = useCallback(async (orderId: string, finalBill: number, paymentMethod: string, shouldNavigateHome: boolean = true) => {
     setLoading(true);
     try {
       const { data: orderTables, error: tablesError } = await supabase
         .from('order_tables')
         .select('table_id')
         .eq('order_id', orderId);
+
       if (tablesError) throw tablesError;
       const tableIdsToUpdate = orderTables.map((t) => t.table_id);
 
+      // Cập nhật trạng thái order là 'closed'
       await supabase
         .from('orders')
         .update({ 
           status: 'closed', 
           total_price: finalBill,
-          payment_method: paymentMethod // Lưu phương thức thanh toán
+          payment_method: paymentMethod
         })
         .eq('id', orderId)
         .throwOnError();
+        
+      // Cập nhật trạng thái bàn là 'Trống'
       await supabase
         .from('tables')
         .update({ status: 'Trống' })
         .in('id', tableIdsToUpdate)
         .throwOnError();
 
-       Toast.show({
+      Toast.show({
         type: 'success',
         text1: 'Hoàn tất phiên',
-        text2: `Đã thanh toán ${finalBill.toLocaleString('vi-VN')}đ và dọn bàn.`
+        text2: `Đã thanh toán và dọn bàn.`,
       });
-      // Navigate về màn hình chính - hoạt động với cả nhân viên và thu ngân
-      navigation.getParent()?.goBack();
-      navigation.getParent()?.goBack();
+
+      // Quay về màn hình chính (danh sách bàn) nếu được yêu cầu
+      if (shouldNavigateHome) {
+        navigation.getParent()?.goBack();
+      }
+      
     } catch (error: any) {
       Toast.show({
         type: 'error',
@@ -1058,122 +1260,143 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
       });
     } finally {
       setLoading(false);
+      // [XÓA] Dòng này sẽ được chuyển đi nơi khác
+      // setPendingPaymentAction(null); 
     }
-  };
+  }, [navigation]);
 
-  const handlePaymentMethodSelect = (method: 'cash' | 'momo' | 'transfer') => {
-    setPaymentMethodBoxVisible(false);
-    
-    if (!paymentInfo || !pendingPaymentAction) return;
-    
-    const methodNames = {
-      cash: 'Tiền mặt',
-      momo: 'Momo',
-      transfer: 'Chuyển khoản'
-    };
-    
-    // Nếu thanh toán bằng tiền mặt, hiển thị Bill trước
-    if (method === 'cash') {
-      setBillModalVisible(true);
-      // Sau khi xem bill, mới xử lý thanh toán
+  const handlePaymentMethodSelect = (method: 'cash' | 'zalopay' | 'transfer') => {
+  setPaymentMethodBoxVisible(false);
+  
+  if (!paymentInfo || !pendingPaymentAction) return;
+  
+  const methodNames = {
+    cash: 'Tiền mặt',
+    zalopay: 'ZaloPay', // Đã sửa
+    transfer: 'Chuyển khoản'
+  };
+  
+  if (method === 'cash') {
+    setBillModalVisible(true);
+    return;
+  }
+  
+  // --- THAY ĐỔI LOGIC ZALOPAY TẠI ĐÂY ---
+  if (method === 'zalopay') {
+    // Gọi hàm tạo QR code
+    createZaloPayOrder(paymentInfo.amount, paymentInfo.orderId);
+    // Chúng ta sẽ không gọi handleKeep/EndSession ngay lập tức
+    // Mà sẽ chờ sau khi thanh toán thành công
+    return; 
+  }
+
+  if (method === 'transfer') {
+      // Gọi hàm tạo QR code chuyển khoản
+      createTransferQRCode(paymentInfo.amount, paymentInfo.orderId);
+      // Tương tự ZaloPay, ta sẽ không gọi handleKeep/EndSession ngay
+      // mà sẽ chờ webhook từ backend thông báo thành công.
       return;
     }
-    
-    // Xử lý thanh toán cho Momo và Chuyển khoản
-    if (pendingPaymentAction === 'keep') {
-      handleKeepSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, methodNames[method]);
-    } else if (pendingPaymentAction === 'end') {
-      handleEndSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, methodNames[method]);
+  
+  // Xử lý thanh toán cho Chuyển khoản
+  if (pendingPaymentAction === 'end') {
+    handleEndSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, methodNames[method]);
+  } else {
+    handleKeepSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, methodNames[method]);
+  }
+  
+  // ❌ KHÔNG reset pendingPaymentAction ở đây, để nó vẫn giữ giá trị cho handleNavigateToPrint
+};
+
+
+
+// Tạo QR trực tiếp từ API vietqr.io (không cần backend)
+const createTransferQRCode = async (amount: number, orderId: string) => {
+  setIsLoadingVietQR(true);
+  setVietQRModalVisible(true);
+  setVietQRValue(null);
+
+  try {
+    // ✅ CẢI THIỆN: Lấy 'order_code' từ DB để đảm bảo nó tồn tại
+    const { data: orderData, error: orderError } = await supabase
+      .from('orders')
+      .select('order_code')
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !orderData || !orderData.order_code) {
+      // Nếu không có order_code, có thể tạo mới ngay tại đây nếu cần
+      // Nhưng logic `sendNewItemsToKitchen` đã xử lý việc này
+      throw new Error(orderError?.message || "Không tìm thấy mã đơn hàng (order_code).");
     }
-    
-    // Reset states
-    setPendingPaymentAction(null);
-  };
+
+    const orderCode = orderData.order_code;
+
+    const resp = await axios.post("https://api.vietqr.io/v2/generate", {
+      accountNo: "0329638454",
+      accountName: "Dang Thanh Hai",
+      acqId: "970422", // MB Bank
+      amount: amount,
+      addInfo: `ThanhToan Don ${orderCode}`, // Sử dụng order_code đã lấy được
+      template: "compact",
+    });
+
+    if (resp.data?.data?.qrDataURL) {
+      setVietQRValue(resp.data.data.qrDataURL);
+    } else {
+      throw new Error("Không nhận được QR hợp lệ từ API.");
+    }
+  } catch (error) {
+    console.error("Lỗi tạo QR:", error);
+    Alert.alert("Lỗi", "Không thể tạo mã thanh toán. Vui lòng thử lại sau.");
+    setVietQRModalVisible(false); // Đóng modal nếu có lỗi
+  } finally {
+    setIsLoadingVietQR(false);
+  }
+};
 
   const handleCompleteCashPayment = async () => {
+    // Đóng modal hiển thị bill
     setBillModalVisible(false);
     
+    // Kiểm tra các thông tin cần thiết
     if (!paymentInfo || !pendingPaymentAction) return;
     
+    // Bật trạng thái loading
     setLoading(true);
     
     try {
-      // Lấy thông tin order và items để truyền vào PrintPreview
-      const { data: orderData, error: orderError } = await supabase
-        .from('orders')
-        .select(`
-          id,
-          created_at,
-          order_tables!inner(
-            tables(id, name)
-          )
-        `)
-        .eq('id', paymentInfo.orderId)
-        .single();
+      // BƯỚC 1: ƯU TIÊN ĐIỀU HƯỚNG TRƯỚC
+      // Chuyển người dùng sang màn hình In Bill ngay lập tức.
+      // Hàm handleNavigateToPrint sẽ tự đọc state `pendingPaymentAction` để biết
+      // sau khi in xong có cần quay về Home hay không.
+      await handleNavigateToPrint(paymentInfo.orderId, 'cash');
       
-      if (orderError) throw orderError;
-      
-      const { data: itemsData, error: itemsError } = await supabase
-        .from('order_items')
-        .select('quantity, unit_price, customizations, returned_quantity')
-        .eq('order_id', paymentInfo.orderId);
-      
-      if (itemsError) throw itemsError;
-      
-      // Xử lý thanh toán tiền mặt
+      // BƯỚC 2: CẬP NHẬT DATABASE Ở CHẾ ĐỘ NỀN
+      // Sau khi người dùng đã được chuyển đi, ta mới thực hiện cập nhật CSDL.
+      // Việc này giúp tránh lỗi "race condition" khi sự kiện real-time về
+      // và gây re-render màn hình cũ trong lúc đang chuyển trang.
       if (pendingPaymentAction === 'keep') {
+        // Nếu chỉ giữ phiên, cập nhật trạng thái order là "paid"
         await handleKeepSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'Tiền mặt');
       } else if (pendingPaymentAction === 'end') {
-        await handleEndSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'Tiền mặt');
+        // Nếu kết thúc phiên, cập nhật trạng thái order là "closed" và bàn là "Trống".
+        // Tham số `false` để đảm bảo hàm này không cố điều hướng về Home lần nữa.
+        await handleEndSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'Tiền mặt', false);
       }
       
-      // Chuẩn bị dữ liệu cho PrintPreview
-      const items = itemsData
-        .map((item: any) => {
-          const remainingQuantity = item.quantity - (item.returned_quantity || 0);
-          if (remainingQuantity <= 0) return null;
-          
-          return {
-            name: item.customizations?.name || 'Món đã xóa',
-            unit_price: item.unit_price,
-            quantity: remainingQuantity,
-            totalPrice: item.unit_price * remainingQuantity
-          };
-        })
-        .filter((item: any): item is BillItem => item !== null);
-      
-      const totalPrice = items.reduce((sum, item) => sum + item.totalPrice, 0);
-      const totalItemCount = items.reduce((sum, item) => sum + item.quantity, 0);
-      
-      const order = {
-        orderId: orderData.id,
-        createdAt: orderData.created_at,
-        tables: orderData.order_tables.map((ot: any) => ({
-          id: ot.tables.id,
-          name: ot.tables.name
-        })),
-        totalPrice,
-        totalItemCount
-      };
-      
-      // Navigate đến màn hình in với thông tin phương thức thanh toán
-      // Truyền shouldNavigateToHome = true để sau khi đóng sẽ quay về Home
-      navigation.navigate('PrintPreview', { 
-        order, 
-        items, 
-        paymentMethod: 'cash',
-        shouldNavigateToHome: true 
-      });
-      
     } catch (error: any) {
+      // Xử lý nếu có lỗi xảy ra
       Toast.show({
         type: 'error',
         text1: 'Lỗi',
         text2: error.message
       });
     } finally {
+      // Dọn dẹp sau khi hoàn tất
       setLoading(false);
-      setPendingPaymentAction(null);
+      // Reset action để chuẩn bị cho lần thanh toán tiếp theo
+      setPendingPaymentAction(null); 
     }
   };
 
@@ -1316,6 +1539,32 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
       </View>
     );
   }
+
+  const createZaloPayOrder = async (amount: number, orderId: string) => {
+  setIsLoadingZaloPayQR(true);
+  setZaloPayModalVisible(true);
+  setZaloPayQRValue(null);
+  
+  try {
+    // --- PHẦN NÀY SẼ GỌI BACKEND THẬT CỦA BẠN ---
+    // Ví dụ: const response = await axios.post('https://your-backend.com/create-zalopay-order', { amount, orderId });
+    // setZaloPayQRValue(response.data.order_url);
+    
+    // --- VÌ CHƯA CÓ BACKEND, CHÚNG TA SẼ GIẢ LẬP ---
+    console.log(`Đang yêu cầu tạo QR cho đơn ${orderId} với số tiền ${amount}`);
+    await new Promise(resolve => setTimeout(resolve, 2000)); // Giả lập độ trễ mạng
+    const fakeOrderUrl = `https://qr.zalopay.vn/2/order?amount=${amount}&orderId=${orderId}&timestamp=${Date.now()}`;
+    setZaloPayQRValue(fakeOrderUrl);
+    // --- KẾT THÚC PHẦN GIẢ LẬP ---
+    
+  } catch (error) {
+    console.error("Lỗi khi tạo QR ZaloPay:", error);
+    setZaloPayQRValue(null); // Đảm bảo không hiển thị QR nếu có lỗi
+    alert('Không thể tạo mã thanh toán. Vui lòng thử lại.');
+  } finally {
+    setIsLoadingZaloPayQR(false);
+  }
+};
 
   const AddMoreItemsButton = () => (
     <TouchableOpacity
@@ -1674,6 +1923,104 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         cancelText="Hủy"
         variant="warning"
       />
+      {paymentInfo && (
+        <VietQRModal
+          isVisible={isVietQRModalVisible}
+          onClose={() => {
+            setVietQRModalVisible(false);
+            setPendingPaymentAction(null);
+          }}
+          isLoading={isLoadingVietQR}
+          qrValue={vietQRValue}
+          amount={paymentInfo.amount}
+          merchantName="DANG THANH HAI"
+          note={`Thanh toán ${currentTables[0]?.name || 'X'}`}
+
+
+          onConfirmPaid={async () => {
+            // ✅ Cập nhật trạng thái order trong Supabase
+            try {
+              console.log('🔄 [VietQR] onConfirmPaid triggered, orderId:', paymentInfo?.orderId);
+              console.log('🔄 [VietQR] pendingPaymentAction:', pendingPaymentAction);
+              
+              await supabase
+                .from('orders')
+                .update({ status: 'paid', payment_method: 'Chuyển khoản' })
+                .eq('id', paymentInfo.orderId);
+
+              console.log('✅ [VietQR] Order status updated to paid');
+
+              Toast.show({
+                type: 'success',
+                text1: 'Xác nhận thành công',
+                text2: 'Đơn đã được đánh dấu là đã thanh toán.',
+              });
+
+              setVietQRModalVisible(false);
+              
+              // Nếu kết thúc phiên thì xử lý luôn
+              if (pendingPaymentAction === 'end') {
+                console.log('🔄 [VietQR] Closing session...');
+                // Đóng bàn (không quay về, để chuyển sang in bill)
+                await handleEndSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'Chuyển khoản', false);
+                console.log('✅ [VietQR] Session closed, navigating to print...');
+                // Sau 500ms, chuyển sang trang in bill
+                setTimeout(() => {
+                  console.log('🔄 [VietQR] Navigating to PrintPreview (end mode)');
+                  handleNavigateToPrint(paymentInfo.orderId, 'transfer');
+                }, 500);
+              } else {
+                console.log('🔄 [VietQR] Keeping session...');
+                // Giữ phiên - cập nhật order rồi chuyển sang in bill
+                await handleKeepSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'Chuyển khoản');
+                console.log('✅ [VietQR] Session kept, navigating to print...');
+                // Sau 500ms, chuyển sang trang in bill
+                setTimeout(() => {
+                  console.log('🔄 [VietQR] Navigating to PrintPreview (keep mode)');
+                  handleNavigateToPrint(paymentInfo.orderId, 'transfer');
+                }, 500);
+              }
+            } catch (error: any) {
+              console.error('❌ [VietQR] Error:', error);
+              Toast.show({
+                type: 'error',
+                text1: 'Lỗi xác nhận',
+                text2: error.message,
+              });
+              setPendingPaymentAction(null);
+            }
+          }}
+        />
+      )}
+      {/* THÊM MODAL ZALOPAY VÀO ĐÂY */}
+      {paymentInfo && (
+        <ZaloPayQRModal
+          isVisible={isZaloPayModalVisible}
+          onClose={() => {
+            setZaloPayModalVisible(false);
+            setPendingPaymentAction(null); // Reset action khi đóng modal
+          }}
+          isLoading={isLoadingZaloPayQR}
+          qrValue={zaloPayQRValue}
+          amount={paymentInfo.amount}
+          onPaymentSuccess={() => {
+            // Hàm này được gọi khi bấm nút "Giả lập thanh toán thành công"
+            setZaloPayModalVisible(false);
+            Toast.show({
+                type: 'success',
+                text1: 'Thanh toán ZaloPay thành công (giả lập)!',
+            });
+            
+            // Bây giờ mới thực hiện hành động giữ phiên hoặc kết thúc
+            if (pendingPaymentAction === 'end') {
+              handleEndSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'ZaloPay');
+            } else {
+              handleKeepSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'ZaloPay');
+            }
+            setPendingPaymentAction(null);
+          }}
+        />
+      )}
     </View>
   );
 };

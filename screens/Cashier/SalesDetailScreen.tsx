@@ -5,40 +5,49 @@ import { SafeAreaView, View, Text, StyleSheet, ScrollView, TouchableOpacity, Act
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { getTransactions } from '../../services/supabaseService';
+import PeriodSelector from '../../components/PeriodSelector';
 
+// [GIỮ NGUYÊN] Hàm lấy khoảng thời gian
 const getDateRangeForPeriod = (period: string) => {
-    // Tương tự như file ProfitDetailScreen
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
     const endOfDay = new Date();
     endOfDay.setHours(23, 59, 59, 999);
 
     switch (period) {
         case 'today':
+            today.setHours(0, 0, 0, 0);
             return { start: today, end: endOfDay };
         case 'yesterday':
-            const yStart = new Date(today);
+            const yStart = new Date();
             yStart.setDate(yStart.getDate() - 1);
+            yStart.setHours(0, 0, 0, 0);
             const yEnd = new Date(yStart);
             yEnd.setHours(23, 59, 59, 999);
             return { start: yStart, end: yEnd };
         case 'this_week':
-            const wStart = new Date(today);
-            wStart.setDate(wStart.getDate() - today.getDay() + 1);
+            const wStart = new Date();
+            wStart.setDate(wStart.getDate() - today.getDay() + (today.getDay() === 0 ? -6 : 1)); // Tuần bắt đầu từ T2
+            wStart.setHours(0, 0, 0, 0);
             return { start: wStart, end: endOfDay };
         case 'this_month':
             const mStart = new Date(today.getFullYear(), today.getMonth(), 1);
+            mStart.setHours(0, 0, 0, 0);
             return { start: mStart, end: endOfDay };
         default:
+            today.setHours(0, 0, 0, 0);
             return { start: today, end: endOfDay };
     }
 };
 
+// [GIỮ NGUYÊN] Chi tiết các phương thức thanh toán
 const paymentMethodDetails = {
   cash: { icon: 'cash-outline', color: '#10B981', label: 'Tiền mặt' },
   momo: { icon: 'wallet-outline', color: '#D70F64', label: 'Momo' },
   transfer: { icon: 'card-outline', color: '#3B82F6', label: 'Chuyển khoản' },
 };
+
+// [GIỮ NGUYÊN] Hàm định dạng tiền tệ
+const formatCurrency = (amount: number = 0) => (amount || 0).toLocaleString('vi-VN');
 
 export default function SalesDetailScreen() {
     const navigation = useNavigation();
@@ -63,7 +72,6 @@ export default function SalesDetailScreen() {
     }, [loadData]);
 
     const totalRevenue = transactions.reduce((sum, t) => sum + t.amount, 0);
-    const formatCurrency = (amount: number) => amount.toLocaleString('vi-VN');
 
     return (
         <SafeAreaView style={styles.container}>
@@ -72,64 +80,81 @@ export default function SalesDetailScreen() {
                 <Text style={styles.headerTitle}>Báo cáo Doanh thu</Text>
                 <View style={{ width: 28 }} />
             </View>
+            <ScrollView contentContainerStyle={styles.scrollContent}>
+                <PeriodSelector onPeriodChange={(period) => loadData(period)} />
 
-            {loading ? (
-                <View style={styles.centered}><ActivityIndicator size="large" /></View>
-            ) : (
-                <ScrollView contentContainerStyle={styles.scrollContent}>
-                    <View style={styles.summaryCard}>
-                        <Text style={styles.summaryLabel}>Tổng doanh thu</Text>
-                        <Text style={styles.summaryValue}>{formatCurrency(totalRevenue)} ₫</Text>
-                        <Text style={styles.summarySubtext}>{transactions.length} giao dịch</Text>
-                    </View>
-                    
-                    <Text style={styles.sectionTitle}>Danh sách giao dịch</Text>
-                    {transactions.length > 0 ? (
-                        transactions.map(item => {
-                            const payment = (paymentMethodDetails as any)[item.payment_method];
-                            return (
-                                <View key={item.id} style={styles.transactionItem}>
-                                    <View style={[styles.iconContainer, { backgroundColor: `${payment.color}20` }]}>
-                                        <Ionicons name={payment.icon} size={20} color={payment.color} />
-                                    </View>
-                                    <View style={styles.transactionInfo}>
-                                        <Text style={styles.transactionTitle}>{item.table_name || 'Đơn mang về'}</Text>
-                                        <Text style={styles.transactionSubtitle}>{`${payment.label} • ${item.time}`}</Text>
-                                    </View>
-                                    <View style={styles.transactionAmountContainer}>
-                                        <Text style={styles.transactionAmount}>+{formatCurrency(item.amount)} ₫</Text>
-                                        <Text style={styles.transactionItems}>{item.items} món</Text>
-                                    </View>
-                                </View>
-                            );
-                        })
-                    ) : (
-                        <Text style={styles.emptyText}>Không có giao dịch trong khoảng thời gian này.</Text>
-                    )}
-                </ScrollView>
-            )}
+                {loading ? (
+                    <ActivityIndicator style={{ marginTop: 32 }} size="large" color="#3B82F6" />
+                ) : (
+                    <>
+                        <View style={styles.summaryCard}>
+                            <Text style={styles.summaryLabel}>Tổng doanh thu</Text>
+                            <Text style={styles.summaryValue}>{formatCurrency(totalRevenue)} ₫</Text>
+                            <Text style={styles.summarySubtext}>{transactions.length} giao dịch thành công</Text>
+                        </View>
+                        
+                        <Text style={styles.sectionTitle}>Danh sách giao dịch</Text>
+                        {transactions.length > 0 ? (
+                            <View style={styles.transactionList}>
+                                {transactions.map(item => {
+                                    // [SỬA LỖI] Thêm một đối tượng mặc định để ứng dụng không bị crash
+                                    // khi gặp một payment_method không xác định (null, undefined, hoặc giá trị lạ).
+                                    const defaultPayment = { icon: 'help-circle-outline', color: '#9CA3AF', label: 'Không rõ' };
+                                    const payment = (paymentMethodDetails as any)[item.payment_method] || defaultPayment;
+
+                                    return (
+                                        <View key={item.id} style={styles.transactionItem}>
+                                            <View style={[styles.iconContainer, { backgroundColor: `${payment.color}20` }]}>
+                                                <Ionicons name={payment.icon} size={22} color={payment.color} />
+                                            </View>
+                                            <View style={styles.transactionInfo}>
+                                                <Text style={styles.transactionTitle}>{item.table_name || 'Đơn mang về'}</Text>
+                                                <Text style={styles.transactionSubtitle}>{`${payment.label} • ${item.time}`}</Text>
+                                            </View>
+                                            <View style={styles.transactionAmountContainer}>
+                                                <Text style={styles.transactionAmount}>+{formatCurrency(item.amount)}</Text>
+                                                <Text style={styles.transactionItems}>{item.items} món</Text>
+                                            </View>
+                                        </View>
+                                    );
+                                })}
+                            </View>
+                        ) : (
+                            <Text style={styles.emptyText}>Không có giao dịch trong khoảng thời gian này.</Text>
+                        )}
+                    </>
+                )}
+            </ScrollView>
         </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8FAFC' },
-    centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
     headerTitle: { fontSize: 18, fontWeight: '600', color: '#1F2937' },
     scrollContent: { padding: 16 },
-    summaryCard: { backgroundColor: '#fff', borderRadius: 12, padding: 20, alignItems: 'center', marginBottom: 20, borderWidth: 1, borderColor: '#F1F5F9' },
-    summaryLabel: { fontSize: 14, color: '#64748B' },
-    summaryValue: { fontSize: 28, fontWeight: '700', color: '#10B981', marginVertical: 4 },
-    summarySubtext: { fontSize: 13, color: '#9CA3AF' },
-    sectionTitle: { fontSize: 16, fontWeight: '600', color: '#334155', marginBottom: 12 },
-    transactionItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 10, padding: 12, marginBottom: 8 },
+    emptyText: { textAlign: 'center', color: '#9CA3AF', marginTop: 20, fontStyle: 'italic' },
+
+    summaryCard: { backgroundColor: '#fff', borderRadius: 16, padding: 24, alignItems: 'center', marginBottom: 24, borderWidth: 1, borderColor: '#F1F5F9' },
+    summaryLabel: { fontSize: 15, color: '#64748B' },
+    summaryValue: { fontSize: 32, fontWeight: 'bold', color: '#10B981', marginVertical: 8 },
+    summarySubtext: { fontSize: 14, color: '#9CA3AF' },
+
+    sectionTitle: { fontSize: 18, fontWeight: '600', color: '#334155', marginBottom: 12 },
+    transactionList: { backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#F1F5F9' },
+    transactionItem: { 
+        flexDirection: 'row', 
+        alignItems: 'center', 
+        padding: 14, 
+        borderBottomWidth: 1,
+        borderBottomColor: '#F8FAFC',
+    },
     iconContainer: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
     transactionInfo: { flex: 1 },
-    transactionTitle: { fontSize: 15, fontWeight: '500', color: '#1E293B' },
-    transactionSubtitle: { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
+    transactionTitle: { fontSize: 15, fontWeight: '600', color: '#1E293B' },
+    transactionSubtitle: { fontSize: 13, color: '#9CA3AF', marginTop: 3 },
     transactionAmountContainer: { alignItems: 'flex-end' },
-    transactionAmount: { fontSize: 15, fontWeight: '600', color: '#1E293B' },
-    transactionItems: { fontSize: 12, color: '#9CA3AF', marginTop: 2 },
-    emptyText: { textAlign: 'center', color: '#9CA3AF', marginTop: 20 },
+    transactionAmount: { fontSize: 16, fontWeight: 'bold', color: '#1E293B' },
+    transactionItems: { fontSize: 13, color: '#9CA3AF', marginTop: 3 },
 });

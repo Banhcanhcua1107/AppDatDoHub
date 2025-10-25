@@ -45,6 +45,14 @@ export default function CashierReportScreen() {
           color="#F59E0B"
           onPress={() => navigation.navigate('ProfitDetail')}
         />
+        {/* [MỚI] Thêm báo cáo quỹ tiền */}
+        <ReportItem
+          icon="wallet-outline"
+          title="Báo cáo Quỹ tiền"
+          description="Kiểm tra dòng tiền thu chi trong ngày"
+          color="#8B5CF6"
+          onPress={() => navigation.navigate('CashFlowDetail')}
+        />
         <ReportItem
           icon="cube-outline"
           title="Báo cáo Tồn kho"
@@ -57,11 +65,12 @@ export default function CashierReportScreen() {
   );
 }
 
+// Styles không thay đổi nhiều, chỉ điều chỉnh lại cho đẹp hơn
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   header: { padding: 16, borderBottomWidth: 1, borderBottomColor: '#F1F5F9', backgroundColor: '#fff' },
-  headerTitle: { fontSize: 22, fontWeight: '700', color: '#1E293B' },
-  scrollContent: { padding: 16 },
+  headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#1E293B' },
+  scrollContent: { padding: 16, paddingTop: 8 },
   reportItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -69,16 +78,19 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1, },
+    shadowOpacity: 0.05,
+    shadowRadius: 2.22,
+    elevation: 3,
   },
   iconContainer: {
     width: 48,
     height: 48,
-    borderRadius: 10,
+    borderRadius: 24, // Bo tròn
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 16,
   },
   textContainer: {
     flex: 1,

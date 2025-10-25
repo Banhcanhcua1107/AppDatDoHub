@@ -5,6 +5,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { getCashFundData } from '../../services/supabaseService';
 
+const formatCurrency = (amount: number = 0) => (amount || 0).toLocaleString('vi-VN');
+
 export default function CashFlowDetailScreen() {
     const navigation = useNavigation();
     const [loading, setLoading] = useState(true);
@@ -25,14 +27,12 @@ export default function CashFlowDetailScreen() {
         }
     }, []);
 
-    useFocusEffect(
-        useCallback(() => {
-            loadData();
-        }, [loadData])
-    );
+    useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
-    const formatCurrency = (amount: number) => amount.toLocaleString('vi-VN');
-
+    if (loading) {
+        return <View style={styles.centered}><ActivityIndicator size="large" color="#3B82F6" /></View>;
+    }
+    
     return (
         <SafeAreaView style={styles.container}>
             <View style={styles.header}>
@@ -41,33 +41,29 @@ export default function CashFlowDetailScreen() {
                  <View style={{ width: 28 }} />
             </View>
 
-            {loading ? (
-                <View style={styles.centered}><ActivityIndicator size="large" /></View>
-            ) : !data ? (
-                <View style={styles.centered}><Text>Không có dữ liệu.</Text></View>
+            {!data ? (
+                <View style={styles.centered}><Text style={styles.emptyText}>Không có dữ liệu.</Text></View>
             ) : (
                 <ScrollView contentContainerStyle={styles.scrollContent}>
-                    <View style={styles.summaryCard}>
-                        <Text style={styles.summaryLabel}>Tổng quỹ</Text>
-                        <Text style={styles.summaryValue}>{formatCurrency(data.totalFund)} ₫</Text>
+                    {/* [CẢI TIẾN] Thẻ tổng quan */}
+                    <View style={styles.heroCard}>
+                        <Text style={styles.heroLabel}>Tổng quỹ cuối ngày (dự kiến)</Text>
+                        <Text style={styles.heroValue}>{formatCurrency(data.totalFund)} ₫</Text>
                     </View>
                     
-                    <View style={styles.detailCard}>
-                        <Ionicons name="cash-outline" size={24} color="#10B981" />
-                        <View style={styles.cardInfo}>
-                           <Text style={styles.cardLabel}>Tiền mặt</Text>
-                           <Text style={styles.cardValue}>{formatCurrency(data.cashOnHand)} ₫</Text>
+                    {/* [CẢI TIẾN] Các thẻ chi tiết */}
+                    <View style={styles.detailGrid}>
+                        <View style={styles.detailCard}>
+                            <Ionicons name="cash-outline" size={28} color="#10B981" />
+                            <Text style={styles.cardLabel}>Tiền mặt</Text>
+                            <Text style={styles.cardValue}>{formatCurrency(data.cashOnHand)} ₫</Text>
+                        </View>
+                         <View style={styles.detailCard}>
+                            <Ionicons name="card-outline" size={28} color="#3B82F6" />
+                            <Text style={styles.cardLabel}>Tiền gửi (App/CK)</Text>
+                            <Text style={styles.cardValue}>{formatCurrency(data.bankDeposit)} ₫</Text>
                         </View>
                     </View>
-
-                     <View style={styles.detailCard}>
-                        <Ionicons name="card-outline" size={24} color="#3B82F6" />
-                        <View style={styles.cardInfo}>
-                           <Text style={styles.cardLabel}>Tiền gửi (App/CK)</Text>
-                           <Text style={styles.cardValue}>{formatCurrency(data.bankDeposit)} ₫</Text>
-                        </View>
-                    </View>
-
                 </ScrollView>
             )}
         </SafeAreaView>
@@ -77,14 +73,33 @@ export default function CashFlowDetailScreen() {
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8FAFC' },
     centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+    emptyText: { color: '#64748B' },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
     headerTitle: { fontSize: 18, fontWeight: '600', color: '#1F2937' },
     scrollContent: { padding: 16 },
-    summaryCard: { backgroundColor: '#fff', borderRadius: 12, padding: 20, alignItems: 'center', marginBottom: 20, borderWidth: 1, borderColor: '#F1F5F9' },
-    summaryLabel: { fontSize: 14, color: '#64748B' },
-    summaryValue: { fontSize: 28, fontWeight: '700', color: '#1E293B', marginVertical: 4 },
-    detailCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 12 },
-    cardInfo: { flex: 1, marginLeft: 12 },
-    cardLabel: { fontSize: 15, color: '#64748B' },
-    cardValue: { fontSize: 18, fontWeight: '600', color: '#1E293B', marginTop: 2 }
+    
+    heroCard: { 
+        backgroundColor: '#3B82F6', 
+        borderRadius: 16, 
+        padding: 24, 
+        alignItems: 'center', 
+        marginBottom: 24,
+    },
+    heroLabel: { fontSize: 15, color: '#E0E7FF' },
+    heroValue: { fontSize: 36, fontWeight: 'bold', color: '#fff', marginVertical: 8 },
+
+    detailGrid: { gap: 16 },
+    detailCard: { 
+        backgroundColor: '#fff', 
+        borderRadius: 12, 
+        padding: 20, 
+        alignItems: 'center',
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 1, },
+        shadowOpacity: 0.05,
+        shadowRadius: 2.22,
+        elevation: 3,
+    },
+    cardLabel: { fontSize: 16, color: '#475569', marginTop: 8 },
+    cardValue: { fontSize: 20, fontWeight: '700', color: '#1E293B', marginTop: 4 }
 });

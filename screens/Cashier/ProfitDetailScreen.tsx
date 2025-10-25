@@ -5,6 +5,7 @@ import { SafeAreaView, View, Text, StyleSheet, ScrollView, TouchableOpacity, Act
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { getProfitReport } from '../../services/supabaseService';
+import PeriodSelector from '../../components/PeriodSelector'; // [MỚI] Import component
 
 const getDateRangeForPeriod = (period: string) => {
     const today = new Date();
@@ -33,16 +34,17 @@ const getDateRangeForPeriod = (period: string) => {
     }
 };
 
+const formatCurrency = (amount: number = 0) => (amount || 0).toLocaleString('vi-VN');
+
 export default function ProfitDetailScreen() {
     const navigation = useNavigation();
     const [loading, setLoading] = useState(true);
-    const [selectedPeriod] = useState('today'); // Logic chọn period có thể thêm sau
     const [profitData, setProfitData] = useState<any>(null);
 
-    const loadData = useCallback(async () => {
+    const loadData = useCallback(async (period: string) => {
         try {
             setLoading(true);
-            const { start, end } = getDateRangeForPeriod(selectedPeriod);
+            const { start, end } = getDateRangeForPeriod(period);
             const data = await getProfitReport(start, end);
             setProfitData(data);
         } catch (error: any) {
@@ -50,14 +52,12 @@ export default function ProfitDetailScreen() {
         } finally {
             setLoading(false);
         }
-    }, [selectedPeriod]);
+    }, []);
 
     useEffect(() => {
-        loadData();
+        loadData('today');
     }, [loadData]);
     
-    const formatCurrency = (amount: number) => amount.toLocaleString('vi-VN');
-
     return (
         <SafeAreaView style={styles.container}>
             <View style={styles.header}>
@@ -65,53 +65,57 @@ export default function ProfitDetailScreen() {
                 <Text style={styles.headerTitle}>Báo cáo Lợi nhuận</Text>
                 <View style={{ width: 28 }} />
             </View>
-
-            {loading ? (
-                <View style={styles.centered}><ActivityIndicator size="large" /></View>
-            ) : !profitData ? (
-                 <View style={styles.centered}><Text>Không có dữ liệu.</Text></View>
-            ) : (
-                <ScrollView contentContainerStyle={styles.scrollContent}>
-                    <View style={styles.summaryCard}>
-                        <Text style={styles.summaryLabel}>Lợi nhuận ròng</Text>
-                        <Text style={styles.summaryValue}>{formatCurrency(profitData.netProfit)} ₫</Text>
-                        <Text style={styles.summarySubtext}>Tỷ suất: {profitData.profitMargin.toFixed(1)}%</Text>
-                    </View>
-                    
-                    <View style={styles.detailSection}>
-                        <View style={styles.detailRow}>
-                            <Text style={styles.detailLabel}>Tổng doanh thu</Text>
-                            <Text style={styles.detailValue}>+{formatCurrency(profitData.totalRevenue)} ₫</Text>
+            <ScrollView contentContainerStyle={styles.scrollContent}>
+                <PeriodSelector onPeriodChange={(period) => loadData(period)} />
+                {loading ? (
+                    <ActivityIndicator size="large" color="#3B82F6" />
+                ) : !profitData ? (
+                    <Text style={styles.emptyText}>Không có dữ liệu.</Text>
+                ) : (
+                    <>
+                        <View style={styles.summaryCard}>
+                            <Text style={styles.summaryLabel}>Lợi nhuận ròng</Text>
+                            <Text style={styles.summaryValue}>{formatCurrency(profitData.netProfit)} ₫</Text>
+                            <Text style={styles.summarySubtext}>Tỷ suất: {profitData.profitMargin.toFixed(1)}%</Text>
                         </View>
-                        <View style={styles.detailRow}>
-                            <Text style={styles.detailLabel}>Tổng chi phí</Text>
-                            <Text style={[styles.detailValue, {color: '#EF4444'}]}>-{formatCurrency(profitData.totalExpenses)} ₫</Text>
+                        
+                        <View style={styles.detailSection}>
+                            <View style={styles.detailRow}>
+                                <Text style={styles.detailLabel}>Tổng doanh thu</Text>
+                                <Text style={[styles.detailValue, { color: '#10B981' }]}>+{formatCurrency(profitData.totalRevenue)} ₫</Text>
+                            </View>
+                            <View style={styles.detailRow}>
+                                <Text style={styles.detailLabel}>Tổng chi phí</Text>
+                                <Text style={[styles.detailValue, { color: '#EF4444' }]}>-{formatCurrency(profitData.totalExpenses)} ₫</Text>
+                            </View>
+                             <View style={styles.divider} />
+                             <View style={styles.detailRow}>
+                                <Text style={[styles.detailLabel, { fontWeight: 'bold', color: '#1E293B' }]}>Lợi nhuận ròng</Text>
+                                <Text style={[styles.detailValue, { fontWeight: 'bold', color: '#10B981' }]}>{formatCurrency(profitData.netProfit)} ₫</Text>
+                            </View>
                         </View>
-                         <View style={styles.divider} />
-                         <View style={styles.detailRow}>
-                            <Text style={[styles.detailLabel, {fontWeight: '600'}]}>Lợi nhuận ròng</Text>
-                            <Text style={[styles.detailValue, {fontWeight: '600', color: '#10B981'}]}>{formatCurrency(profitData.netProfit)} ₫</Text>
-                        </View>
-                    </View>
-                </ScrollView>
-            )}
+                    </>
+                )}
+            </ScrollView>
         </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8FAFC' },
-    centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
     headerTitle: { fontSize: 18, fontWeight: '600', color: '#1F2937' },
     scrollContent: { padding: 16 },
-    summaryCard: { backgroundColor: '#fff', borderRadius: 12, padding: 20, alignItems: 'center', marginBottom: 20, borderWidth: 1, borderColor: '#F1F5F9' },
-    summaryLabel: { fontSize: 14, color: '#64748B' },
-    summaryValue: { fontSize: 28, fontWeight: '700', color: '#10B981', marginVertical: 4 },
-    summarySubtext: { fontSize: 13, color: '#9CA3AF' },
-    detailSection: { backgroundColor: '#fff', borderRadius: 12, padding: 16 },
-    detailRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 14, alignItems: 'center' },
-    detailLabel: { fontSize: 15, color: '#334155' },
-    detailValue: { fontSize: 15, fontWeight: '500', color: '#334155' },
-    divider: { height: 1, backgroundColor: '#F1F5F9', marginVertical: 8 },
+    emptyText: { textAlign: 'center', color: '#64748B', marginTop: 32 },
+
+    summaryCard: { backgroundColor: '#fff', borderRadius: 16, padding: 24, alignItems: 'center', marginBottom: 20, borderWidth: 1, borderColor: '#F1F5F9' },
+    summaryLabel: { fontSize: 15, color: '#64748B' },
+    summaryValue: { fontSize: 32, fontWeight: 'bold', color: '#10B981', marginVertical: 8 },
+    summarySubtext: { fontSize: 14, color: '#9CA3AF' },
+
+    detailSection: { backgroundColor: '#fff', borderRadius: 16, padding: 16 },
+    detailRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 16, alignItems: 'center' },
+    detailLabel: { fontSize: 16, color: '#475569' },
+    detailValue: { fontSize: 16, fontWeight: '600' },
+    divider: { height: 1, backgroundColor: '#F1F5F9' },
 });
