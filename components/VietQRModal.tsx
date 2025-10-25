@@ -26,6 +26,8 @@ interface VietQRModalProps {
   onConfirmPaid?: () => void; // ✅ Nút xác nhận thủ công
 }
 
+
+
 const VietQRModal: React.FC<VietQRModalProps> = ({
   isVisible,
   onClose,

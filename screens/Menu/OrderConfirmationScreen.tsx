@@ -870,10 +870,25 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
   const hasNewItems = newItemsFromCart.length > 0;
   const totalBill = billableItems.reduce((sum, item) => sum + item.totalPrice, 0);
 
-   const handleNavigateToPrint = useCallback(async (orderId: string, paymentMethod: 'cash' | 'transfer') => {
+  const handleNavigateToPrint = useCallback(async (orderId: string, paymentMethod: 'cash' | 'transfer') => {
   try {
     console.log('🔄 [handleNavigateToPrint] Starting, orderId:', orderId, 'method:', paymentMethod);
     setLoading(true);
+
+    // Nếu là thanh toán chuyển khoản, cập nhật order status thành "paid"
+    if (paymentMethod === 'transfer') {
+      console.log('🔄 [handleNavigateToPrint] Updating order status to paid for transfer payment');
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update({ status: 'paid', payment_method: 'Chuyển khoản', updated_at: new Date().toISOString() })
+        .eq('id', orderId);
+      
+      if (updateError) {
+        console.error('❌ [handleNavigateToPrint] Error updating order:', updateError);
+        throw updateError;
+      }
+      console.log('✅ [handleNavigateToPrint] Order status updated to paid');
+    }
 
     const { data: orderData, error: orderError } = await supabase
       .from('orders')
@@ -923,25 +938,29 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
     console.log('🔄 [handleNavigateToPrint] About to navigate to PrintPreview');
     console.log('   - shouldNavigateToHome:', pendingPaymentAction === 'end');
 
+    // Lưu giá trị pendingPaymentAction trước khi navigate (vì nó có thể bị reset sau)
+    const shouldNavigateToHome = pendingPaymentAction === 'end';
+
     // Điều hướng đến màn hình in bill
     // `shouldNavigateToHome` sẽ quyết định nút "Đóng" trên màn hình in sẽ làm gì
     navigation.navigate('PrintPreview', { 
       order, 
       items, 
       paymentMethod,
-      shouldNavigateToHome: pendingPaymentAction === 'end' 
+      shouldNavigateToHome
     });
     
-    console.log('✅ [handleNavigateToPrint] Navigation completed');
+    console.log('✅ [handleNavigateToPrint] Navigation initiated');
+    console.log('   - shouldNavigateToHome value passed:', shouldNavigateToHome);
 
   } catch (error: any) {
     console.error('❌ [handleNavigateToPrint] Error:', error);
     Toast.show({ type: 'error', text1: 'Lỗi lấy thông tin in bill', text2: error.message });
   } finally {
     setLoading(false);
-    // Reset pendingPaymentAction sau khi navigation hoàn tất
-    console.log('🔄 [handleNavigateToPrint] Resetting pendingPaymentAction');
-    setPendingPaymentAction(null);
+    // 🔴 KHÔNG reset pendingPaymentAction ở đây nữa!
+    // Nó sẽ được reset từ VietQRModal callback hoặc handleCompleteCashPayment
+    console.log('🔄 [handleNavigateToPrint] Completed');
   }
 }, [navigation, pendingPaymentAction]);
 
@@ -1362,41 +1381,57 @@ const createTransferQRCode = async (amount: number, orderId: string) => {
     // Kiểm tra các thông tin cần thiết
     if (!paymentInfo || !pendingPaymentAction) return;
     
-    // Bật trạng thái loading
-    setLoading(true);
-    
     try {
-      // BƯỚC 1: ƯU TIÊN ĐIỀU HƯỚNG TRƯỚC
-      // Chuyển người dùng sang màn hình In Bill ngay lập tức.
-      // Hàm handleNavigateToPrint sẽ tự đọc state `pendingPaymentAction` để biết
-      // sau khi in xong có cần quay về Home hay không.
-      await handleNavigateToPrint(paymentInfo.orderId, 'cash');
+      console.log('[handleCompleteCashPayment] Starting cash payment flow');
+      console.log('   - orderId:', paymentInfo.orderId);
+      console.log('   - pendingPaymentAction:', pendingPaymentAction);
       
-      // BƯỚC 2: CẬP NHẬT DATABASE Ở CHẾ ĐỘ NỀN
-      // Sau khi người dùng đã được chuyển đi, ta mới thực hiện cập nhật CSDL.
-      // Việc này giúp tránh lỗi "race condition" khi sự kiện real-time về
-      // và gây re-render màn hình cũ trong lúc đang chuyển trang.
-      if (pendingPaymentAction === 'keep') {
-        // Nếu chỉ giữ phiên, cập nhật trạng thái order là "paid"
-        await handleKeepSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'Tiền mặt');
-      } else if (pendingPaymentAction === 'end') {
-        // Nếu kết thúc phiên, cập nhật trạng thái order là "closed" và bàn là "Trống".
-        // Tham số `false` để đảm bảo hàm này không cố điều hướng về Home lần nữa.
-        await handleEndSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'Tiền mặt', false);
-      }
+      // BƯỚC 1: AWAIT ĐIỀU HƯỚNG ĐẾN TRANG IN BILL
+      // Phải await để đảm bảo handleNavigateToPrint chạy xong (fetch data + navigate)
+      console.log('[handleCompleteCashPayment] Awaiting navigation to PrintPreview');
+      await handleNavigateToPrint(paymentInfo.orderId, 'cash');
+      console.log('[handleCompleteCashPayment] Navigation completed successfully');
+      
+      Toast.show({
+        type: 'success',
+        text1: 'Thanh toán thành công',
+        text2: 'Đang chuyển sang in hóa đơn...',
+      });
+      
+      // BƯỚC 2: CẬP NHẬT DATABASE Ở CHẾ ĐỘ NỀN (Sau khi navigation)
+      setTimeout(async () => {
+        console.log('[handleCompleteCashPayment] Background: Updating database after navigation');
+        try {
+          if (pendingPaymentAction === 'keep') {
+            // Nếu chỉ giữ phiên, cập nhật trạng thái order là "paid"
+            console.log('[handleCompleteCashPayment] Background: Keeping session - calling handleKeepSessionAfterPayment');
+            await handleKeepSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'Tiền mặt');
+          } else if (pendingPaymentAction === 'end') {
+            // Nếu kết thúc phiên, cập nhật trạng thái order là "closed" và bàn là "Trống".
+            console.log('[handleCompleteCashPayment] Background: Ending session - calling handleEndSessionAfterPayment');
+            await handleEndSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'Tiền mặt', false);
+          }
+          console.log('[handleCompleteCashPayment] Background: Database update completed');
+          setPendingPaymentAction(null);
+        } catch (error: any) {
+          console.error('[handleCompleteCashPayment] Background error:', error);
+          setPendingPaymentAction(null);
+        }
+      }, 300);
       
     } catch (error: any) {
       // Xử lý nếu có lỗi xảy ra
+      console.error('[handleCompleteCashPayment] Error:', error);
       Toast.show({
         type: 'error',
         text1: 'Lỗi',
         text2: error.message
       });
+      setBillModalVisible(false);
+      setPendingPaymentAction(null);
     } finally {
       // Dọn dẹp sau khi hoàn tất
       setLoading(false);
-      // Reset action để chuẩn bị cho lần thanh toán tiếp theo
-      setPendingPaymentAction(null); 
     }
   };
 
@@ -1925,72 +1960,74 @@ const createTransferQRCode = async (amount: number, orderId: string) => {
       />
       {paymentInfo && (
         <VietQRModal
-          isVisible={isVietQRModalVisible}
-          onClose={() => {
+        isVisible={isVietQRModalVisible}
+        onClose={() => setVietQRModalVisible(false)}
+        isLoading={isLoadingVietQR}
+        qrValue={vietQRValue}
+        amount={paymentInfo?.amount || 0}
+        merchantName="Đặng Thành Hải"
+        note={paymentInfo?.orderId}
+        onConfirmPaid={async () => {
+          console.log('[VietQRModal] onConfirmPaid triggered for order:', activeOrderId);
+          
+          // Kiểm tra các thông tin cần thiết
+          if (!paymentInfo || !pendingPaymentAction) {
+            console.error('[VietQRModal] Missing payment info or pending action');
+            return;
+          }
+          
+          console.log('[VietQRModal] pendingPaymentAction:', pendingPaymentAction);
+          console.log('[VietQRModal] paymentInfo:', paymentInfo);
+          
+          try {
+            // BƯỚC 1: ĐÓNG QR MODAL
+            console.log('[VietQRModal] Closing VietQR modal');
+            setVietQRModalVisible(false);
+            
+            // BƯỚC 2: AWAIT ĐIỀU HƯỚNG SANG TRANG IN BILL
+            // Phải await để đảm bảo handleNavigateToPrint chạy xong (fetch data + navigate)
+            console.log('[VietQRModal] Awaiting navigation to PrintPreview');
+            await handleNavigateToPrint(paymentInfo.orderId, 'transfer');
+            console.log('[VietQRModal] Navigation completed successfully');
+            
+            Toast.show({
+              type: 'success',
+              text1: 'Thanh toán thành công',
+              text2: 'Đang chuyển sang in hóa đơn...',
+            });
+            
+            // BƯỚC 3: CẬP NHẬT DATABASE Ở CHẾ ĐỘ NỀN (Sau khi navigation)
+            // Chỉ cập nhật "closed" + "paid" khi pendingPaymentAction === 'end'
+            setTimeout(async () => {
+              console.log('[VietQRModal] Background: Updating database after navigation');
+              try {
+                if (pendingPaymentAction === 'end') {
+                  console.log('[VietQRModal] Background: Calling handleEndSessionAfterPayment');
+                  await handleEndSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'Chuyển khoản', false);
+                } else {
+                  console.log('[VietQRModal] Background: Calling handleKeepSessionAfterPayment');
+                  await handleKeepSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'Chuyển khoản');
+                }
+                console.log('[VietQRModal] Background: Database update completed');
+                setPendingPaymentAction(null);
+              } catch (error: any) {
+                console.error('[VietQRModal] Background error:', error);
+                setPendingPaymentAction(null);
+              }
+            }, 300);
+            
+          } catch (error: any) {
+            console.error('[VietQRModal] Error:', error);
+            Toast.show({
+              type: 'error',
+              text1: 'Lỗi',
+              text2: error.message
+            });
             setVietQRModalVisible(false);
             setPendingPaymentAction(null);
-          }}
-          isLoading={isLoadingVietQR}
-          qrValue={vietQRValue}
-          amount={paymentInfo.amount}
-          merchantName="DANG THANH HAI"
-          note={`Thanh toán ${currentTables[0]?.name || 'X'}`}
-
-
-          onConfirmPaid={async () => {
-            // ✅ Cập nhật trạng thái order trong Supabase
-            try {
-              console.log('🔄 [VietQR] onConfirmPaid triggered, orderId:', paymentInfo?.orderId);
-              console.log('🔄 [VietQR] pendingPaymentAction:', pendingPaymentAction);
-              
-              await supabase
-                .from('orders')
-                .update({ status: 'paid', payment_method: 'Chuyển khoản' })
-                .eq('id', paymentInfo.orderId);
-
-              console.log('✅ [VietQR] Order status updated to paid');
-
-              Toast.show({
-                type: 'success',
-                text1: 'Xác nhận thành công',
-                text2: 'Đơn đã được đánh dấu là đã thanh toán.',
-              });
-
-              setVietQRModalVisible(false);
-              
-              // Nếu kết thúc phiên thì xử lý luôn
-              if (pendingPaymentAction === 'end') {
-                console.log('🔄 [VietQR] Closing session...');
-                // Đóng bàn (không quay về, để chuyển sang in bill)
-                await handleEndSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'Chuyển khoản', false);
-                console.log('✅ [VietQR] Session closed, navigating to print...');
-                // Sau 500ms, chuyển sang trang in bill
-                setTimeout(() => {
-                  console.log('🔄 [VietQR] Navigating to PrintPreview (end mode)');
-                  handleNavigateToPrint(paymentInfo.orderId, 'transfer');
-                }, 500);
-              } else {
-                console.log('🔄 [VietQR] Keeping session...');
-                // Giữ phiên - cập nhật order rồi chuyển sang in bill
-                await handleKeepSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'Chuyển khoản');
-                console.log('✅ [VietQR] Session kept, navigating to print...');
-                // Sau 500ms, chuyển sang trang in bill
-                setTimeout(() => {
-                  console.log('🔄 [VietQR] Navigating to PrintPreview (keep mode)');
-                  handleNavigateToPrint(paymentInfo.orderId, 'transfer');
-                }, 500);
-              }
-            } catch (error: any) {
-              console.error('❌ [VietQR] Error:', error);
-              Toast.show({
-                type: 'error',
-                text1: 'Lỗi xác nhận',
-                text2: error.message,
-              });
-              setPendingPaymentAction(null);
-            }
-          }}
-        />
+          }
+        }}
+      />
       )}
       {/* THÊM MODAL ZALOPAY VÀO ĐÂY */}
       {paymentInfo && (
