@@ -38,6 +38,7 @@ export const ROUTES = {
   PRINT_PREVIEW: 'PrintPreview',
   CHANGE_PASSWORD: 'ChangePassword',
   BILL_HISTORY: 'BillHistory',
+  VIET_QR_CODE: 'VietQRCode',
 
   // [THÊM MỚI] Route cho màn hình Bếp
   KITCHEN_TABS: 'KitchenTabs', // Tên cho navigator
@@ -110,6 +111,11 @@ export type AppStackParamList = {
     items: BillItem[];
     paymentMethod?: string; // Thêm phương thức thanh toán
     shouldNavigateToHome?: boolean; // Flag để biết có cần quay về Home sau khi đóng không
+  };
+  [ROUTES.VIET_QR_CODE]: {
+    orderId: string;
+    amount: number;
+    pendingPaymentAction: 'keep' | 'end';
   };
   [ROUTES.CHANGE_PASSWORD]: undefined;
   [ROUTES.BILL_HISTORY]: undefined;

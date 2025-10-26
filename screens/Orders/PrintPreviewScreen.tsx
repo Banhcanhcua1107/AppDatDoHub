@@ -6,6 +6,8 @@ import { RouteProp, useRoute, useNavigation, StackActions } from '@react-navigat
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppStackParamList } from '../../constants/routes';
 import BillContent from '../../components/BillContent';
+import { supabase } from '../../services/supabase';
+import Toast from 'react-native-toast-message';
 
 type PrintPreviewScreenRouteProp = RouteProp<AppStackParamList, 'PrintPreview'>;
 
@@ -16,18 +18,70 @@ const PrintPreviewScreen = () => {
   const { order, items, paymentMethod, shouldNavigateToHome } = route.params;
 
   const [copyCount, setCopyCount] = useState(1);
+  const [isClosing, setIsClosing] = useState(false);
   
   // Chỉ hiển thị QR code khi KHÔNG phải thanh toán tiền mặt
   const shouldShowQR = paymentMethod !== 'cash';
 
+  // Hàm đóng bàn (gọi API)
+  const closeTableSession = async (orderId: string) => {
+    try {
+      setIsClosing(true);
+      
+      // 1️⃣ Lấy danh sách bàn của order
+      const { data: orderTables, error: tablesError } = await supabase
+        .from('order_tables')
+        .select('table_id')
+        .eq('order_id', orderId);
+
+      if (tablesError) throw tablesError;
+      const tableIds = orderTables.map((t) => t.table_id);
+
+      // 2️⃣ Cập nhật order status thành 'closed'
+      const { error: orderError } = await supabase
+        .from('orders')
+        .update({ status: 'closed' })
+        .eq('id', orderId);
+
+      if (orderError) throw orderError;
+
+      // 3️⃣ Cập nhật trạng thái bàn thành 'Trống'
+      const { error: tableError } = await supabase
+        .from('tables')
+        .update({ status: 'Trống' })
+        .in('id', tableIds);
+
+      if (tableError) throw tableError;
+
+      console.log('✅ [PrintPreview] Đóng bàn thành công');
+      Toast.show({
+        type: 'success',
+        text1: 'Hoàn tất phiên',
+        text2: 'Đã dọn bàn',
+      });
+    } catch (error: any) {
+      console.error('❌ [PrintPreview] Lỗi đóng bàn:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Lỗi',
+        text2: error.message || 'Không thể đóng bàn',
+      });
+    } finally {
+      setIsClosing(false);
+    }
+  };
+
   // Hàm xử lý khi nhấn nút Đóng
-  const handleClose = () => {
+  const handleClose = async () => {
+    // Nếu shouldNavigateToHome === true, tức là user đã chọn "Kết thúc phiên"
+    // Lúc này cần đóng bàn trước khi quay về
     if (shouldNavigateToHome) {
-      // Quay về màn hình Home: đóng tất cả màn hình và về màn hình đầu tiên (tabs)
-      // popToTop() sẽ đóng tất cả màn hình trừ màn hình root của stack
+      // Đóng bàn
+      await closeTableSession(order.orderId);
+      // Quay về màn hình Home
       navigation.dispatch(StackActions.popToTop());
     } else {
-      // Quay lại màn hình trước đó
+      // Chỉ quay lại màn hình trước đó (OrderConfirmationScreen)
       navigation.goBack();
     }
   };
@@ -37,8 +91,10 @@ const PrintPreviewScreen = () => {
       <StatusBar barStyle="dark-content" />
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={handleClose} style={styles.headerButton}>
-          <Text style={styles.headerButtonText}>Đóng</Text>
+        <TouchableOpacity onPress={handleClose} style={styles.headerButton} disabled={isClosing}>
+          <Text style={[styles.headerButtonText, isClosing && { opacity: 0.5 }]}>
+            {isClosing ? 'Đang xử lý...' : 'Đóng'}
+          </Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Xem trước</Text>
         <TouchableOpacity style={styles.headerButton}>

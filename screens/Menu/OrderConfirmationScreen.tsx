@@ -1,5 +1,5 @@
 // --- START OF FILE OrderConfirmationScreen.tsx ---
-import React, { useState, useCallback, useEffect, useRef  } from 'react';
+import React, { useState, useCallback, useEffect,  } from 'react';
 import {
   View,
   Text,
@@ -29,8 +29,6 @@ import BillContent from '../../components/BillContent';
 import { BillItem } from '../Orders/ProvisionalBillScreen';
 import ConfirmModal from '../../components/ConfirmModal';
 import ZaloPayQRModal from '../../components/ZaloPayQRModal';
-import axios from 'axios';
-import VietQRModal from '../../components/VietQRModal'
 
 interface OrderSection {
   title: string;
@@ -294,11 +292,6 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
   const [isLoadingZaloPayQR, setIsLoadingZaloPayQR] = useState(false);
 
 
-  const [isVietQRModalVisible, setVietQRModalVisible] = useState(false);
-  const [vietQRValue, setVietQRValue] = useState<string | null>(null);
-  const [isLoadingVietQR, setIsLoadingVietQR] = useState(false);
-
-
   // State cho Confirm Modals
   const [cancelItemModal, setCancelItemModal] = useState<{
     visible: boolean;
@@ -307,7 +300,6 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
   
   const [closeSessionModal, setCloseSessionModal] = useState(false);
 
-  const previousBillRef = useRef<number>(0);
   
   const fetchAllData = useCallback(
     async (isInitialLoad = true) => {
@@ -523,17 +515,6 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
           (payload) => {
             console.log('[Realtime] Cập nhật orders:', payload);
 
-            const newStatus = payload.new?.status;
-            const oldStatus = payload.old?.status;
-            
-            // Chỉ trigger thanh toán thành công nếu status THỰC SỰ thay đổi từ pending/other thành paid
-            if (oldStatus !== newStatus && newStatus === 'paid') {
-              Toast.show({
-                type: 'success',
-                text1: 'Thanh toán thành công!',
-                text2: 'Đang chuẩn bị hóa đơn để in...',
-              });
-            }
             fetchAllData(false);
           }
         )
@@ -875,21 +856,6 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
     console.log('🔄 [handleNavigateToPrint] Starting, orderId:', orderId, 'method:', paymentMethod);
     setLoading(true);
 
-    // Nếu là thanh toán chuyển khoản, cập nhật order status thành "paid"
-    if (paymentMethod === 'transfer') {
-      console.log('🔄 [handleNavigateToPrint] Updating order status to paid for transfer payment');
-      const { error: updateError } = await supabase
-        .from('orders')
-        .update({ status: 'paid', payment_method: 'Chuyển khoản', updated_at: new Date().toISOString() })
-        .eq('id', orderId);
-      
-      if (updateError) {
-        console.error('❌ [handleNavigateToPrint] Error updating order:', updateError);
-        throw updateError;
-      }
-      console.log('✅ [handleNavigateToPrint] Order status updated to paid');
-    }
-
     const { data: orderData, error: orderError } = await supabase
       .from('orders')
       .select('id, created_at, order_tables!inner(tables(id, name))')
@@ -943,7 +909,8 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
 
     // Điều hướng đến màn hình in bill
     // `shouldNavigateToHome` sẽ quyết định nút "Đóng" trên màn hình in sẽ làm gì
-    navigation.navigate('PrintPreview', { 
+    // Dùng replace để ko quay về được khi bấm back ở PrintPreview
+    navigation.replace('PrintPreview', { 
       order, 
       items, 
       paymentMethod,
@@ -964,47 +931,8 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
   }
 }, [navigation, pendingPaymentAction]);
 
- useEffect(() => {
-  const handlePaymentCompleted = async () => {
-    const wasJustPaidViaWebhook = previousBillRef.current > 0 && totalBill === 0;
 
-    if (wasJustPaidViaWebhook) {
-      if (isVietQRModalVisible) {
-        setVietQRModalVisible(false);
-      }
 
-      console.log('✅ Phát hiện thanh toán hoàn tất qua webhook!');
-
-      Toast.show({
-        type: 'success',
-        text1: 'Thanh toán thành công!',
-        text2: 'Đang xử lý hóa đơn...',
-        visibilityTime: 2000,
-      });
-
-      // LOGIC MỚI: Kiểm tra và thực hiện hành động "Kết thúc" hay "Giữ phiên"
-      if (pendingPaymentAction === 'end' && activeOrderId) {
-        console.log("Thực hiện hành động 'Kết thúc phiên' sau khi thanh toán webhook...");
-        
-        // Gọi hàm đóng bàn. Hàm này sẽ tự động điều hướng về màn hình chính sau khi hoàn tất.
-        // Chúng ta sử dụng previousBillRef.current để lấy số tiền chính xác ngay trước khi nó về 0.
-        await handleEndSessionAfterPayment(activeOrderId, previousBillRef.current, 'Chuyển khoản');
-
-      } else if (activeOrderId) {
-        // Nếu là 'keep' (hoặc không xác định), chỉ chuyển đến trang in
-        setTimeout(() => {
-          handleNavigateToPrint(activeOrderId, 'transfer');
-        }, 500);
-      }
-    }
-  };
-
-  handlePaymentCompleted();
-
-  // Luôn cập nhật giá trị của ref cho lần render tiếp theo
-  previousBillRef.current = totalBill;
-
-});
 
 
   const sendNewItemsToKitchen = async (): Promise<string | null> => {
@@ -1310,10 +1238,13 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
   }
 
   if (method === 'transfer') {
-      // Gọi hàm tạo QR code chuyển khoản
-      createTransferQRCode(paymentInfo.amount, paymentInfo.orderId);
-      // Tương tự ZaloPay, ta sẽ không gọi handleKeep/EndSession ngay
-      // mà sẽ chờ webhook từ backend thông báo thành công.
+      // Điều hướng đến VietQRCodeScreen để thanh toán
+      if (!paymentInfo) return;
+      navigation.navigate(ROUTES.VIET_QR_CODE, {
+        orderId: paymentInfo.orderId,
+        amount: paymentInfo.amount,
+        pendingPaymentAction: pendingPaymentAction || 'keep',
+      });
       return;
     }
   
@@ -1325,53 +1256,6 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
   }
   
   // ❌ KHÔNG reset pendingPaymentAction ở đây, để nó vẫn giữ giá trị cho handleNavigateToPrint
-};
-
-
-
-// Tạo QR trực tiếp từ API vietqr.io (không cần backend)
-const createTransferQRCode = async (amount: number, orderId: string) => {
-  setIsLoadingVietQR(true);
-  setVietQRModalVisible(true);
-  setVietQRValue(null);
-
-  try {
-    // ✅ CẢI THIỆN: Lấy 'order_code' từ DB để đảm bảo nó tồn tại
-    const { data: orderData, error: orderError } = await supabase
-      .from('orders')
-      .select('order_code')
-      .eq('id', orderId)
-      .single();
-
-    if (orderError || !orderData || !orderData.order_code) {
-      // Nếu không có order_code, có thể tạo mới ngay tại đây nếu cần
-      // Nhưng logic `sendNewItemsToKitchen` đã xử lý việc này
-      throw new Error(orderError?.message || "Không tìm thấy mã đơn hàng (order_code).");
-    }
-
-    const orderCode = orderData.order_code;
-
-    const resp = await axios.post("https://api.vietqr.io/v2/generate", {
-      accountNo: "0329638454",
-      accountName: "Dang Thanh Hai",
-      acqId: "970422", // MB Bank
-      amount: amount,
-      addInfo: `ThanhToan Don ${orderCode}`, // Sử dụng order_code đã lấy được
-      template: "compact",
-    });
-
-    if (resp.data?.data?.qrDataURL) {
-      setVietQRValue(resp.data.data.qrDataURL);
-    } else {
-      throw new Error("Không nhận được QR hợp lệ từ API.");
-    }
-  } catch (error) {
-    console.error("Lỗi tạo QR:", error);
-    Alert.alert("Lỗi", "Không thể tạo mã thanh toán. Vui lòng thử lại sau.");
-    setVietQRModalVisible(false); // Đóng modal nếu có lỗi
-  } finally {
-    setIsLoadingVietQR(false);
-  }
 };
 
   const handleCompleteCashPayment = async () => {
@@ -1958,77 +1842,6 @@ const createTransferQRCode = async (amount: number, orderId: string) => {
         cancelText="Hủy"
         variant="warning"
       />
-      {paymentInfo && (
-        <VietQRModal
-        isVisible={isVietQRModalVisible}
-        onClose={() => setVietQRModalVisible(false)}
-        isLoading={isLoadingVietQR}
-        qrValue={vietQRValue}
-        amount={paymentInfo?.amount || 0}
-        merchantName="Đặng Thành Hải"
-        note={paymentInfo?.orderId}
-        onConfirmPaid={async () => {
-          console.log('[VietQRModal] onConfirmPaid triggered for order:', activeOrderId);
-          
-          // Kiểm tra các thông tin cần thiết
-          if (!paymentInfo || !pendingPaymentAction) {
-            console.error('[VietQRModal] Missing payment info or pending action');
-            return;
-          }
-          
-          console.log('[VietQRModal] pendingPaymentAction:', pendingPaymentAction);
-          console.log('[VietQRModal] paymentInfo:', paymentInfo);
-          
-          try {
-            // BƯỚC 1: ĐÓNG QR MODAL
-            console.log('[VietQRModal] Closing VietQR modal');
-            setVietQRModalVisible(false);
-            
-            // BƯỚC 2: AWAIT ĐIỀU HƯỚNG SANG TRANG IN BILL
-            // Phải await để đảm bảo handleNavigateToPrint chạy xong (fetch data + navigate)
-            console.log('[VietQRModal] Awaiting navigation to PrintPreview');
-            await handleNavigateToPrint(paymentInfo.orderId, 'transfer');
-            console.log('[VietQRModal] Navigation completed successfully');
-            
-            Toast.show({
-              type: 'success',
-              text1: 'Thanh toán thành công',
-              text2: 'Đang chuyển sang in hóa đơn...',
-            });
-            
-            // BƯỚC 3: CẬP NHẬT DATABASE Ở CHẾ ĐỘ NỀN (Sau khi navigation)
-            // Chỉ cập nhật "closed" + "paid" khi pendingPaymentAction === 'end'
-            setTimeout(async () => {
-              console.log('[VietQRModal] Background: Updating database after navigation');
-              try {
-                if (pendingPaymentAction === 'end') {
-                  console.log('[VietQRModal] Background: Calling handleEndSessionAfterPayment');
-                  await handleEndSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'Chuyển khoản', false);
-                } else {
-                  console.log('[VietQRModal] Background: Calling handleKeepSessionAfterPayment');
-                  await handleKeepSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'Chuyển khoản');
-                }
-                console.log('[VietQRModal] Background: Database update completed');
-                setPendingPaymentAction(null);
-              } catch (error: any) {
-                console.error('[VietQRModal] Background error:', error);
-                setPendingPaymentAction(null);
-              }
-            }, 300);
-            
-          } catch (error: any) {
-            console.error('[VietQRModal] Error:', error);
-            Toast.show({
-              type: 'error',
-              text1: 'Lỗi',
-              text2: error.message
-            });
-            setVietQRModalVisible(false);
-            setPendingPaymentAction(null);
-          }
-        }}
-      />
-      )}
       {/* THÊM MODAL ZALOPAY VÀO ĐÂY */}
       {paymentInfo && (
         <ZaloPayQRModal

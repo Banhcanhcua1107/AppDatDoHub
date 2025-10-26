@@ -26,6 +26,7 @@ import ReturnedItemsDetailScreen from '../screens/Orders/ReturnedItemsDetailScre
 import ReturnNotificationScreen from '../screens/Orders/ReturnNotificationScreen';
 import ProvisionalBillScreen from '../screens/Orders/ProvisionalBillScreen';
 import PrintPreviewScreen from '../screens/Orders/PrintPreviewScreen';
+import VietQRCodeScreen from '../screens/Orders/VietQRCodeScreen';
 import ChangePasswordScreen from '../screens/Profile/ChangePasswordScreen';
 import BillHistoryScreen from '../screens/Utilities/BillHistoryScreen';
 // --- [SỬA LỖI] Import KitchenTabs và xóa import KitchenDisplayScreen không cần thiết ---
@@ -107,6 +108,11 @@ export type CashierStackParamList = {
     paymentMethod?: string;
     shouldNavigateToHome?: boolean;
   };
+  VietQRCode: {
+    orderId: string;
+    amount: number;
+    pendingPaymentAction: 'keep' | 'end';
+  };
 };
 
 const CashierStack = createNativeStackNavigator<CashierStackParamList>();
@@ -139,6 +145,7 @@ const MainAppStack = () => (
         <AppStack.Screen name={ROUTES.SERVE_STATUS} component={ServeStatusScreen} />
         <AppStack.Screen name={ROUTES.PROVISIONAL_BILL} component={ProvisionalBillScreen} />
         <AppStack.Screen name={ROUTES.PRINT_PREVIEW} component={PrintPreviewScreen} />
+        <AppStack.Screen name={ROUTES.VIET_QR_CODE} component={VietQRCodeScreen} />
         <AppStack.Screen name={ROUTES.CHANGE_PASSWORD} component={ChangePasswordScreen} />
         <AppStack.Screen name={ROUTES.BILL_HISTORY} component={BillHistoryScreen} />
     </AppStack.Navigator>
@@ -190,6 +197,7 @@ const CashierNavigator = () => (
     <CashierStack.Screen name="ServeStatus" component={ServeStatusScreen as any} />
     <CashierStack.Screen name="ProvisionalBill" component={ProvisionalBillScreen} />
     <CashierStack.Screen name="PrintPreview" component={PrintPreviewScreen} />
+    <CashierStack.Screen name="VietQRCode" component={VietQRCodeScreen} />
   </CashierStack.Navigator>
 );
 
