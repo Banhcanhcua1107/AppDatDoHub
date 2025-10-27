@@ -1,105 +1,140 @@
 // screens/Cashier/CashFlowDetailScreen.tsx
-import React, { useState, useCallback } from 'react';
-import { SafeAreaView, View, Text, StyleSheet, ScrollView, ActivityIndicator, Alert, TouchableOpacity } from 'react-native';
+
+import React, { useState, useEffect, useCallback } from 'react';
+import { SafeAreaView, View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { getCashFundData } from '../../services/supabaseService';
+import { useNavigation } from '@react-navigation/native';
+import { getCashFundReport } from '../../services/supabaseService';
+import PeriodSelector from '../../components/PeriodSelector';
+
+const getDateRangeForPeriod = (period: string) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59, 999);
+
+    switch (period) {
+        case 'today':
+            return { start: today, end: endOfDay };
+        case 'yesterday':
+            const yStart = new Date(today);
+            yStart.setDate(yStart.getDate() - 1);
+            const yEnd = new Date(yStart);
+            yEnd.setHours(23, 59, 59, 999);
+            return { start: yStart, end: yEnd };
+        case 'this_week':
+            const wStart = new Date(today);
+            wStart.setDate(wStart.getDate() - today.getDay() + (today.getDay() === 0 ? -6 : 1));
+            return { start: wStart, end: endOfDay };
+        case 'this_month':
+            const mStart = new Date(today.getFullYear(), today.getMonth(), 1);
+            return { start: mStart, end: endOfDay };
+        default:
+            return { start: today, end: endOfDay };
+    }
+};
 
 const formatCurrency = (amount: number = 0) => (amount || 0).toLocaleString('vi-VN');
 
 export default function CashFlowDetailScreen() {
     const navigation = useNavigation();
     const [loading, setLoading] = useState(true);
-    const [data, setData] = useState<any>(null);
+    const [reportData, setReportData] = useState<any>(null);
 
-    const loadData = useCallback(async () => {
+    const loadData = useCallback(async (period: string) => {
         try {
             setLoading(true);
-            const today = new Date();
-            const startOfDay = new Date(today.setHours(0, 0, 0, 0));
-            const endOfDay = new Date(today.setHours(23, 59, 59, 999));
-            const result = await getCashFundData(startOfDay, endOfDay);
-            setData(result);
+            const { start, end } = getDateRangeForPeriod(period);
+            const data = await getCashFundReport(start, end);
+            setReportData(data);
         } catch (error: any) {
-            Alert.alert('Lỗi', 'Không thể tải dữ liệu quỹ tiền: ' + error.message);
+            Alert.alert('Lỗi', 'Không thể tải báo cáo quỹ tiền: ' + error.message);
         } finally {
             setLoading(false);
         }
     }, []);
 
-    useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
-
-    if (loading) {
-        return <View style={styles.centered}><ActivityIndicator size="large" color="#3B82F6" /></View>;
-    }
+    useEffect(() => {
+        loadData('today');
+    }, [loadData]);
     
     return (
         <SafeAreaView style={styles.container}>
             <View style={styles.header}>
-                 <TouchableOpacity onPress={() => navigation.goBack()}><Ionicons name="chevron-back" size={28} color="#334155" /></TouchableOpacity>
+                <TouchableOpacity onPress={() => navigation.goBack()}><Ionicons name="chevron-back" size={28} color="#334155" /></TouchableOpacity>
                 <Text style={styles.headerTitle}>Báo cáo Quỹ tiền</Text>
-                 <View style={{ width: 28 }} />
+                <View style={{ width: 28 }} />
             </View>
+            <ScrollView contentContainerStyle={styles.scrollContent}>
+                <PeriodSelector onPeriodChange={(period) => loadData(period)} />
+                {loading ? (
+                    <ActivityIndicator style={{ marginTop: 32 }} size="large" color="#3B82F6" />
+                ) : !reportData ? (
+                    <Text style={styles.emptyText}>Không có dữ liệu.</Text>
+                ) : (
+                    <>
+                        <View style={styles.summaryCard}>
+                            <Text style={styles.summaryLabel}>Tiền mặt ròng trong kỳ</Text>
+                            {/* [SỬA LỖI] Thay đổi màu sắc dựa trên giá trị âm/dương */}
+                            <Text style={[
+                                styles.summaryValue,
+                                { color: reportData.netCashFlow < 0 ? '#EF4444' : '#8B5CF6' }
+                            ]}>
+                                {formatCurrency(reportData.netCashFlow)} ₫
+                            </Text>
+                            <Text style={styles.summarySubtext}>Là tiền thu trừ đi tiền chi bằng tiền mặt</Text>
+                        </View>
+                        
+                        <View style={styles.detailSection}>
+                            <View style={styles.detailRow}>
+                                <Text style={styles.detailLabel}>Tiền mặt thu vào</Text>
+                                <Text style={[styles.detailValue, { color: '#10B981' }]}>+{formatCurrency(reportData.cashRevenue)} ₫</Text>
+                            </View>
+                            <View style={styles.detailRow}>
+                                <Text style={styles.detailLabel}>Tiền mặt chi ra</Text>
+                                <Text style={[styles.detailValue, { color: '#EF4444' }]}>-{formatCurrency(reportData.cashExpenses)} ₫</Text>
+                            </View>
+                            <View style={styles.divider} />
+                            <View style={styles.detailRow}>
+                                <Text style={[styles.detailLabel, styles.boldText]}>Tiền mặt ròng</Text>
+                                <Text style={[styles.detailValue, styles.boldText, { color: reportData.netCashFlow >= 0 ? '#10B981' : '#EF4444' }]}>
+                                    {formatCurrency(reportData.netCashFlow)} ₫
+                                </Text>
+                            </View>
+                        </View>
 
-            {!data ? (
-                <View style={styles.centered}><Text style={styles.emptyText}>Không có dữ liệu.</Text></View>
-            ) : (
-                <ScrollView contentContainerStyle={styles.scrollContent}>
-                    {/* [CẢI TIẾN] Thẻ tổng quan */}
-                    <View style={styles.heroCard}>
-                        <Text style={styles.heroLabel}>Tổng quỹ cuối ngày (dự kiến)</Text>
-                        <Text style={styles.heroValue}>{formatCurrency(data.totalFund)} ₫</Text>
-                    </View>
-                    
-                    {/* [CẢI TIẾN] Các thẻ chi tiết */}
-                    <View style={styles.detailGrid}>
-                        <View style={styles.detailCard}>
-                            <Ionicons name="cash-outline" size={28} color="#10B981" />
-                            <Text style={styles.cardLabel}>Tiền mặt</Text>
-                            <Text style={styles.cardValue}>{formatCurrency(data.cashOnHand)} ₫</Text>
+                        <View style={[styles.detailSection, { marginTop: 16 }]}>
+                            <View style={styles.detailRow}>
+                                <Text style={styles.detailLabel}>Tiền vào tài khoản</Text>
+                                <Text style={styles.detailValue}>+{formatCurrency(reportData.digitalRevenue)} ₫</Text>
+                            </View>
                         </View>
-                         <View style={styles.detailCard}>
-                            <Ionicons name="card-outline" size={28} color="#3B82F6" />
-                            <Text style={styles.cardLabel}>Tiền gửi (App/CK)</Text>
-                            <Text style={styles.cardValue}>{formatCurrency(data.bankDeposit)} ₫</Text>
-                        </View>
-                    </View>
-                </ScrollView>
-            )}
+                    </>
+                )}
+            </ScrollView>
         </SafeAreaView>
     );
 }
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8FAFC' },
-    centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    emptyText: { color: '#64748B' },
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
     headerTitle: { fontSize: 18, fontWeight: '600', color: '#1F2937' },
     scrollContent: { padding: 16 },
-    
-    heroCard: { 
-        backgroundColor: '#3B82F6', 
-        borderRadius: 16, 
-        padding: 24, 
-        alignItems: 'center', 
-        marginBottom: 24,
+    emptyText: { textAlign: 'center', color: '#64748B', marginTop: 32, fontStyle: 'italic' },
+    summaryCard: { backgroundColor: '#fff', borderRadius: 16, padding: 24, alignItems: 'center', marginBottom: 20, borderWidth: 1, borderColor: '#F1F5F9' },
+    summaryLabel: { fontSize: 15, color: '#64748B' },
+    summaryValue: { 
+        fontSize: 32, 
+        fontWeight: 'bold', 
+        // Bỏ màu cố định ở đây để style inline có hiệu lực
+        marginVertical: 8 
     },
-    heroLabel: { fontSize: 15, color: '#E0E7FF' },
-    heroValue: { fontSize: 36, fontWeight: 'bold', color: '#fff', marginVertical: 8 },
-
-    detailGrid: { gap: 16 },
-    detailCard: { 
-        backgroundColor: '#fff', 
-        borderRadius: 12, 
-        padding: 20, 
-        alignItems: 'center',
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 1, },
-        shadowOpacity: 0.05,
-        shadowRadius: 2.22,
-        elevation: 3,
-    },
-    cardLabel: { fontSize: 16, color: '#475569', marginTop: 8 },
-    cardValue: { fontSize: 20, fontWeight: '700', color: '#1E293B', marginTop: 4 }
+    summarySubtext: { fontSize: 14, color: '#9CA3AF', textAlign: 'center' },
+    detailSection: { backgroundColor: '#fff', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#F1F5F9' },
+    detailRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 16, alignItems: 'center' },
+    detailLabel: { fontSize: 16, color: '#475569' },
+    detailValue: { fontSize: 16, fontWeight: '600', color: '#334155'},
+    boldText: { fontWeight: 'bold', color: '#1E293B' },
+    divider: { height: 1, backgroundColor: '#F1F5F9' },
 });

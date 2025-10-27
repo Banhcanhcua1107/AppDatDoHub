@@ -7,13 +7,27 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-// [MỚI] Import BarChart từ thư viện gifted-charts
-import { BarChart } from 'react-native-gifted-charts'; 
+import { BarChart } from 'react-native-gifted-charts';
 import { supabase } from '../../services/supabase';
 
 // Helper functions
 const formatMoney = (amount: number = 0) => (amount || 0).toLocaleString('vi-VN') + ' ₫';
 const formatNumber = (num: number = 0) => (num || 0).toLocaleString('vi-VN');
+
+// [MỚI] Helper function để tính toán giá trị tối đa "đẹp" cho trục Y của biểu đồ
+const calculateChartMax = (data: any[], defaultMax = 100) => {
+  if (!data || data.length === 0) {
+    return defaultMax;
+  }
+  const maxValue = Math.max(...data.map(item => item.value || 0));
+  if (maxValue === 0) {
+    return defaultMax;
+  }
+  const magnitude = Math.pow(10, Math.floor(Math.log10(maxValue)));
+  const nextMilestone = Math.ceil(maxValue / magnitude) * magnitude;
+  return nextMilestone;
+};
+
 
 // Component thẻ KPI (dọc) - Không thay đổi
 const KpiCard = ({ title, value, icon, color }: any) => (
@@ -35,7 +49,7 @@ const StatRow = ({ label, count, amount, isHeader = false }: { label: string, co
   </View>
 );
 
-// [CẢI TIẾN] Component ChartSection sử dụng react-native-gifted-charts
+// [CẢI TIẾN] Component ChartSection với trục Y động và giá trị trên cột
 const ChartSection = ({ title, chartData, isMoney = true }: { title: string, chartData: any[], isMoney?: boolean }) => {
   if (!chartData || chartData.length === 0) {
     return (
@@ -49,7 +63,10 @@ const ChartSection = ({ title, chartData, isMoney = true }: { title: string, cha
     );
   }
 
-  // [GIẢI THÍCH] Hàm render tooltip khi người dùng nhấn vào một cột
+  // [CẢI TIẾN] Tự động tính toán giá trị tối đa cho trục Y
+  const yAxisMax = calculateChartMax(chartData, isMoney ? 100 : 10);
+
+  // Hàm render tooltip khi người dùng nhấn vào một cột
   const renderTooltip = (item: any) => (
     <View style={styles.tooltipContainer}>
       <Text style={styles.tooltipText}>
@@ -67,8 +84,8 @@ const ChartSection = ({ title, chartData, isMoney = true }: { title: string, cha
           // --- Animation & Giao diện cột ---
           isAnimated
           animationDuration={800}
-          barWidth={40} // Chiều rộng của cột
-          spacing={20} // Khoảng cách giữa các cột
+          barWidth={40}
+          spacing={20}
           barBorderRadius={4}
           frontColor={'#3B82F6'}
           gradientColor={'#60A5FA'}
@@ -83,14 +100,16 @@ const ChartSection = ({ title, chartData, isMoney = true }: { title: string, cha
           yAxisLabelSuffix={isMoney ? 'k' : ''}
           yAxisColor="#E2E8F0"
           yAxisIndicesColor="#94A3B8"
-          noOfSections={5} // Số lượng đường kẻ ngang
+          noOfSections={5}
+          // [CẢI TIẾN] Sử dụng giá trị tối đa đã tính toán
+          maxValue={yAxisMax}
           
           // --- Tương tác ---
-          renderTooltip={renderTooltip} // Hiển thị giá trị chi tiết khi nhấn
+          renderTooltip={renderTooltip}
           
           // --- Các cài đặt khác ---
           initialSpacing={10}
-          hideRules // Ẩn các đường kẻ dọc
+          hideRules
           yAxisThickness={1}
           xAxisThickness={1}
         />
@@ -143,27 +162,42 @@ export default function DashboardScreen() {
     );
   }
 
-  // [CẢI TIẾN] Chuẩn bị dữ liệu cho gifted-charts
-  // Định dạng yêu cầu: [{ value: number, label: string }, ...]
-  const financeChartData = data.finance_chart?.labels.map((label: string, index: number) => ({
-    label,
-    value: (data.finance_chart.data[index] || 0) / 1000,
-  })) || [];
+  // [CẢI TIẾN] Thêm `topLabelComponent` để hiển thị giá trị trên mỗi cột
+  const financeChartData = data.finance_chart?.labels.map((label: string, index: number) => {
+    const value = (data.finance_chart.data[index] || 0) / 1000;
+    return {
+      label,
+      value: value,
+      topLabelComponent: () => <Text style={styles.topLabelText}>{formatNumber(value)}k</Text>,
+    };
+  }) || [];
 
-  const dailyRevenueChartData = data.daily_revenue_chart?.map((d: any) => ({
-    label: d.label,
-    value: (d.revenue || 0) / 1000,
-  })) || [];
+  const dailyRevenueChartData = data.daily_revenue_chart?.map((d: any) => {
+    const value = (d.revenue || 0) / 1000;
+    return {
+      label: d.label,
+      value: value,
+      topLabelComponent: () => <Text style={styles.topLabelText}>{formatNumber(value)}k</Text>,
+    };
+  }) || [];
   
-  const revenueByItemChartData = data.top_items_by_revenue?.map((d: any) => ({
-    label: d.name.substring(0, 12),
-    value: (d.value || 0) / 1000,
-  })) || [];
+  const revenueByItemChartData = data.top_items_by_revenue?.map((d: any) => {
+    const value = (d.value || 0) / 1000;
+    return {
+      label: d.name.substring(0, 12),
+      value: value,
+      topLabelComponent: () => <Text style={styles.topLabelText}>{formatNumber(value)}k</Text>,
+    };
+  }) || [];
 
-  const topSellingItemsChartData = data.top_items_by_quantity?.map((d: any) => ({
-    label: d.name.substring(0, 12),
-    value: d.value || 0,
-  })) || [];
+  const topSellingItemsChartData = data.top_items_by_quantity?.map((d: any) => {
+    const value = d.value || 0;
+    return {
+      label: d.name.substring(0, 12),
+      value: value,
+      topLabelComponent: () => <Text style={styles.topLabelText}>{formatNumber(value)}</Text>,
+    };
+  }) || [];
 
 
   return (
@@ -173,7 +207,7 @@ export default function DashboardScreen() {
         contentContainerStyle={styles.scrollContent}
       >
         <Text style={styles.headerTitle}>Tổng quan trong ngày</Text>
-
+        
         {/* Phần KPI và thống kê không thay đổi */}
         <View style={styles.mainInfoContainer}>
           <View style={styles.kpiColumn}>
@@ -209,12 +243,12 @@ export default function DashboardScreen() {
           isMoney={true}
         />
         <ChartSection 
-          title="Doanh thu theo mặt hàng (x1000 ₫)" 
+          title="Doanh thu theo mặt hàng (7 ngày, x1000 ₫)" 
           chartData={revenueByItemChartData} 
           isMoney={true}
         />
         <ChartSection 
-          title="Mặt hàng bán chạy (Số lượng)" 
+          title="Mặt hàng bán chạy (7 ngày, Số lượng)" 
           chartData={topSellingItemsChartData} 
           isMoney={false}
         />
@@ -223,8 +257,6 @@ export default function DashboardScreen() {
     </SafeAreaView>
   );
 }
-
-// [XOÁ] Không cần chartConfig cũ nữa
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F1F5F9' },
@@ -279,9 +311,9 @@ const styles = StyleSheet.create({
     fontSize: 16, fontWeight: '600', color: '#334155', marginBottom: 16,
     paddingHorizontal: 16,
   },
-  // [MỚI] Style cho biểu đồ và tooltip
   chartContainer: {
     paddingHorizontal: 8,
+    paddingTop: 20, // [MỚI] Thêm khoảng trống ở trên để giá trị không bị cắt
   },
   axisLabel: {
     color: '#64748B',
@@ -309,5 +341,12 @@ const styles = StyleSheet.create({
     textAlign: 'center', 
     marginTop: 8,
     fontSize: 14,
+  },
+  // [MỚI] Style cho giá trị hiển thị trên đỉnh cột
+  topLabelText: {
+    color: '#334155',
+    fontSize: 10,
+    fontWeight: '600',
+    marginBottom: 4,
   },
 });

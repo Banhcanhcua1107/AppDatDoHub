@@ -54,6 +54,9 @@ import PromotionsScreen from '../screens/Cashier/PromotionsScreen';
 import MenuManagementScreen from '../screens/Cashier/MenuManagementScreen';
 import TopItemsScreen from '../screens/Cashier/TopItemsScreen';
 import AllActivitiesScreen from '../screens/Cashier/AllActivitiesScreen';
+import FinancialSummaryScreen from 'screens/Cashier/FinancialSummaryScreen';
+
+
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const AppStack = createNativeStackNavigator<AppStackParamList>();
@@ -80,6 +83,7 @@ export type CashierStackParamList = {
   SalesDetail: undefined; // [MỚI] Chi tiết doanh thu
   InventoryDetail: undefined; // [MỚI] Chi tiết tồn kho
   CashFlowDetail: undefined; // [MỚI] Chi tiết quỹ tiền
+  FinancialSummary: undefined;
   Purchase: undefined;
   Inventory: undefined;
   CashFund: undefined;
@@ -181,6 +185,7 @@ const CashierNavigator = () => (
     <CashierStack.Screen name="CashFund" component={CashFundScreen} options={{ headerShown: true, title: 'Quỹ tiền mặt' }} />
     <CashierStack.Screen name="BankFund" component={BankFundScreen} options={{ headerShown: true, title: 'Quỹ tiền gửi' }} />
     <CashierStack.Screen name="Expenses" component={ExpensesScreen} options={{ headerShown: true, title: 'Chi phí' }} />
+    <CashierStack.Screen name="FinancialSummary" component={FinancialSummaryScreen} options={{ headerShown: true, title: 'Tổng kết tài chính' }} />
     <CashierStack.Screen name="Promotions" component={PromotionsScreen} options={{ headerShown: true, title: 'Khuyến mãi' }} />
     <CashierStack.Screen name="MenuManagement" component={MenuManagementScreen} options={{ headerShown: true, title: 'Thực đơn' }} />
     <CashierStack.Screen name="TopItems" component={TopItemsScreen} options={{ headerShown: true, title: 'Món bán chạy' }} />

@@ -534,6 +534,99 @@ $$;
 ALTER FUNCTION "public"."get_cash_flow_report"("p_start_date" "date", "p_end_date" "date") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."get_cash_fund_data"("p_start_date" timestamp with time zone, "p_end_date" timestamp with time zone) RETURNS json
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  v_cash_on_hand DECIMAL;
+  v_bank_deposit DECIMAL;
+  v_total_fund DECIMAL;
+BEGIN
+  -- Tính tổng tiền mặt thu được trong khoảng thời gian
+  SELECT COALESCE(SUM(o.total_price), 0)
+  INTO v_cash_on_hand
+  FROM public.orders o
+  WHERE 
+    o.created_at BETWEEN p_start_date AND p_end_date
+    AND o.status IN ('paid', 'completed', 'closed')
+    AND o.payment_method = 'cash';
+
+  -- Tính tổng tiền gửi (Momo, Chuyển khoản) trong khoảng thời gian
+  SELECT COALESCE(SUM(o.total_price), 0)
+  INTO v_bank_deposit
+  FROM public.orders o
+  WHERE 
+    o.created_at BETWEEN p_start_date AND p_end_date
+    AND o.status IN ('paid', 'completed', 'closed')
+    AND o.payment_method IN ('momo', 'transfer');
+
+  -- Tổng quỹ là tổng 2 khoản trên
+  v_total_fund := v_cash_on_hand + v_bank_deposit;
+
+  RETURN JSON_BUILD_OBJECT(
+    'cashOnHand', v_cash_on_hand,
+    'bankDeposit', v_bank_deposit,
+    'totalFund', v_total_fund
+  );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_cash_fund_data"("p_start_date" timestamp with time zone, "p_end_date" timestamp with time zone) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."get_cash_fund_report"("p_start_date" "date" DEFAULT CURRENT_DATE, "p_end_date" "date" DEFAULT CURRENT_DATE) RETURNS json
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  v_cash_revenue DECIMAL;
+  v_digital_revenue DECIMAL;
+  v_cash_expenses DECIMAL;
+  v_net_cash_flow DECIMAL;
+BEGIN
+  -- 1. Tính tổng doanh thu bằng tiền mặt
+  SELECT COALESCE(SUM(total_price), 0)
+  INTO v_cash_revenue
+  FROM public.orders
+  WHERE 
+    (created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN p_start_date AND p_end_date
+    AND status IN ('paid', 'completed', 'closed')
+    AND payment_method = 'cash';
+
+  -- 2. Tính tổng doanh thu qua kênh điện tử (Momo, chuyển khoản)
+  SELECT COALESCE(SUM(total_price), 0)
+  INTO v_digital_revenue
+  FROM public.orders
+  WHERE 
+    (created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN p_start_date AND p_end_date
+    AND status IN ('paid', 'completed', 'closed')
+    AND payment_method IN ('momo', 'transfer');
+    
+  -- 3. Tính tổng chi phí bằng tiền mặt
+  SELECT COALESCE(SUM(amount), 0)
+  INTO v_cash_expenses
+  FROM public.expenses
+  WHERE 
+    expense_date BETWEEN p_start_date AND p_end_date
+    AND payment_method = 'cash';
+
+  -- 4. Tính dòng tiền mặt ròng (tiền mặt thực tế trong ngăn kéo thay đổi)
+  v_net_cash_flow := v_cash_revenue - v_cash_expenses;
+
+  -- 5. Trả về kết quả dưới dạng JSON
+  RETURN JSON_BUILD_OBJECT(
+    'cashRevenue', v_cash_revenue,
+    'digitalRevenue', v_digital_revenue,
+    'cashExpenses', v_cash_expenses,
+    'netCashFlow', v_net_cash_flow
+  );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_cash_fund_report"("p_start_date" "date", "p_end_date" "date") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."get_cashier_dashboard_data"() RETURNS json
     LANGUAGE "plpgsql"
     AS $$
@@ -716,7 +809,6 @@ CREATE OR REPLACE FUNCTION "public"."get_dashboard_overview"() RETURNS json
     LANGUAGE "plpgsql"
     AS $$
 DECLARE
-    -- Khai báo các biến để lưu kết quả
     v_kpis json;
     v_order_stats json;
     v_finance_chart json;
@@ -724,97 +816,71 @@ DECLARE
     v_top_items_by_revenue json;
     v_top_items_by_quantity json;
     
-    -- Biến tạm cho biểu đồ tài chính
+    -- [MỚI] Khai báo các biến chi phí chi tiết
     v_today_revenue NUMERIC;
-    v_today_expenses NUMERIC;
+    v_today_cogs NUMERIC; -- Giá vốn hàng bán
+    v_today_operating_expenses NUMERIC; -- Chi phí vận hành (từ bảng expenses)
+    v_total_expenses NUMERIC; -- Tổng chi phí
     v_today_profit NUMERIC;
 BEGIN
-
-    -- Lấy tất cả order và tổng tiền của chúng trong ngày hôm nay
-    WITH today_orders AS (
-        SELECT 
-            o.id,
-            o.status,
-            COALESCE((
-                SELECT SUM(oi.quantity * oi.unit_price) 
-                FROM order_items oi 
-                WHERE oi.order_id = o.id
-            ), 0) as total_amount
-        FROM orders o
-        WHERE DATE(o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh') = CURRENT_DATE
+    -- Lấy tất cả order trong ngày để tính toán
+    WITH today_paid_orders AS (
+        SELECT id
+        FROM orders
+        WHERE DATE(created_at AT TIME ZONE 'Asia/Ho_Chi_Minh') = CURRENT_DATE
+          AND status IN ('paid', 'closed')
     )
-    -- 1. Tính toán các chỉ số KPI và Thống kê đơn hàng
+    -- [CẢI TIẾN] Tính toán Doanh thu và Giá vốn (COGS) trong cùng một truy vấn
     SELECT
-        json_build_object(
-            'total_revenue', COALESCE(SUM(total_amount) FILTER (WHERE status IN ('paid', 'closed')), 0),
-            'total_orders', COUNT(id)
-        ),
-        json_build_object(
-            'paid', json_build_object(
-                'count', COUNT(id) FILTER (WHERE status IN ('paid', 'closed')),
-                'amount', COALESCE(SUM(total_amount) FILTER (WHERE status IN ('paid', 'closed')), 0)
-            ),
-            'serving', json_build_object(
-                'count', COUNT(id) FILTER (WHERE status = 'pending'),
-                'amount', COALESCE(SUM(total_amount) FILTER (WHERE status = 'pending'), 0)
-            ),
-            'cancelled', json_build_object(
-                'count', COUNT(id) FILTER (WHERE status = 'cancelled'),
-                'amount', COALESCE(SUM(total_amount) FILTER (WHERE status = 'cancelled'), 0)
-            )
-        )
-    INTO v_kpis, v_order_stats
-    FROM today_orders;
+        COALESCE(SUM(oi.quantity * oi.unit_price), 0),
+        COALESCE(SUM(oi.quantity * mi.cost), 0) -- Tính tổng giá vốn dựa trên món đã bán
+    INTO 
+        v_today_revenue,
+        v_today_cogs
+    FROM order_items oi
+    JOIN menu_items mi ON oi.menu_item_id = mi.id
+    WHERE oi.order_id IN (SELECT id FROM today_paid_orders);
 
-    -- Gán doanh thu hôm nay từ kết quả trên
-    v_today_revenue := (v_order_stats->'paid'->>'amount')::NUMERIC;
-    
-    -- 2. Dữ liệu Biểu đồ tài chính (Doanh thu - Chi phí - Lợi nhuận)
+    -- 1. KPI và Thống kê đơn hàng (Sử dụng logic tương tự như cũ)
+    -- ... (Phần này có thể giữ nguyên hoặc tối ưu lại nếu cần, logic không thay đổi nhiều)
+    WITH today_orders AS (
+        SELECT o.id, o.status, COALESCE((SELECT SUM(oi.quantity * oi.unit_price) FROM order_items oi WHERE oi.order_id = o.id), 0) as total_amount
+        FROM orders o WHERE DATE(o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh') = CURRENT_DATE
+    )
+    SELECT
+        json_build_object('total_revenue', v_today_revenue, 'total_orders', COUNT(id)),
+        json_build_object(
+            'paid', json_build_object('count', COUNT(id) FILTER (WHERE status IN ('paid', 'closed')), 'amount', COALESCE(SUM(total_amount) FILTER (WHERE status IN ('paid', 'closed')), 0)),
+            'serving', json_build_object('count', COUNT(id) FILTER (WHERE status = 'pending'), 'amount', COALESCE(SUM(total_amount) FILTER (WHERE status = 'pending'), 0)),
+            'cancelled', json_build_object('count', COUNT(id) FILTER (WHERE status = 'cancelled'), 'amount', COALESCE(SUM(total_amount) FILTER (WHERE status = 'cancelled'), 0))
+        )
+    INTO v_kpis, v_order_stats FROM today_orders;
+
+
+    -- 2. [CẢI TIẾN] Dữ liệu Biểu đồ tài chính
+    -- Lấy chi phí vận hành lặt vặt từ bảng expenses
     SELECT COALESCE(SUM(amount), 0)
-    INTO v_today_expenses
+    INTO v_today_operating_expenses
     FROM expenses
     WHERE expense_date = CURRENT_DATE;
     
-    v_today_profit := v_today_revenue - v_today_expenses;
+    -- Tổng chi phí = Giá vốn hàng bán + Chi phí vận hành
+    v_total_expenses := v_today_cogs + v_today_operating_expenses;
+    
+    -- Lợi nhuận = Doanh thu - Tổng chi phí
+    v_today_profit := v_today_revenue - v_total_expenses;
     
     v_finance_chart := json_build_object(
         'labels', json_build_array('Doanh thu', 'Chi phí', 'Lợi nhuận'),
-        'data', json_build_array(v_today_revenue, v_today_expenses, GREATEST(v_today_profit, 0))
+        'data', json_build_array(v_today_revenue, v_total_expenses, GREATEST(v_today_profit, 0))
     );
 
-    -- 3. Dữ liệu Biểu đồ doanh thu 7 ngày qua
-    SELECT json_agg(t)
-    INTO v_daily_revenue_chart
-    FROM (
-        SELECT 
-            TO_CHAR(d.day, 'DD/MM') as label,
-            COALESCE(SUM(oi.quantity * oi.unit_price), 0) as revenue
-        FROM generate_series(CURRENT_DATE - INTERVAL '6 days', CURRENT_DATE, '1 day') as d(day)
-        LEFT JOIN orders o ON DATE(o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh') = d.day AND o.status IN ('paid', 'closed')
-        LEFT JOIN order_items oi ON oi.order_id = o.id
-        GROUP BY d.day
-        ORDER BY d.day
-    ) t;
+    -- Các phần còn lại của hàm (biểu đồ doanh thu 7 ngày, top sản phẩm) giữ nguyên...
+    -- 3. Biểu đồ doanh thu 7 ngày qua
+    SELECT json_agg(t) INTO v_daily_revenue_chart FROM ( SELECT TO_CHAR(d.day, 'DD/MM') as label, COALESCE(SUM(oi.quantity * oi.unit_price), 0) as revenue FROM generate_series(CURRENT_DATE - INTERVAL '6 days', CURRENT_DATE, '1 day') as d(day) LEFT JOIN orders o ON DATE(o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh') = d.day AND o.status IN ('paid', 'closed') LEFT JOIN order_items oi ON oi.order_id = o.id GROUP BY d.day ORDER BY d.day ) t;
+    -- 4. & 5. Top mặt hàng 7 ngày
+    WITH weekly_items AS ( SELECT mi.name, SUM(oi.quantity) as total_quantity, SUM(oi.quantity * oi.unit_price) as total_revenue FROM order_items oi JOIN orders o ON oi.order_id = o.id JOIN menu_items mi ON oi.menu_item_id = mi.id WHERE DATE(o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh') >= CURRENT_DATE - INTERVAL '6 days' AND o.status IN ('paid', 'closed') GROUP BY mi.name ) SELECT (SELECT json_agg(t) FROM (SELECT name, total_revenue as value FROM weekly_items ORDER BY total_revenue DESC LIMIT 7) t), (SELECT json_agg(t) FROM (SELECT name, total_quantity as value FROM weekly_items ORDER BY total_quantity DESC LIMIT 7) t) INTO v_top_items_by_revenue, v_top_items_by_quantity;
 
-    -- 4. & 5. Top mặt hàng theo Doanh thu và Số lượng (ĐÃ SỬA LỖI)
-    WITH today_items AS (
-        SELECT 
-            mi.name,
-            SUM(oi.quantity) as total_quantity,
-            SUM(oi.quantity * oi.unit_price) as total_revenue
-        FROM order_items oi
-        JOIN orders o ON oi.order_id = o.id
-        JOIN menu_items mi ON oi.menu_item_id = mi.id
-        WHERE DATE(o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh') = CURRENT_DATE AND o.status IN ('paid', 'closed')
-        GROUP BY mi.name
-    )
-    -- Gộp hai câu SELECT lại thành một
-    SELECT 
-        (SELECT json_agg(t) FROM (SELECT name, total_revenue as value FROM today_items ORDER BY total_revenue DESC LIMIT 7) t),
-        (SELECT json_agg(t) FROM (SELECT name, total_quantity as value FROM today_items ORDER BY total_quantity DESC LIMIT 7) t)
-    INTO 
-        v_top_items_by_revenue,
-        v_top_items_by_quantity;
 
     -- Trả về tất cả dữ liệu
     RETURN json_build_object(
@@ -830,6 +896,56 @@ $$;
 
 
 ALTER FUNCTION "public"."get_dashboard_overview"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."get_financial_summary_report"("p_start_date" "date" DEFAULT CURRENT_DATE, "p_end_date" "date" DEFAULT CURRENT_DATE) RETURNS json
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  v_opening_balance DECIMAL;
+  v_inflow_period DECIMAL;
+  v_outflow_period DECIMAL;
+  v_closing_balance DECIMAL;
+BEGIN
+  -- 1. TÍNH SỐ DƯ ĐẦU KỲ (Opening Balance)
+  -- Lấy tất cả doanh thu TRƯỚC ngày bắt đầu trừ đi tất cả chi phí TRƯỚC ngày bắt đầu.
+  SELECT 
+    (SELECT COALESCE(SUM(total_price), 0) FROM public.orders WHERE (created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date < p_start_date AND status IN ('paid', 'completed', 'closed'))
+    -
+    (SELECT COALESCE(SUM(amount), 0) FROM public.expenses WHERE expense_date < p_start_date)
+  INTO v_opening_balance;
+
+  -- 2. TÍNH TỔNG THU TRONG KỲ (Inflow)
+  -- Lấy tất cả doanh thu (Tiền mặt, Momo, CK) TRONG khoảng thời gian đã chọn.
+  SELECT COALESCE(SUM(total_price), 0)
+  INTO v_inflow_period
+  FROM public.orders
+  WHERE 
+    (created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN p_start_date AND p_end_date
+    AND status IN ('paid', 'completed', 'closed');
+
+  -- 3. TÍNH TỔNG CHI TRONG KỲ (Outflow)
+  -- Lấy tất cả chi phí TRONG khoảng thời gian đã chọn.
+  SELECT COALESCE(SUM(amount), 0)
+  INTO v_outflow_period
+  FROM public.expenses
+  WHERE expense_date BETWEEN p_start_date AND p_end_date;
+
+  -- 4. TÍNH SỐ DƯ CUỐI KỲ (Closing Balance)
+  v_closing_balance := v_opening_balance + v_inflow_period - v_outflow_period;
+
+  -- 5. Trả về kết quả
+  RETURN JSON_BUILD_OBJECT(
+    'openingBalance', v_opening_balance,
+    'inflow', v_inflow_period,
+    'outflow', v_outflow_period,
+    'closingBalance', v_closing_balance
+  );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_financial_summary_report"("p_start_date" "date", "p_end_date" "date") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."get_full_dashboard_data"() RETURNS json
@@ -995,46 +1111,39 @@ CREATE OR REPLACE FUNCTION "public"."get_profit_report"("p_start_date" "date" DE
     LANGUAGE "plpgsql"
     AS $$
 DECLARE
-  v_gross_profit DECIMAL;
+  v_total_revenue DECIMAL;
+  v_total_expenses DECIMAL;
   v_net_profit DECIMAL;
   v_profit_margin DECIMAL;
-  v_total_revenue DECIMAL;
-  v_total_cogs DECIMAL;
-  v_operating_cost DECIMAL;
 BEGIN
-  -- Tính tổng doanh thu
-  SELECT COALESCE(SUM(quantity * unit_price), 0)
+  -- 1. TÍNH TỔNG DOANH THU (bao gồm Tiền mặt, Momo, Chuyển khoản)
+  SELECT COALESCE(SUM(total_price), 0)
   INTO v_total_revenue
-  FROM order_items oi
-  JOIN orders o ON oi.order_id = o.id
-  WHERE DATE(o.created_at) BETWEEN p_start_date AND p_end_date
-    AND o.status IN ('paid', 'completed', 'closed');
+  FROM public.orders
+  WHERE 
+    (created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN p_start_date AND p_end_date
+    AND status IN ('paid', 'completed', 'closed');
 
-  -- Giá vốn (COGS) = 30% doanh thu
-  v_total_cogs := v_total_revenue * 0.3;
+  -- 2. TÍNH TỔNG CHI PHÍ (bao gồm chi bằng tiền mặt và chuyển khoản)
+  SELECT COALESCE(SUM(amount), 0)
+  INTO v_total_expenses
+  FROM public.expenses
+  WHERE expense_date BETWEEN p_start_date AND p_end_date;
 
-  -- Chi phí vận hành = 500.000 VNĐ
-  v_operating_cost := 500000;
+  -- 3. Lợi nhuận ròng = Tổng Doanh thu - Tổng Chi phí
+  v_net_profit := v_total_revenue - v_total_expenses;
 
-  -- Lợi nhuận gộp = Doanh thu - COGS
-  v_gross_profit := v_total_revenue - v_total_cogs;
-
-  -- Lợi nhuận ròng = Lợi nhuận gộp - Chi phí vận hành
-  v_net_profit := v_gross_profit - v_operating_cost;
-
-  -- Tỷ suất lợi nhuận = Lợi nhuận ròng / Doanh thu * 100
+  -- 4. Tỷ suất lợi nhuận
   v_profit_margin := CASE 
     WHEN v_total_revenue > 0 THEN (v_net_profit / v_total_revenue) * 100
     ELSE 0
   END;
 
   RETURN JSON_BUILD_OBJECT(
-    'gross_profit', GREATEST(v_gross_profit, 0),
-    'net_profit', GREATEST(v_net_profit, 0),
-    'profit_margin', GREATEST(v_profit_margin, 0),
-    'total_revenue', v_total_revenue,
-    'total_cogs', v_total_cogs,
-    'operating_cost', v_operating_cost
+    'totalRevenue', v_total_revenue,
+    'totalExpenses', v_total_expenses,
+    'netProfit', v_net_profit,
+    'profitMargin', v_profit_margin
   );
 END;
 $$;
@@ -1236,6 +1345,32 @@ $$;
 
 
 ALTER FUNCTION "public"."get_total_returned_quantity_for_order"("p_order_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."get_transactions_report"("p_start_date" timestamp with time zone, "p_end_date" timestamp with time zone) RETURNS TABLE("id" "uuid", "amount" numeric, "payment_method" "text", "transaction_time" "text", "table_name" "text", "items" bigint)
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        o.id,
+        o.total_price AS amount,
+        o.payment_method,
+        to_char(o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'HH24:MI') AS transaction_time, -- VÀ SỬA Ở ĐÂY
+        COALESCE(o.table_name, 'Mang về') AS table_name,
+        (SELECT COUNT(*) FROM public.order_items oi WHERE oi.order_id = o.id) AS items
+    FROM
+        public.orders o
+    WHERE
+        o.status IN ('completed', 'paid', 'closed')
+        AND o.created_at BETWEEN p_start_date AND p_end_date
+    ORDER BY
+        o.created_at DESC;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_transactions_report"("p_start_date" timestamp with time zone, "p_end_date" timestamp with time zone) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."get_transactions_with_details"("p_start_date" timestamp with time zone, "p_end_date" timestamp with time zone) RETURNS TABLE("id" "uuid", "created_at" timestamp with time zone, "amount" numeric, "status" "text", "payment_method" "text", "table_name" "text", "total_items" bigint)
@@ -1837,7 +1972,8 @@ CREATE TABLE IF NOT EXISTS "public"."expenses" (
     "description" "text" NOT NULL,
     "amount" numeric(10,0) NOT NULL,
     "expense_date" "date" DEFAULT CURRENT_DATE NOT NULL,
-    "created_at" timestamp with time zone DEFAULT "now"()
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "payment_method" "text" DEFAULT 'cash'::"text"
 );
 
 
@@ -1862,7 +1998,8 @@ CREATE TABLE IF NOT EXISTS "public"."menu_items" (
     "category_id" "uuid",
     "is_available" boolean DEFAULT true,
     "is_hot" boolean DEFAULT false,
-    "is_active" boolean DEFAULT true
+    "is_active" boolean DEFAULT true,
+    "cost" numeric(10,0) DEFAULT 0
 );
 
 
@@ -1995,7 +2132,8 @@ CREATE TABLE IF NOT EXISTS "public"."orders" (
     "created_at" timestamp with time zone DEFAULT "now"(),
     "user_id" "uuid" DEFAULT "auth"."uid"(),
     "updated_at" timestamp with time zone DEFAULT "now"(),
-    "table_name" "text"
+    "table_name" "text",
+    "order_code" "text"
 );
 
 
@@ -2845,6 +2983,18 @@ GRANT ALL ON FUNCTION "public"."get_cash_flow_report"("p_start_date" "date", "p_
 
 
 
+GRANT ALL ON FUNCTION "public"."get_cash_fund_data"("p_start_date" timestamp with time zone, "p_end_date" timestamp with time zone) TO "anon";
+GRANT ALL ON FUNCTION "public"."get_cash_fund_data"("p_start_date" timestamp with time zone, "p_end_date" timestamp with time zone) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_cash_fund_data"("p_start_date" timestamp with time zone, "p_end_date" timestamp with time zone) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_cash_fund_report"("p_start_date" "date", "p_end_date" "date") TO "anon";
+GRANT ALL ON FUNCTION "public"."get_cash_fund_report"("p_start_date" "date", "p_end_date" "date") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_cash_fund_report"("p_start_date" "date", "p_end_date" "date") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."get_cashier_dashboard_data"() TO "anon";
 GRANT ALL ON FUNCTION "public"."get_cashier_dashboard_data"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."get_cashier_dashboard_data"() TO "service_role";
@@ -2860,6 +3010,12 @@ GRANT ALL ON FUNCTION "public"."get_dashboard_data"() TO "service_role";
 GRANT ALL ON FUNCTION "public"."get_dashboard_overview"() TO "anon";
 GRANT ALL ON FUNCTION "public"."get_dashboard_overview"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."get_dashboard_overview"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_financial_summary_report"("p_start_date" "date", "p_end_date" "date") TO "anon";
+GRANT ALL ON FUNCTION "public"."get_financial_summary_report"("p_start_date" "date", "p_end_date" "date") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_financial_summary_report"("p_start_date" "date", "p_end_date" "date") TO "service_role";
 
 
 
@@ -2908,6 +3064,12 @@ GRANT ALL ON FUNCTION "public"."get_sales_report"("p_start_date" "date", "p_end_
 GRANT ALL ON FUNCTION "public"."get_total_returned_quantity_for_order"("p_order_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."get_total_returned_quantity_for_order"("p_order_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."get_total_returned_quantity_for_order"("p_order_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_transactions_report"("p_start_date" timestamp with time zone, "p_end_date" timestamp with time zone) TO "anon";
+GRANT ALL ON FUNCTION "public"."get_transactions_report"("p_start_date" timestamp with time zone, "p_end_date" timestamp with time zone) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_transactions_report"("p_start_date" timestamp with time zone, "p_end_date" timestamp with time zone) TO "service_role";
 
 
 
