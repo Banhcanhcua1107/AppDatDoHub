@@ -1,4 +1,4 @@
-// --- START OF FILE: src/components/MoMoQRModal.tsx ---
+// --- START OF FILE: src/components/MoMoQRModal.tsx (ĐÃ SỬA LẠI HOÀN CHỈNH) ---
 
 import React from 'react';
 import {
@@ -19,9 +19,10 @@ interface MoMoQRModalProps {
   isLoading: boolean;
   qrValue: string | null;
   amount: number;
-  onPaymentSuccess: () => void; // Hàm được gọi khi giả lập thanh toán thành công
+  onPaymentSuccess: () => void;
 }
 
+// [SỬA] Đổi tên component thành MoMoQRModal
 const MoMoQRModal: React.FC<MoMoQRModalProps> = ({
   isVisible,
   onClose,
@@ -41,6 +42,7 @@ const MoMoQRModal: React.FC<MoMoQRModalProps> = ({
         <Pressable style={styles.container}>
           {/* Header */}
           <View style={styles.header}>
+            {/* [SỬA] Đổi văn bản header */}
             <Text style={styles.headerText}>Thanh toán qua MoMo</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
               <Icon name="close-outline" size={28} color="#6B7280" />
@@ -51,6 +53,7 @@ const MoMoQRModal: React.FC<MoMoQRModalProps> = ({
           <View style={styles.content}>
             {isLoading ? (
               <>
+                {/* [SỬA] Đổi màu loading */}
                 <ActivityIndicator size="large" color="#A60067" />
                 <Text style={styles.loadingText}>Đang tạo mã thanh toán...</Text>
               </>
@@ -59,11 +62,13 @@ const MoMoQRModal: React.FC<MoMoQRModalProps> = ({
                 <View style={styles.qrContainer}>
                   <QRCode value={qrValue} size={220} />
                 </View>
+                {/* [SỬA] Đổi văn bản hướng dẫn */}
                 <Text style={styles.instructionText}>
                   Quét mã QR bằng ứng dụng <Text style={{fontWeight: 'bold'}}>MoMo</Text> để thanh toán
                 </Text>
                 <View style={styles.amountBox}>
                   <Text style={styles.amountLabel}>Số tiền</Text>
+                  {/* [SỬA] Đổi màu số tiền */}
                   <Text style={styles.amountValue}>
                     {amount.toLocaleString('vi-VN')}đ
                   </Text>
@@ -81,22 +86,23 @@ const MoMoQRModal: React.FC<MoMoQRModalProps> = ({
           {/* Footer - Nút giả lập thanh toán */}
           {!isLoading && qrValue && (
              <View style={styles.footer}>
+                {/* [SỬA] Đổi màu nút xác nhận */}
                 <TouchableOpacity style={styles.confirmButton} onPress={onPaymentSuccess}>
                     <Icon name="checkmark-circle-outline" size={22} color="white" />
                     <Text style={styles.confirmButtonText}>Xác nhận đã thanh toán</Text>
                 </TouchableOpacity>
                 <Text style={styles.footerNote}>
-                    (Đây là nút giả lập thanh toán thành công cho mục đích kiểm thử)
+                    (Nút này dùng để giả lập thanh toán thành công)
                 </Text>
             </View>
           )}
-
         </Pressable>
       </Pressable>
     </Modal>
   );
 };
 
+// [SỬA] Cập nhật lại toàn bộ styles cho phù hợp với MoMo
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
@@ -110,11 +116,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#F9FAFB',
     borderRadius: 20,
     overflow: 'hidden',
-    elevation: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 15,
   },
   header: {
     backgroundColor: 'white',
@@ -149,11 +150,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderRadius: 12,
     marginBottom: 20,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 5,
+    borderWidth: 1,
+    borderColor: '#eee'
   },
   instructionText: {
     fontSize: 15,
@@ -224,4 +222,5 @@ const styles = StyleSheet.create({
   },
 });
 
+// [SỬA] Export đúng tên component
 export default MoMoQRModal;

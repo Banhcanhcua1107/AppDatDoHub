@@ -27,6 +27,7 @@ import ReturnNotificationScreen from '../screens/Orders/ReturnNotificationScreen
 import ProvisionalBillScreen from '../screens/Orders/ProvisionalBillScreen';
 import PrintPreviewScreen from '../screens/Orders/PrintPreviewScreen';
 import VietQRCodeScreen from '../screens/Orders/VietQRCodeScreen';
+import MoMoQRCodeScreen from '../screens/Orders/MoMoQRCodeScreen';
 import ChangePasswordScreen from '../screens/Profile/ChangePasswordScreen';
 import BillHistoryScreen from '../screens/Utilities/BillHistoryScreen';
 // --- [SỬA LỖI] Import KitchenTabs và xóa import KitchenDisplayScreen không cần thiết ---
@@ -55,8 +56,6 @@ import MenuManagementScreen from '../screens/Cashier/MenuManagementScreen';
 import TopItemsScreen from '../screens/Cashier/TopItemsScreen';
 import AllActivitiesScreen from '../screens/Cashier/AllActivitiesScreen';
 import FinancialSummaryScreen from 'screens/Cashier/FinancialSummaryScreen';
-
-
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const AppStack = createNativeStackNavigator<AppStackParamList>();
@@ -117,6 +116,11 @@ export type CashierStackParamList = {
     amount: number;
     pendingPaymentAction: 'keep' | 'end';
   };
+  MoMoQRCode: {
+    orderId: string;
+    amount: number;
+    pendingPaymentAction: 'keep' | 'end';
+  };
 };
 
 const CashierStack = createNativeStackNavigator<CashierStackParamList>();
@@ -150,8 +154,10 @@ const MainAppStack = () => (
         <AppStack.Screen name={ROUTES.PROVISIONAL_BILL} component={ProvisionalBillScreen} />
         <AppStack.Screen name={ROUTES.PRINT_PREVIEW} component={PrintPreviewScreen} />
         <AppStack.Screen name={ROUTES.VIET_QR_CODE} component={VietQRCodeScreen} />
+        <AppStack.Screen name={ROUTES.MOMO_QR_CODE} component={MoMoQRCodeScreen} />
         <AppStack.Screen name={ROUTES.CHANGE_PASSWORD} component={ChangePasswordScreen} />
         <AppStack.Screen name={ROUTES.BILL_HISTORY} component={BillHistoryScreen} />
+        <AppStack.Screen name={ROUTES.MOMO_QR_CODE} component={MoMoQRCodeScreen} />
     </AppStack.Navigator>
 );
 
@@ -203,6 +209,7 @@ const CashierNavigator = () => (
     <CashierStack.Screen name="ProvisionalBill" component={ProvisionalBillScreen} />
     <CashierStack.Screen name="PrintPreview" component={PrintPreviewScreen} />
     <CashierStack.Screen name="VietQRCode" component={VietQRCodeScreen} />
+    <CashierStack.Screen name="MoMoQRCode" component={MoMoQRCodeScreen} />
   </CashierStack.Navigator>
 );
 

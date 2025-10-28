@@ -28,7 +28,6 @@ import PaymentMethodBox from '../../components/PaymentMethodBox';
 import BillContent from '../../components/BillContent';
 import { BillItem } from '../Orders/ProvisionalBillScreen';
 import ConfirmModal from '../../components/ConfirmModal';
-import ZaloPayQRModal from '../../components/ZaloPayQRModal';
 
 interface OrderSection {
   title: string;
@@ -93,6 +92,9 @@ const NoteInputModal: React.FC<{
     </Modal>
   );
 };
+
+
+
 
 const OrderListItem: React.FC<{
   item: DisplayItem;
@@ -285,12 +287,6 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
   const [isPaymentMethodBoxVisible, setPaymentMethodBoxVisible] = useState(false);
   const [pendingPaymentAction, setPendingPaymentAction] = useState<'keep' | 'end' | null>(null);
   const [isBillModalVisible, setBillModalVisible] = useState(false);
-  
-
-  const [isZaloPayModalVisible, setZaloPayModalVisible] = useState(false);
-  const [zaloPayQRValue, setZaloPayQRValue] = useState<string | null>(null);
-  const [isLoadingZaloPayQR, setIsLoadingZaloPayQR] = useState(false);
-
 
   // State cho Confirm Modals
   const [cancelItemModal, setCancelItemModal] = useState<{
@@ -1212,50 +1208,37 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
     }
   }, [navigation]);
 
-  const handlePaymentMethodSelect = (method: 'cash' | 'zalopay' | 'transfer') => {
+ // [SỬA LỖI] Cập nhật hàm để xử lý 'momo'
+  const handlePaymentMethodSelect = (method: 'cash' | 'momo' | 'transfer') => {
   setPaymentMethodBoxVisible(false);
-  
+
   if (!paymentInfo || !pendingPaymentAction) return;
-  
-  const methodNames = {
-    cash: 'Tiền mặt',
-    zalopay: 'ZaloPay', // Đã sửa
-    transfer: 'Chuyển khoản'
-  };
-  
+
   if (method === 'cash') {
     setBillModalVisible(true);
     return;
   }
-  
-  // --- THAY ĐỔI LOGIC ZALOPAY TẠI ĐÂY ---
-  if (method === 'zalopay') {
-    // Gọi hàm tạo QR code
-    createZaloPayOrder(paymentInfo.amount, paymentInfo.orderId);
-    // Chúng ta sẽ không gọi handleKeep/EndSession ngay lập tức
-    // Mà sẽ chờ sau khi thanh toán thành công
-    return; 
+
+  if (method === 'momo') {
+    // Điều hướng đến màn hình MoMoQRCodeScreen và truyền dữ liệu cần thiết
+    navigation.navigate(ROUTES.MOMO_QR_CODE, {
+      orderId: paymentInfo.orderId,
+      amount: paymentInfo.amount,
+      pendingPaymentAction: pendingPaymentAction,
+    });
+    setPendingPaymentAction(null); // Reset sau khi điều hướng
+    return;
   }
 
   if (method === 'transfer') {
-      // Điều hướng đến VietQRCodeScreen để thanh toán
-      if (!paymentInfo) return;
-      navigation.navigate(ROUTES.VIET_QR_CODE, {
-        orderId: paymentInfo.orderId,
-        amount: paymentInfo.amount,
-        pendingPaymentAction: pendingPaymentAction || 'keep',
-      });
-      return;
-    }
-  
-  // Xử lý thanh toán cho Chuyển khoản
-  if (pendingPaymentAction === 'end') {
-    handleEndSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, methodNames[method]);
-  } else {
-    handleKeepSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, methodNames[method]);
+    navigation.navigate(ROUTES.VIET_QR_CODE, {
+      orderId: paymentInfo.orderId,
+      amount: paymentInfo.amount,
+      pendingPaymentAction: pendingPaymentAction,
+    });
+    setPendingPaymentAction(null); // Reset sau khi điều hướng
+    return;
   }
-  
-  // ❌ KHÔNG reset pendingPaymentAction ở đây, để nó vẫn giữ giá trị cho handleNavigateToPrint
 };
 
   const handleCompleteCashPayment = async () => {
@@ -1459,31 +1442,7 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
     );
   }
 
-  const createZaloPayOrder = async (amount: number, orderId: string) => {
-  setIsLoadingZaloPayQR(true);
-  setZaloPayModalVisible(true);
-  setZaloPayQRValue(null);
-  
-  try {
-    // --- PHẦN NÀY SẼ GỌI BACKEND THẬT CỦA BẠN ---
-    // Ví dụ: const response = await axios.post('https://your-backend.com/create-zalopay-order', { amount, orderId });
-    // setZaloPayQRValue(response.data.order_url);
-    
-    // --- VÌ CHƯA CÓ BACKEND, CHÚNG TA SẼ GIẢ LẬP ---
-    console.log(`Đang yêu cầu tạo QR cho đơn ${orderId} với số tiền ${amount}`);
-    await new Promise(resolve => setTimeout(resolve, 2000)); // Giả lập độ trễ mạng
-    const fakeOrderUrl = `https://qr.zalopay.vn/2/order?amount=${amount}&orderId=${orderId}&timestamp=${Date.now()}`;
-    setZaloPayQRValue(fakeOrderUrl);
-    // --- KẾT THÚC PHẦN GIẢ LẬP ---
-    
-  } catch (error) {
-    console.error("Lỗi khi tạo QR ZaloPay:", error);
-    setZaloPayQRValue(null); // Đảm bảo không hiển thị QR nếu có lỗi
-    alert('Không thể tạo mã thanh toán. Vui lòng thử lại.');
-  } finally {
-    setIsLoadingZaloPayQR(false);
-  }
-};
+
 
   const AddMoreItemsButton = () => (
     <TouchableOpacity
@@ -1842,35 +1801,6 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         cancelText="Hủy"
         variant="warning"
       />
-      {/* THÊM MODAL ZALOPAY VÀO ĐÂY */}
-      {paymentInfo && (
-        <ZaloPayQRModal
-          isVisible={isZaloPayModalVisible}
-          onClose={() => {
-            setZaloPayModalVisible(false);
-            setPendingPaymentAction(null); // Reset action khi đóng modal
-          }}
-          isLoading={isLoadingZaloPayQR}
-          qrValue={zaloPayQRValue}
-          amount={paymentInfo.amount}
-          onPaymentSuccess={() => {
-            // Hàm này được gọi khi bấm nút "Giả lập thanh toán thành công"
-            setZaloPayModalVisible(false);
-            Toast.show({
-                type: 'success',
-                text1: 'Thanh toán ZaloPay thành công (giả lập)!',
-            });
-            
-            // Bây giờ mới thực hiện hành động giữ phiên hoặc kết thúc
-            if (pendingPaymentAction === 'end') {
-              handleEndSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'ZaloPay');
-            } else {
-              handleKeepSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'ZaloPay');
-            }
-            setPendingPaymentAction(null);
-          }}
-        />
-      )}
     </View>
   );
 };

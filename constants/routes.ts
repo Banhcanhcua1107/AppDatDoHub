@@ -39,6 +39,7 @@ export const ROUTES = {
   CHANGE_PASSWORD: 'ChangePassword',
   BILL_HISTORY: 'BillHistory',
   VIET_QR_CODE: 'VietQRCode',
+  MOMO_QR_CODE: 'MoMoQRCode',
 
   // [THÊM MỚI] Route cho màn hình Bếp
   KITCHEN_TABS: 'KitchenTabs', // Tên cho navigator
@@ -113,6 +114,11 @@ export type AppStackParamList = {
     shouldNavigateToHome?: boolean; // Flag để biết có cần quay về Home sau khi đóng không
   };
   [ROUTES.VIET_QR_CODE]: {
+    orderId: string;
+    amount: number;
+    pendingPaymentAction: 'keep' | 'end';
+  };
+  [ROUTES.MOMO_QR_CODE]: {
     orderId: string;
     amount: number;
     pendingPaymentAction: 'keep' | 'end';

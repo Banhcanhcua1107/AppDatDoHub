@@ -16,7 +16,7 @@ interface PaymentMethodBoxProps {
   isVisible: boolean;
   onClose: () => void;
   totalAmount: number;
-  onSelectMethod: (method: 'cash' | 'zalopay' | 'transfer') => void;
+  onSelectMethod: (method: 'cash' | 'momo' | 'transfer') => void;
 }
 
 const PaymentMethodBox: React.FC<PaymentMethodBoxProps> = ({
@@ -34,11 +34,11 @@ const PaymentMethodBox: React.FC<PaymentMethodBoxProps> = ({
       description: 'Thanh toán bằng tiền mặt',
     },
     {
-      id: 'zalopay', 
-      name: 'ZaloPay', 
+      id: 'momo', 
+      name: 'MoMo', 
       icon: 'qr-code-outline', 
-      color: '#0068FF',
-      description: 'Thanh toán qua ví ZaloPay', 
+      color: '#A60067', // Màu của MoMo
+      description: 'Thanh toán qua ví MoMo', // <<< ĐÃ SỬA LỖI TẠI ĐÂY
     },
     {
       id: 'transfer',
@@ -79,7 +79,7 @@ const PaymentMethodBox: React.FC<PaymentMethodBoxProps> = ({
                   key={method.id}
                   style={styles.methodButton}
                   onPress={() => {
-                    onSelectMethod(method.id as 'cash' | 'zalopay' | 'transfer');
+                    onSelectMethod(method.id as 'cash' | 'momo' | 'transfer');
                   }}
                   activeOpacity={0.7}
                 >
