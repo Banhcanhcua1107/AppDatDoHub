@@ -7,7 +7,6 @@ import { useNavigation } from '@react-navigation/native';
 import { getTransactions } from '../../services/supabaseService';
 import PeriodSelector from '../../components/PeriodSelector';
 
-// [GIỮ NGUYÊN] Hàm lấy khoảng thời gian
 const getDateRangeForPeriod = (period: string) => {
     const today = new Date();
     const endOfDay = new Date();
@@ -26,7 +25,7 @@ const getDateRangeForPeriod = (period: string) => {
             return { start: yStart, end: yEnd };
         case 'this_week':
             const wStart = new Date();
-            wStart.setDate(wStart.getDate() - today.getDay() + (today.getDay() === 0 ? -6 : 1)); // Tuần bắt đầu từ T2
+            wStart.setDate(wStart.getDate() - today.getDay() + (today.getDay() === 0 ? -6 : 1)); 
             wStart.setHours(0, 0, 0, 0);
             return { start: wStart, end: endOfDay };
         case 'this_month':
@@ -39,14 +38,12 @@ const getDateRangeForPeriod = (period: string) => {
     }
 };
 
-// [GIỮ NGUYÊN] Chi tiết các phương thức thanh toán
 const paymentMethodDetails = {
   cash: { icon: 'cash-outline', color: '#10B981', label: 'Tiền mặt' },
   momo: { icon: 'wallet-outline', color: '#D70F64', label: 'Momo' },
   transfer: { icon: 'card-outline', color: '#3B82F6', label: 'Chuyển khoản' },
 };
 
-// [GIỮ NGUYÊN] Hàm định dạng tiền tệ
 const formatCurrency = (amount: number = 0) => (amount || 0).toLocaleString('vi-VN');
 
 export default function SalesDetailScreen() {
@@ -82,10 +79,8 @@ export default function SalesDetailScreen() {
             </View>
             <ScrollView contentContainerStyle={styles.scrollContent}>
                 <PeriodSelector onPeriodChange={(period) => loadData(period)} />
-
-                {loading ? (
-                    <ActivityIndicator style={{ marginTop: 32 }} size="large" color="#3B82F6" />
-                ) : (
+                {loading ? ( <ActivityIndicator style={{ marginTop: 32 }} size="large" color="#3B82F6" /> ) : 
+                (
                     <>
                         <View style={styles.summaryCard}>
                             <Text style={styles.summaryLabel}>Tổng doanh thu</Text>
@@ -97,19 +92,19 @@ export default function SalesDetailScreen() {
                         {transactions.length > 0 ? (
                             <View style={styles.transactionList}>
                                 {transactions.map(item => {
-                                    // [SỬA LỖI] Thêm một đối tượng mặc định để ứng dụng không bị crash
-                                    // khi gặp một payment_method không xác định (null, undefined, hoặc giá trị lạ).
-                                    const defaultPayment = { icon: 'help-circle-outline', color: '#9CA3AF', label: 'Không rõ' };
+                                    // [CẬP NHẬT] Thay đổi phương thức thanh toán mặc định
+                                    // Giờ đây nếu có lỗi, nó sẽ hiển thị là "Tiền mặt" thay vì "Không rõ"
+                                    const defaultPayment = { icon: 'cash-outline', color: '#10B981', label: 'Tiền mặt' };
                                     const payment = (paymentMethodDetails as any)[item.payment_method] || defaultPayment;
 
                                     return (
                                         <View key={item.id} style={styles.transactionItem}>
                                             <View style={[styles.iconContainer, { backgroundColor: `${payment.color}20` }]}>
-                                                <Ionicons name={payment.icon} size={22} color={payment.color} />
+                                                <Ionicons name={payment.icon as any} size={22} color={payment.color} />
                                             </View>
                                             <View style={styles.transactionInfo}>
                                                 <Text style={styles.transactionTitle}>{item.table_name || 'Đơn mang về'}</Text>
-                                                <Text style={styles.transactionSubtitle}>{`${payment.label} • ${item.time}`}</Text>
+                                                <Text style={styles.transactionSubtitle}>{`${payment.label} • ${item.transaction_time}`}</Text>
                                             </View>
                                             <View style={styles.transactionAmountContainer}>
                                                 <Text style={styles.transactionAmount}>+{formatCurrency(item.amount)}</Text>
@@ -129,27 +124,20 @@ export default function SalesDetailScreen() {
     );
 }
 
+// Styles giữ nguyên
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8FAFC' },
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
     headerTitle: { fontSize: 18, fontWeight: '600', color: '#1F2937' },
     scrollContent: { padding: 16 },
     emptyText: { textAlign: 'center', color: '#9CA3AF', marginTop: 20, fontStyle: 'italic' },
-
     summaryCard: { backgroundColor: '#fff', borderRadius: 16, padding: 24, alignItems: 'center', marginBottom: 24, borderWidth: 1, borderColor: '#F1F5F9' },
     summaryLabel: { fontSize: 15, color: '#64748B' },
     summaryValue: { fontSize: 32, fontWeight: 'bold', color: '#10B981', marginVertical: 8 },
     summarySubtext: { fontSize: 14, color: '#9CA3AF' },
-
     sectionTitle: { fontSize: 18, fontWeight: '600', color: '#334155', marginBottom: 12 },
     transactionList: { backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#F1F5F9' },
-    transactionItem: { 
-        flexDirection: 'row', 
-        alignItems: 'center', 
-        padding: 14, 
-        borderBottomWidth: 1,
-        borderBottomColor: '#F8FAFC',
-    },
+    transactionItem: { flexDirection: 'row', alignItems: 'center', padding: 14, borderBottomWidth: 1, borderBottomColor: '#F8FAFC',},
     iconContainer: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
     transactionInfo: { flex: 1 },
     transactionTitle: { fontSize: 15, fontWeight: '600', color: '#1E293B' },

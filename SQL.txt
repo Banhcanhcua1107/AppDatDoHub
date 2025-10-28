@@ -725,6 +725,52 @@ $$;
 ALTER FUNCTION "public"."get_cashier_dashboard_data"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."get_daily_cash_reconciliation"("p_target_date" "date") RETURNS json
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  v_opening_balance DECIMAL;
+  v_total_inflow DECIMAL;   -- Đổi tên biến cho rõ nghĩa: Dòng tiền vào
+  v_total_outflow DECIMAL;  -- Đổi tên biến cho rõ nghĩa: Dòng tiền ra
+  v_closing_balance DECIMAL;
+BEGIN
+  -- 1. Số dư đầu ngày: Mặc định là 2,000,000
+  v_opening_balance := 2000000;
+
+  -- 2. TỔNG THU trong ngày (bao gồm cả tiền mặt, momo, chuyển khoản)
+  -- --- GỠ BỎ ĐIỀU KIỆN `payment_method = 'cash'` ---
+  SELECT COALESCE(SUM(total_price), 0)
+  INTO v_total_inflow
+  FROM public.orders
+  WHERE 
+    (created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = p_target_date
+    AND status IN ('paid', 'completed', 'closed');
+
+  -- 3. TỔNG CHI trong ngày (bao gồm tất cả các khoản chi)
+  -- --- GỠ BỎ ĐIỀU KIỆN `payment_method = 'cash'` ---
+  SELECT COALESCE(SUM(amount), 0)
+  INTO v_total_outflow
+  FROM public.expenses
+  WHERE expense_date = p_target_date;
+
+  -- 4. Tồn quỹ cuối ngày
+  -- = Đầu ngày + Tổng thu - Tổng chi
+  v_closing_balance := v_opening_balance + v_total_inflow - v_total_outflow;
+
+  -- 5. Trả về kết quả
+  RETURN JSON_BUILD_OBJECT(
+    'openingBalance', v_opening_balance,
+    'totalInflow', v_total_inflow,     -- Trả về tên mới
+    'totalOutflow', v_total_outflow,   -- Trả về tên mới
+    'closingBalance', v_closing_balance
+  );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_daily_cash_reconciliation"("p_target_date" "date") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."get_dashboard_data"() RETURNS json
     LANGUAGE "plpgsql"
     AS $$
@@ -898,43 +944,49 @@ $$;
 ALTER FUNCTION "public"."get_dashboard_overview"() OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."get_financial_summary_report"("p_start_date" "date" DEFAULT CURRENT_DATE, "p_end_date" "date" DEFAULT CURRENT_DATE) RETURNS json
+CREATE OR REPLACE FUNCTION "public"."get_financial_summary_report"("p_start_date" "date", "p_end_date" "date") RETURNS json
     LANGUAGE "plpgsql"
     AS $$
 DECLARE
   v_opening_balance DECIMAL;
-  v_inflow_period DECIMAL;
-  v_outflow_period DECIMAL;
+  v_inflow_period DECIMAL; -- Tổng thu trong kỳ
+  v_outflow_period DECIMAL; -- Tổng chi trong kỳ
   v_closing_balance DECIMAL;
+  v_revenue_before_start DECIMAL;
+  v_cogs_before_start DECIMAL;
+  v_expenses_before_start DECIMAL;
+  v_cogs_in_period DECIMAL;
+  v_expenses_in_period DECIMAL;
 BEGIN
-  -- 1. TÍNH SỐ DƯ ĐẦU KỲ (Opening Balance)
-  -- Lấy tất cả doanh thu TRƯỚC ngày bắt đầu trừ đi tất cả chi phí TRƯỚC ngày bắt đầu.
-  SELECT 
-    (SELECT COALESCE(SUM(total_price), 0) FROM public.orders WHERE (created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date < p_start_date AND status IN ('paid', 'completed', 'closed'))
-    -
-    (SELECT COALESCE(SUM(amount), 0) FROM public.expenses WHERE expense_date < p_start_date)
-  INTO v_opening_balance;
+  -- TÍNH SỐ DƯ ĐẦU KỲ
+  SELECT COALESCE(SUM(oi.quantity * oi.unit_price), 0) INTO v_revenue_before_start
+  FROM public.order_items oi JOIN public.orders o ON oi.order_id = o.id
+  WHERE (o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date < p_start_date AND o.status IN ('paid', 'completed', 'closed');
+  
+  SELECT COALESCE(SUM(oi.quantity * mi.cost), 0) INTO v_cogs_before_start
+  FROM public.order_items oi JOIN public.menu_items mi ON oi.menu_item_id = mi.id JOIN public.orders o ON oi.order_id = o.id
+  WHERE (o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date < p_start_date AND o.status IN ('paid', 'completed', 'closed');
+  
+  SELECT COALESCE(SUM(amount), 0) INTO v_expenses_before_start FROM public.expenses WHERE expense_date < p_start_date;
+  
+  v_opening_balance := v_revenue_before_start - (v_cogs_before_start + v_expenses_before_start);
 
-  -- 2. TÍNH TỔNG THU TRONG KỲ (Inflow)
-  -- Lấy tất cả doanh thu (Tiền mặt, Momo, CK) TRONG khoảng thời gian đã chọn.
-  SELECT COALESCE(SUM(total_price), 0)
-  INTO v_inflow_period
-  FROM public.orders
-  WHERE 
-    (created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN p_start_date AND p_end_date
-    AND status IN ('paid', 'completed', 'closed');
+  -- TÍNH GIAO DỊCH TRONG KỲ
+  SELECT COALESCE(SUM(oi.quantity * oi.unit_price), 0) INTO v_inflow_period
+  FROM public.order_items oi JOIN public.orders o ON oi.order_id = o.id
+  WHERE (o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN p_start_date AND p_end_date AND o.status IN ('paid', 'completed', 'closed');
 
-  -- 3. TÍNH TỔNG CHI TRONG KỲ (Outflow)
-  -- Lấy tất cả chi phí TRONG khoảng thời gian đã chọn.
-  SELECT COALESCE(SUM(amount), 0)
-  INTO v_outflow_period
-  FROM public.expenses
-  WHERE expense_date BETWEEN p_start_date AND p_end_date;
+  SELECT COALESCE(SUM(oi.quantity * mi.cost), 0) INTO v_cogs_in_period
+  FROM public.order_items oi JOIN public.menu_items mi ON oi.menu_item_id = mi.id JOIN public.orders o ON oi.order_id = o.id
+  WHERE (o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN p_start_date AND p_end_date AND o.status IN ('paid', 'completed', 'closed');
+  
+  SELECT COALESCE(SUM(amount), 0) INTO v_expenses_in_period FROM public.expenses WHERE expense_date BETWEEN p_start_date AND p_end_date;
+  
+  v_outflow_period := v_cogs_in_period + v_expenses_in_period;
 
-  -- 4. TÍNH SỐ DƯ CUỐI KỲ (Closing Balance)
+  -- TÍNH SỐ DƯ CUỐI KỲ
   v_closing_balance := v_opening_balance + v_inflow_period - v_outflow_period;
 
-  -- 5. Trả về kết quả
   RETURN JSON_BUILD_OBJECT(
     'openingBalance', v_opening_balance,
     'inflow', v_inflow_period,
@@ -1107,33 +1159,47 @@ $$;
 ALTER FUNCTION "public"."get_live_dashboard_snapshot"() OWNER TO "postgres";
 
 
-CREATE OR REPLACE FUNCTION "public"."get_profit_report"("p_start_date" "date" DEFAULT CURRENT_DATE, "p_end_date" "date" DEFAULT CURRENT_DATE) RETURNS json
+CREATE OR REPLACE FUNCTION "public"."get_profit_report"("p_start_date" "date", "p_end_date" "date") RETURNS json
     LANGUAGE "plpgsql"
     AS $$
 DECLARE
   v_total_revenue DECIMAL;
+  v_total_cogs DECIMAL; -- Giá vốn hàng bán
+  v_operating_expenses DECIMAL; -- Chi phí hoạt động
   v_total_expenses DECIMAL;
   v_net_profit DECIMAL;
   v_profit_margin DECIMAL;
 BEGIN
-  -- 1. TÍNH TỔNG DOANH THU (bao gồm Tiền mặt, Momo, Chuyển khoản)
-  SELECT COALESCE(SUM(total_price), 0)
+  -- 1. TÍNH TỔNG DOANH THU từ các order đã thanh toán
+  SELECT COALESCE(SUM(oi.quantity * oi.unit_price), 0)
   INTO v_total_revenue
-  FROM public.orders
-  WHERE 
-    (created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN p_start_date AND p_end_date
-    AND status IN ('paid', 'completed', 'closed');
+  FROM public.order_items oi
+  JOIN public.orders o ON oi.order_id = o.id
+  WHERE (o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN p_start_date AND p_end_date
+    AND o.status IN ('paid', 'completed', 'closed');
 
-  -- 2. TÍNH TỔNG CHI PHÍ (bao gồm chi bằng tiền mặt và chuyển khoản)
+  -- 2. TÍNH TỔNG GIÁ VỐN HÀNG BÁN (COGS)
+  SELECT COALESCE(SUM(oi.quantity * mi.cost), 0)
+  INTO v_total_cogs
+  FROM public.order_items oi
+  JOIN public.menu_items mi ON oi.menu_item_id = mi.id
+  JOIN public.orders o ON oi.order_id = o.id
+  WHERE (o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN p_start_date AND p_end_date
+    AND o.status IN ('paid', 'completed', 'closed');
+
+  -- 3. TÍNH TỔNG CHI PHÍ VẬN HÀNH từ bảng expenses
   SELECT COALESCE(SUM(amount), 0)
-  INTO v_total_expenses
+  INTO v_operating_expenses
   FROM public.expenses
   WHERE expense_date BETWEEN p_start_date AND p_end_date;
 
-  -- 3. Lợi nhuận ròng = Tổng Doanh thu - Tổng Chi phí
+  -- 4. TÍNH TỔNG CHI PHÍ = GIÁ VỐN + CHI PHÍ VẬN HÀNH
+  v_total_expenses := v_total_cogs + v_operating_expenses;
+
+  -- 5. Lợi nhuận ròng = Tổng Doanh thu - Tổng Chi phí
   v_net_profit := v_total_revenue - v_total_expenses;
 
-  -- 4. Tỷ suất lợi nhuận
+  -- 6. Tỷ suất lợi nhuận
   v_profit_margin := CASE 
     WHEN v_total_revenue > 0 THEN (v_net_profit / v_total_revenue) * 100
     ELSE 0
@@ -1143,7 +1209,9 @@ BEGIN
     'totalRevenue', v_total_revenue,
     'totalExpenses', v_total_expenses,
     'netProfit', v_net_profit,
-    'profitMargin', v_profit_margin
+    'profitMargin', v_profit_margin,
+    'totalCogs', v_total_cogs,
+    'operatingExpenses', v_operating_expenses
   );
 END;
 $$;
@@ -2998,6 +3066,12 @@ GRANT ALL ON FUNCTION "public"."get_cash_fund_report"("p_start_date" "date", "p_
 GRANT ALL ON FUNCTION "public"."get_cashier_dashboard_data"() TO "anon";
 GRANT ALL ON FUNCTION "public"."get_cashier_dashboard_data"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."get_cashier_dashboard_data"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_daily_cash_reconciliation"("p_target_date" "date") TO "anon";
+GRANT ALL ON FUNCTION "public"."get_daily_cash_reconciliation"("p_target_date" "date") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_daily_cash_reconciliation"("p_target_date" "date") TO "service_role";
 
 
 

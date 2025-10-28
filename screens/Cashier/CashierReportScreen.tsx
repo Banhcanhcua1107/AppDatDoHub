@@ -58,13 +58,13 @@ export default function CashierReportScreen() {
           color="#10B981"
           onPress={() => navigation.navigate('SalesDetail')}
         />
-        <ReportItem
+        {/* <ReportItem
           icon="wallet-outline"
           title="Báo cáo Quỹ tiền"
           description="Đối soát dòng tiền mặt thu và chi trong kỳ"
           color="#8B5CF6"
           onPress={() => navigation.navigate('CashFlowDetail')}
-        />
+        /> */}
         <ReportItem
           icon="cube-outline"
           title="Báo cáo Tồn kho"
