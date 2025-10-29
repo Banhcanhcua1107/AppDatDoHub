@@ -416,6 +416,7 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
                       `
                         id, 
                         status,
+                        created_at,
                         order_items(
                           id, quantity, unit_price, customizations, created_at, returned_quantity,
                           status, menu_items(name, image_url, is_available)
@@ -424,7 +425,8 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
                     )
                     .in('id', orderIds)
                     .eq('status', 'paid')
-                    .order('created_at', { ascending: false }); // Lấy tất cả paid orders, newest first
+                    .order('created_at', { ascending: false }) // Order mới nhất lên đầu
+                    .limit(1); // CHỈ lấy 1 paid order gần nhất (phiên trước đó)
 
                   // Xử lý error nếu không có order paid (không phải lỗi critical)
                   if (!paidError && recentPaidOrders && recentPaidOrders.length > 0) {
@@ -1260,6 +1262,13 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         .eq('id', orderId)
         .throwOnError();
         
+      // [MỚI] Xóa liên kết order_tables để bàn sạch sẽ (không còn order cũ)
+      await supabase
+        .from('order_tables')
+        .delete()
+        .eq('order_id', orderId)
+        .throwOnError();
+        
       // Cập nhật trạng thái bàn là 'Trống'
       await supabase
         .from('tables')
@@ -1272,6 +1281,10 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         text1: 'Hoàn tất phiên',
         text2: `Đã thanh toán và dọn bàn.`,
       });
+
+      // [MỚI] Reset activeOrderId để xóa sạch UI (không còn hiển thị order cũ)
+      setActiveOrderId(null);
+      setDisplayedSections([]); // Xóa tất cả sections để UI trống
 
       // Quay về màn hình chính (home) nếu được yêu cầu
       if (shouldNavigateHome) {
@@ -1418,6 +1431,14 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         .update({ status: 'closed' })
         .eq('id', activeOrderId)
         .throwOnError();
+      
+      // [MỚI] Xóa liên kết order_tables để bàn sạch sẽ (không còn order cũ)
+      await supabase
+        .from('order_tables')
+        .delete()
+        .eq('order_id', activeOrderId)
+        .throwOnError();
+      
       await supabase
         .from('tables')
         .update({ status: 'Trống' })
@@ -1428,6 +1449,11 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         text1: 'Thành công',
         text2: 'Đã đóng bàn và kết thúc phiên.'
       });
+
+      // [MỚI] Reset activeOrderId để xóa sạch UI (không còn hiển thị order cũ)
+      setActiveOrderId(null);
+      setDisplayedSections([]); // Xóa tất cả sections để UI trống
+
       // Navigate về màn hình home
       setTimeout(() => {
         // Quay về MenuScreen rồi goBack() để về AppTabs
