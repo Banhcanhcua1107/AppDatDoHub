@@ -18,7 +18,7 @@ import { AppStackParamList, ROUTES } from '../../constants/routes';
 import Toast from 'react-native-toast-message';
 import { supabase } from '../../services/supabase';
 import { ProvisionalOrder, BillItem } from './ProvisionalBillScreen';
-import QRCode from 'react-native-qrcode-svg'; // <-- ĐÃ THÊM
+import QRCode from 'react-native-qrcode-svg';
 import { useNavigation, StackActions } from '@react-navigation/native';
 
 type Props = NativeStackScreenProps<AppStackParamList, 'MoMoQRCode'>;
@@ -50,10 +50,24 @@ const MoMoQRCodeScreen: React.FC<Props> = ({ route, navigation }) => {
           table: 'orders',
           filter: `id=eq.${orderId}`,
         },
-        (payload) => {
+        async (payload) => { // <-- Thêm async
            console.log('[Realtime] MoMoQRCodeScreen nhận được cập nhật:', payload);
-          // [THAY ĐỔI] Lắng nghe cả 'paid' và 'closed'
-          if (payload.new?.status === 'paid' || payload.new?.status === 'closed') {
+          const newStatus = payload.new?.status;
+          const currentPaymentMethod = payload.new?.payment_method;
+
+          // Lắng nghe cả 'paid' và 'closed' và đảm bảo chưa điều hướng
+          if ((newStatus === 'paid' || newStatus === 'closed') && !isNavigating.current) {
+            
+            // [SỬA LỖI] Nếu phương thức thanh toán chưa được set, tự động cập nhật
+            // Đây là bước dự phòng quan trọng để đảm bảo báo cáo tài chính chính xác
+            if (!currentPaymentMethod || currentPaymentMethod !== 'momo') {
+                console.log("Dự phòng: Cập nhật payment_method thành 'momo'");
+                await supabase
+                    .from('orders')
+                    .update({ payment_method: 'momo' })
+                    .eq('id', orderId);
+            }
+
             Toast.show({
               type: 'success',
               text1: 'Thanh toán thành công!',
@@ -76,13 +90,12 @@ const MoMoQRCodeScreen: React.FC<Props> = ({ route, navigation }) => {
     isNavigating.current = true;
     setIsLoading(true);
 
-    // [THÊM] Xác định xem có nên quay về trang chủ không
     const shouldGoHome = pendingPaymentAction === 'end';
 
     try {
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
-        .select('id, created_at, total_price, order_tables(tables(id, name))')
+        .select('id, created_at, total_price, order_tables(table_id, tables(id, name))')
         .eq('id', orderId)
         .single();
 
@@ -119,11 +132,38 @@ const MoMoQRCodeScreen: React.FC<Props> = ({ route, navigation }) => {
         createdAt: orderData.created_at,
       };
 
+      // [MỚI] Nếu user chọn "giữ phiên" (không phải end), tạo order pending mới
+      if (!shouldGoHome) {
+        const tableIds = orderData.order_tables.map((ot: any) => ot.table_id);
+
+        // Tạo order mới
+        const { data: newOrder, error: createError } = await supabase
+          .from('orders')
+          .insert([{ status: 'pending' }])
+          .select('id')
+          .single();
+
+        if (createError) throw createError;
+
+        // Liên kết order mới với các bàn cũ
+        const orderTableInserts = tableIds.map((tableId: string) => ({
+          order_id: newOrder.id,
+          table_id: tableId,
+        }));
+
+        const { error: insertError } = await supabase
+          .from('order_tables')
+          .insert(orderTableInserts);
+
+        if (insertError) throw insertError;
+
+        console.log('✅ [MoMoQRCode] Tạo order pending mới thành công');
+      }
+
       navigation.replace(ROUTES.PRINT_PREVIEW, {
         order: billOrder,
         items: billItems,
         paymentMethod: 'momo',
-        // [SỬA LỖI] Sử dụng biến đã được định nghĩa ở trên
         shouldNavigateToHome: shouldGoHome,
       });
     } catch (error) {
@@ -134,7 +174,6 @@ const MoMoQRCodeScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   };
 
-  // [ĐÃ SỬA] Gọi đến Supabase Function để bảo mật
   const createMoMoQRCode = async () => {
     setIsLoading(true);
     setQrValue(null);
@@ -154,7 +193,7 @@ const MoMoQRCodeScreen: React.FC<Props> = ({ route, navigation }) => {
       if (data && data.qrCodeUrl) {
         console.log("✅ Nhận được QR Code từ Backend:", data.qrCodeUrl);
         setQrValue(data.qrCodeUrl);
-        setOrderCode(orderId.slice(-6).toUpperCase()); // Lấy mã order để hiển thị
+        setOrderCode(orderId.slice(-6).toUpperCase());
       } else {
         throw new Error(data.message || 'Không nhận được mã QR từ server.');
       }
@@ -167,22 +206,43 @@ const MoMoQRCodeScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   };
   
-  // Nút này dùng để kiểm thử/giả lập việc thanh toán thành công
   const handleConfirmPayment = async () => {
-    // Luồng này sẽ được thay thế bằng IPN trong thực tế
-    const { error: updateError } = await supabase
-      .from('orders')
-      .update({
+    setIsLoading(true);
+    try {
+      const updatePayload: {
+        status: 'paid' | 'closed';
+        payment_method: string;
+        paid_at: string;
+        total_price: number;
+      } = {
         status: 'paid',
-        payment_method: 'MoMo', // Cập nhật đúng tên
+        payment_method: 'momo',
         paid_at: new Date().toISOString(),
-      })
-      .eq('id', orderId);
+        total_price: amount,
+      };
 
-    if (updateError) {
-      Alert.alert('Lỗi', 'Không thể cập nhật trạng thái thanh toán.');
+      if (pendingPaymentAction === 'end') {
+        updatePayload.status = 'closed';
+
+        const { data: orderTables } = await supabase
+          .from('order_tables')
+          .select('table_id')
+          .eq('order_id', orderId);
+        
+        const tableIdsToUpdate = orderTables?.map(t => t.table_id) || [];
+
+        if (tableIdsToUpdate.length > 0) {
+          await supabase.from('tables').update({ status: 'Trống' }).in('id', tableIdsToUpdate).throwOnError();
+        }
+      }
+
+      await supabase.from('orders').update(updatePayload).eq('id', orderId).throwOnError();
+      
+    } catch (error: any) {
+      Alert.alert('Lỗi', `Không thể giả lập thanh toán: ${error.message}`);
+    } finally {
+      setIsLoading(false);
     }
-    // Không cần gọi navigateToPrintPreview() ở đây, vì Realtime useEffect sẽ tự động xử lý
   };
 
   const handleGoBack = () => {
@@ -209,7 +269,6 @@ const MoMoQRCodeScreen: React.FC<Props> = ({ route, navigation }) => {
         ) : qrValue ? (
           <>
             <View style={styles.qrContainer}>
-              {/* [ĐÃ SỬA] Dùng component QRCode để hiển thị */}
               <QRCode value={qrValue} size={250} />
             </View>
 
@@ -253,7 +312,6 @@ const MoMoQRCodeScreen: React.FC<Props> = ({ route, navigation }) => {
         )}
       </ScrollView>
 
-      {/* Nút giả lập, có thể xóa đi khi deploy chính thức */}
       {qrValue && (
         <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
           <TouchableOpacity style={styles.confirmButton} onPress={handleConfirmPayment}>
@@ -265,7 +323,6 @@ const MoMoQRCodeScreen: React.FC<Props> = ({ route, navigation }) => {
   );
 };
 
-// ... styles đã được cập nhật
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F9FAFB' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#ffffff', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },

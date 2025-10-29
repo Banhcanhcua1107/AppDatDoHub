@@ -72,15 +72,19 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({
     if (!tableId) return;
     setLoading(true);
     try {
+      // [FIXED] Ưu tiên order pending trước (để tránh lấy order paid cũ), sau đó sắp xếp theo created_at DESC
       const { data, error } = await supabase
         .from('orders')
         .select(`id, created_at, is_provisional, order_items(quantity, unit_price, returned_quantity, menu_items(is_available)), order_tables!inner(table_id)`)
         .eq('order_tables.table_id', tableId)
         .in('status', ['pending', 'paid'])
-        .single();
+        .order('status', { ascending: true }) // pending (P) < paid (p), nên pending sẽ được lấy trước
+        .order('created_at', { ascending: false }) // Trong cùng status, lấy cái mới nhất
+        .limit(1);
 
-      if (data) {
-        const billableItems = data.order_items.filter(
+      if (data && data.length > 0) {
+        const orderData = data[0];
+        const billableItems = orderData.order_items.filter(
           (item: any) => item.menu_items?.is_available !== false
         );
 
@@ -92,18 +96,37 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({
           (sum, item) => sum + (item.quantity - (item.returned_quantity || 0)) * item.unit_price,
           0
         );
-        const orderTime = new Date(data.created_at).toLocaleTimeString('vi-VN', {
+        const orderTime = new Date(orderData.created_at).toLocaleTimeString('vi-VN', {
           hour: '2-digit',
           minute: '2-digit',
         });
         setOrderDetails({
-          orderId: data.id,
+          orderId: orderData.id,
           totalItems,
           totalPrice,
           orderTime,
-          is_provisional: data.is_provisional,
+          is_provisional: orderData.is_provisional,
         });
       } else if (error && error.code === 'PGRST116') {
+        const { data: cartData, error: cartError } = await supabase
+          .from('cart_items')
+          .select('quantity, total_price')
+          .eq('table_id', tableId);
+        if (cartError) throw cartError;
+        if (cartData && cartData.length > 0) {
+          const totalItems = cartData.reduce((sum, item) => sum + item.quantity, 0);
+          const totalPrice = cartData.reduce((sum, item) => sum + item.total_price, 0);
+          setOrderDetails({
+            orderId: null,
+            totalItems: totalItems,
+            totalPrice: totalPrice,
+            orderTime: 'Trong giỏ',
+          });
+        } else {
+          setOrderDetails(null);
+        }
+      } else if (!data || data.length === 0) {
+        // Không tìm thấy order, kiểm tra cart_items
         const { data: cartData, error: cartError } = await supabase
           .from('cart_items')
           .select('quantity, total_price')

@@ -5,6 +5,7 @@ import { SafeAreaView, View, Text, StyleSheet, ScrollView, TouchableOpacity, Act
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { getDailyCashReconciliation as getDailySummary } from '../../services/supabaseService';
+import { useNavigation } from '@react-navigation/native';
 
 const formatCurrency = (amount: number = 0) => (amount || 0).toLocaleString('vi-VN');
 const formatDate = (date: Date) => date.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric'});
@@ -35,6 +36,7 @@ const DateSelector = ({ date, onDateChange }: { date: Date, onDateChange: (newDa
 };
 
 export default function FinancialSummaryScreen() {
+    const navigation = useNavigation();
     const [loading, setLoading] = useState(true);
     const [reportData, setReportData] = useState<any>(null);
     const [selectedDate, setSelectedDate] = useState(new Date());
@@ -55,6 +57,12 @@ export default function FinancialSummaryScreen() {
     
     return (
         <SafeAreaView style={styles.container}>
+            <View style={styles.header}>
+                <TouchableOpacity onPress={() => navigation.goBack()}><Ionicons name="chevron-back" size={28} color="#334155" /></TouchableOpacity>
+                <Text style={styles.headerTitle}>Tổng kết tài chính</Text>
+                <View style={{ width: 28 }} />
+            </View>
+
             <ScrollView contentContainerStyle={styles.scrollContent}>
                 <DateSelector date={selectedDate} onDateChange={setSelectedDate} />
                 
@@ -63,14 +71,14 @@ export default function FinancialSummaryScreen() {
                  (
                     <>
                         <View style={styles.summaryCard}>
-                            <Text style={styles.summaryLabel}>Số dư tiền mặt cuối ngày</Text>
+                            <Text style={styles.summaryLabel}>Tiền mặt trong quỹ cuối ngày</Text>
                             <Text style={[styles.summaryValue, { color: reportData.closingBalance >= 0 ? '#2563EB' : '#EF4444' }]}>
                                 {formatCurrency(reportData.closingBalance)} ₫
                             </Text>
-                            {/* [CẬP NHẬT] Diễn giải công thức mới cho rõ ràng */}
-                            <Text style={styles.summarySubtext}>= Đầu ngày + Tổng thu - Chi TM - Chuyển khoản</Text>
+                            <Text style={styles.summarySubtext}>= Đầu ngày + Thu tiền mặt - Chi tiền mặt</Text>
                         </View>
                         
+                        {/* Khu vực đối soát tiền mặt */}
                         <View style={styles.detailSection}>
                             <View style={styles.detailRow}>
                                 <Text style={styles.detailLabel}>Số dư đầu ngày</Text>
@@ -79,19 +87,13 @@ export default function FinancialSummaryScreen() {
                             <View style={styles.divider} />
 
                             <View style={styles.detailRow}>
-                                <Text style={styles.detailLabel}>Tổng thu trong ngày</Text>
-                                <Text style={[styles.detailValue, { color: '#10B981' }]}>+{formatCurrency(reportData.totalInflow)} ₫</Text>
+                                <Text style={styles.detailLabel}>Thu bằng tiền mặt</Text>
+                                <Text style={[styles.detailValue, { color: '#10B981' }]}>+{formatCurrency(reportData.cashInflow)} ₫</Text>
                             </View>
                             
                             <View style={styles.detailRow}>
-                                <Text style={styles.detailLabel}>Tổng chi tiền mặt</Text>
+                                <Text style={styles.detailLabel}>Chi bằng tiền mặt</Text>
                                 <Text style={[styles.detailValue, { color: '#EF4444' }]}>-{formatCurrency(reportData.totalOutflow)} ₫</Text>
-                            </View>
-
-                            {/* [MỚI] Thêm dòng trừ tiền chuyển khoản để tính ra tiền mặt */}
-                            <View style={styles.detailRow}>
-                                <Text style={styles.detailLabel}>Tiền chuyển khoản</Text>
-                                <Text style={[styles.detailValue, { color: '#EF4444' }]}>-{formatCurrency(reportData.digitalInflow)} ₫</Text>
                             </View>
 
                             <View style={styles.divider} />
@@ -103,6 +105,17 @@ export default function FinancialSummaryScreen() {
                                 </Text>
                             </View>
                         </View>
+
+                        {/* [SỬA] Gộp chung MoMo và CK vào "Thu qua App/Thẻ" */}
+                        <View style={styles.otherRevenueCard}>
+                            <View style={styles.detailRow}>
+                                <Text style={styles.detailLabel}>Thu qua App/Thẻ</Text>
+                                <Text style={[styles.detailValue, { color: '#16A34A' }]}>
+                                    +{formatCurrency(reportData.digitalInflow)} ₫
+                                </Text>
+                            </View>
+                            <Text style={styles.otherRevenueSubtext}>Bao gồm MoMo, Chuyển khoản... (không ảnh hưởng quỹ tiền mặt)</Text>
+                        </View>
                     </>
                 )}
             </ScrollView>
@@ -110,9 +123,23 @@ export default function FinancialSummaryScreen() {
     );
 }
 
-// Styles giữ nguyên
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8FAFC' },
+    header: { 
+        flexDirection: 'row', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        paddingHorizontal: 16, 
+        paddingVertical: 12, 
+        backgroundColor: '#fff', 
+        borderBottomWidth: 1, 
+        borderBottomColor: '#F1F5F9' 
+    },
+    headerTitle: { 
+        fontSize: 18, 
+        fontWeight: '600', 
+        color: '#1F2937' 
+    },
     scrollContent: { padding: 16 },
     emptyText: { textAlign: 'center', color: '#64748B', marginTop: 32 },
     dateSelectorButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#EFF6FF', paddingVertical: 12, borderRadius: 10, marginBottom: 20 },
@@ -126,4 +153,18 @@ const styles = StyleSheet.create({
     detailLabel: { fontSize: 16, color: '#475569' },
     detailValue: { fontSize: 16, fontWeight: '600', color: '#1E293B' },
     divider: { height: 1, backgroundColor: '#F1F5F9' },
+    otherRevenueCard: {
+        marginTop: 16,
+        backgroundColor: '#F0FDF4',
+        borderRadius: 16,
+        paddingHorizontal: 16,
+        borderWidth: 1,
+        borderColor: '#BBF7D0'
+    },
+    otherRevenueSubtext: {
+        fontSize: 13,
+        color: '#4ADE80',
+        paddingBottom: 16,
+        marginTop: -10,
+    }
 });

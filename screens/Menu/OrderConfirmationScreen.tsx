@@ -396,6 +396,69 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
                 else pendingItems.push(displayItem);
               }
             });
+
+            // [MỚI] Nếu order pending, luôn lấy tất cả order paid/closed để hiển thị history
+            if (orderDetails.status === 'pending') {
+              const representativeTableId = freshTables[0]?.id || initialTableId;
+              if (representativeTableId) {
+                // Tìm tất cả orders liên kết với bàn này, filter paid orders
+                const { data: paidOrderLinks, error: linkError } = await supabase
+                  .from('order_tables')
+                  .select('order_id')
+                  .eq('table_id', representativeTableId);
+
+                if (!linkError && paidOrderLinks && paidOrderLinks.length > 0) {
+                  const orderIds = paidOrderLinks.map(link => link.order_id);
+                  
+                  const { data: recentPaidOrders, error: paidError } = await supabase
+                    .from('orders')
+                    .select(
+                      `
+                        id, 
+                        status,
+                        order_items(
+                          id, quantity, unit_price, customizations, created_at, returned_quantity,
+                          status, menu_items(name, image_url, is_available)
+                        )
+                      `
+                    )
+                    .in('id', orderIds)
+                    .eq('status', 'paid')
+                    .order('created_at', { ascending: false }); // Lấy tất cả paid orders, newest first
+
+                  // Xử lý error nếu không có order paid (không phải lỗi critical)
+                  if (!paidError && recentPaidOrders && recentPaidOrders.length > 0) {
+                    recentPaidOrders.forEach((order: any) => {
+                      (order.order_items || []).forEach((item: any) => {
+                        const name = item.menu_items?.name || item.customizations?.name || 'Món đã xóa';
+                        const image_url = item.menu_items?.image_url || null;
+                        const is_available = item.menu_items?.is_available ?? true;
+
+                        const remaining_quantity = item.quantity - item.returned_quantity;
+                        if (remaining_quantity > 0) {
+                          paidItemsData.push({
+                            id: item.id,
+                            uniqueKey: `paid-${item.id}`,
+                            name,
+                            quantity: remaining_quantity,
+                            unit_price: item.unit_price,
+                            totalPrice: remaining_quantity * item.unit_price,
+                            customizations: item.customizations,
+                            created_at: item.created_at,
+                            isNew: false,
+                            isPaid: true,
+                            status: item.status,
+                            returned_quantity: item.returned_quantity,
+                            image_url,
+                            is_available,
+                          });
+                        }
+                      });
+                    });
+                  }
+                }
+              }
+            }
           }
         }
 
@@ -985,6 +1048,22 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
     }
     let orderIdToUse = activeOrderId;
     try {
+      // [FIX] Kiểm tra nếu order hiện tại là 'paid/closed', phải tạo order pending mới
+      if (orderIdToUse) {
+        const { data: currentOrder, error: checkError } = await supabase
+          .from('orders')
+          .select('status')
+          .eq('id', orderIdToUse)
+          .single();
+        
+        if (checkError) throw checkError;
+        
+        // Nếu order hiện tại là 'paid' hoặc 'closed', không thể insert items vào, phải tạo order mới
+        if (currentOrder?.status === 'paid' || currentOrder?.status === 'closed') {
+          orderIdToUse = null;  // Reset để tạo order mới
+        }
+      }
+
       if (!orderIdToUse) {
         const { data: newOrder } = await supabase
           .from('orders')
@@ -1060,75 +1139,40 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
     return;
   }
   
+  // [FIX] Tách logic: nếu chỉ có NEW items → gửi bếp thôi, không thanh toán
+  if (hasNewItems && billableItems.length === 0) {
+    // Chỉ có items mới chưa gửi bếp, không có items chờ thanh toán
+    setLoading(true);
+    const returnedOrderId = await sendNewItemsToKitchen();
+    setLoading(false);
+    if (returnedOrderId) {
+      await fetchAllData(false);
+      Toast.show({
+        type: 'success',
+        text1: 'Đã gửi bếp',
+        text2: 'Các món mới đã được gửi đi.'
+      });
+    }
+    return;
+  }
+
   if (billableItems.length === 0 && !hasNewItems) {
     Alert.alert('Thông báo', 'Không có món nào cần thanh toán.');
     return;
   }
 
-  setLoading(true);
-  let finalOrderId = activeOrderId;
+  // Tính bill từ BILLABLE items (không tính items mới vì có hasNewItems thì ko có billableItems)
+  // hoặc chỉ từ pending items nếu không có hasNewItems
+  const finalBillToPay = billableItems.reduce((sum, item) => sum + item.totalPrice, 0);
 
-  if (hasNewItems) {
-    const returnedOrderId = await sendNewItemsToKitchen();
-    if (!returnedOrderId) {
-      setLoading(false);
-      return;
-    }
-    finalOrderId = returnedOrderId;
-  }
-
-  if (!finalOrderId) {
-    Alert.alert('Lỗi', 'Không tìm thấy order để thanh toán.');
-    setLoading(false);
-    return;
-  }
-  
-  // ✅ LOGIC MỚI: Đảm bảo order_code tồn tại trước khi thanh toán
-  try {
-    const { data: orderData, error: orderError } = await supabase
-      .from('orders')
-      .select('order_code')
-      .eq('id', finalOrderId)
-      .single();
-
-    if (orderError) throw orderError;
-
-    // Nếu không có order_code, tạo mới nó
-    if (!orderData || !orderData.order_code) {
-      console.log(`Order ${finalOrderId} chưa có order_code. Đang tạo...`);
-      const newOrderCode = finalOrderId.slice(-6);
-      const { error: updateError } = await supabase
-        .from('orders')
-        .update({ order_code: newOrderCode })
-        .eq('id', finalOrderId);
-      if (updateError) throw updateError;
-      console.log(`✅ Đã tạo order_code: ${newOrderCode}`);
-    }
-  } catch(error: any) {
-    Toast.show({ type: 'error', text1: 'Lỗi chuẩn bị thanh toán', text2: error.message });
-    setLoading(false);
-    return;
-  }
-  // KẾT THÚC LOGIC MỚI
-
-  const { data: finalItemsData } = await supabase
-    .from('order_items')
-    .select('quantity, unit_price, returned_quantity')
-    .eq('order_id', finalOrderId);
-
-  const finalBillToPay = (finalItemsData || []).reduce((sum, item) => {
-    const remainingQty = item.quantity - item.returned_quantity;
-    return sum + remainingQty * item.unit_price;
-  }, 0);
-
-  setLoading(false);
-  setPaymentInfo({ orderId: finalOrderId, amount: finalBillToPay });
+  setPaymentInfo({ orderId: activeOrderId || '', amount: finalBillToPay });
   setPaymentModalVisible(true);
 };
 
   const handleKeepSessionAfterPayment = async (orderId: string, finalBill: number, paymentMethod: string) => {
     setLoading(true);
     try {
+      // 1. Cập nhật order cũ thành 'paid'
       await supabase
         .from('orders')
         .update({ 
@@ -1138,12 +1182,51 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         })
         .eq('id', orderId)
         .throwOnError();
+
+      // 2. [MỚI] Tạo một order pending mới để khách tiếp tục order
+      const { data: oldOrder, error: fetchError } = await supabase
+        .from('orders')
+        .select('order_tables(table_id)')
+        .eq('id', orderId)
+        .single();
       
-     Toast.show({
-      type: 'success',
-      text1: 'Thanh toán thành công',
-      text2: `Đã thanh toán ${finalBill.toLocaleString('vi-VN')}đ qua ${paymentMethod === 'cash' ? 'Tiền mặt' : paymentMethod === 'zalopay' ? 'ZaloPay' : 'Chuyển khoản'}`
-    });
+      if (fetchError) throw fetchError;
+
+      const tableIds = oldOrder.order_tables.map((ot: any) => ot.table_id);
+
+      // Tạo order mới
+      const { data: newOrder, error: createError } = await supabase
+        .from('orders')
+        .insert([{ status: 'pending' }])
+        .select('id')
+        .single();
+
+      if (createError) throw createError;
+
+      // Liên kết order mới với các bàn cũ
+      const orderTableInserts = tableIds.map((tableId: string) => ({
+        order_id: newOrder.id,
+        table_id: tableId,
+      }));
+
+      const { error: insertError } = await supabase
+        .from('order_tables')
+        .insert(orderTableInserts)
+        .throwOnError();
+
+      if (insertError) throw insertError;
+
+      // 3. Cập nhật activeOrderId để UI hiển thị order mới
+      setActiveOrderId(newOrder.id);
+
+      Toast.show({
+        type: 'success',
+        text1: 'Thanh toán thành công',
+        text2: `Đã thanh toán ${finalBill.toLocaleString('vi-VN')}đ qua ${paymentMethod === 'cash' ? 'Tiền mặt' : paymentMethod === 'zalopay' ? 'ZaloPay' : 'Chuyển khoản'}`
+      });
+
+      // 4. Reload dữ liệu để hiển thị order mới
+      await fetchAllData(false);
     } catch (error: any) {
       Toast.show({
         type: 'error',
@@ -1190,9 +1273,15 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         text2: `Đã thanh toán và dọn bàn.`,
       });
 
-      // Quay về màn hình chính (danh sách bàn) nếu được yêu cầu
+      // Quay về màn hình chính (home) nếu được yêu cầu
       if (shouldNavigateHome) {
-        navigation.getParent()?.goBack();
+        setTimeout(() => {
+          // Quay về MenuScreen rồi goBack() để về AppTabs
+          navigation.navigate(ROUTES.MENU);
+          setTimeout(() => {
+            navigation.goBack();
+          }, 300);
+        }, 500);
       }
       
     } catch (error: any) {
@@ -1334,9 +1423,14 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         text1: 'Thành công',
         text2: 'Đã đóng bàn và kết thúc phiên.'
       });
-      // Navigate về màn hình chính
-      navigation.getParent()?.goBack();
-      navigation.getParent()?.goBack();
+      // Navigate về màn hình home
+      setTimeout(() => {
+        // Quay về MenuScreen rồi goBack() để về AppTabs
+        navigation.navigate(ROUTES.MENU);
+        setTimeout(() => {
+          navigation.goBack();
+        }, 300);
+      }, 500);
     } catch (error: any) {
       Toast.show({
         type: 'error',
@@ -1395,6 +1489,42 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         tableName: currentTableNameForDisplay, // [THÊM] Truyền tên bàn để hiển thị trong modal
         items: itemsToReturn,
       });
+    }
+  };
+
+  const handleProvisionalBill = async () => {
+    if (!isOnline) {
+        Toast.show({ type: 'error', text1: 'Không có kết nối mạng', text2: 'Vui lòng thử lại sau.' });
+        return;
+    }
+    if (!activeOrderId) {
+      Alert.alert('Lỗi', 'Không tìm thấy order để tạm tính.');
+      return;
+    }
+    setLoading(true);
+    try {
+      // [SỬA] Dùng send_provisional_bill thay vì toggle
+      const { error } = await supabase.rpc('send_provisional_bill', {
+        p_order_id: activeOrderId,
+      });
+      if (error) throw error;
+      
+      // Fetch lại để cập nhật UI
+      await fetchAllData(false);
+      
+      Toast.show({
+          type: 'success',
+          text1: 'Đã gửi tạm tính',
+          text2: 'Bàn này đã được đánh dấu tạm tính.'
+      });
+    } catch (error: any) {
+      Toast.show({
+          type: 'error',
+          text1: 'Lỗi tạm tính',
+          text2: error.message
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1524,10 +1654,11 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
             onPress={handleGoToReturnScreen}
           />
           <ActionButton
-            icon="home-outline"
-            text="Quay về"
+            icon="receipt-outline"
+            text="Tạm tính"
             color="#8B5CF6"
-            onPress={handleGoBack}
+            disabled={(!hasBillableItems && !hasNewItems) || !isOnline}
+            onPress={handleProvisionalBill}
           />
           {isSessionClosable ? (
             <ActionButton
@@ -1543,7 +1674,7 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
               text="Thanh toán"
               color="#10B981"
               onPress={handlePayment}
-              disabled={(!hasBillableItems && !hasNewItems) || !isOnline}
+              disabled={!hasBillableItems || !isOnline}
             />
           )}
         </View>
@@ -1590,6 +1721,10 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
                 </Text>
               </Text>
               
+              <Text style={styles.paymentQuestion}>
+                Bạn muốn giữ phiên hay kết thúc phục vụ?
+              </Text>
+              
               <View style={styles.paymentButtonContainer}>
                 <TouchableOpacity
                   style={[styles.paymentButton, styles.cancelButton]}
@@ -1607,8 +1742,21 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
                     setTimeout(() => setPaymentMethodBoxVisible(true), 300);
                   }}
                 >
-                  <Icon name="checkmark-outline" size={18} color="white" />
-                  <Text style={styles.keepSessionButtonText}>Xác nhận</Text>
+                  <Icon name="time-outline" size={18} color="white" />
+                  <Text style={styles.keepSessionButtonText}>Giữ phiên</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.paymentButton, styles.endSessionButton]}
+                  onPress={() => {
+                    setPaymentModalVisible(false);
+                    setPendingPaymentAction('end');
+                    // Hiển thị PaymentMethodBox sau khi đóng modal
+                    setTimeout(() => setPaymentMethodBoxVisible(true), 300);
+                  }}
+                >
+                  <Icon name="checkmark-done-outline" size={18} color="white" />
+                  <Text style={styles.endSessionButtonText}>Kết thúc</Text>
                 </TouchableOpacity>
               </View>
             </View>

@@ -76,11 +76,13 @@ const VietQRCodeScreen: React.FC<Props> = ({ route, navigation }) => {
     isNavigating.current = true;
 
     setIsLoading(true);
+    const shouldGoHome = pendingPaymentAction === 'end';
+
     try {
       // 1. [SỬA LỖI] Đổi tên cột `total_amount` thành `total_price` cho đúng với schema DB
       const { data: orderData, error: orderError } = await supabase
         .from('orders')
-        .select('id, created_at, total_price, order_tables(tables(id, name))') // Sửa ở đây
+        .select('id, created_at, total_price, order_tables(table_id, tables(id, name))') // Sửa ở đây + thêm table_id
         .eq('id', orderId)
         .single();
 
@@ -118,15 +120,43 @@ const VietQRCodeScreen: React.FC<Props> = ({ route, navigation }) => {
         createdAt: orderData.created_at,
       };
 
+      // [MỚI] Nếu user chọn "giữ phiên" (không phải end), tạo order pending mới
+      if (!shouldGoHome) {
+        const tableIds = orderData.order_tables.map((ot: any) => ot.table_id);
+
+        // Tạo order mới
+        const { data: newOrder, error: createError } = await supabase
+          .from('orders')
+          .insert([{ status: 'pending' }])
+          .select('id')
+          .single();
+
+        if (createError) throw createError;
+
+        // Liên kết order mới với các bàn cũ
+        const orderTableInserts = tableIds.map((tableId: string) => ({
+          order_id: newOrder.id,
+          table_id: tableId,
+        }));
+
+        const { error: insertError } = await supabase
+          .from('order_tables')
+          .insert(orderTableInserts);
+
+        if (insertError) throw insertError;
+
+        console.log('✅ [VietQRCode] Tạo order pending mới thành công');
+      }
+
       // 4. Điều hướng đến PrintPreview
       console.log('🔄 [VietQRCodeScreen] Navigating to PrintPreview');
-      console.log('   - shouldNavigateToHome:', pendingPaymentAction === 'end');
+      console.log('   - shouldNavigateToHome:', shouldGoHome);
       
       navigation.replace(ROUTES.PRINT_PREVIEW, {
         order: billOrder,
         items: billItems,
         paymentMethod: 'transfer',
-        shouldNavigateToHome: pendingPaymentAction === 'end',
+        shouldNavigateToHome: shouldGoHome,
       });
 
     } catch (error) {
