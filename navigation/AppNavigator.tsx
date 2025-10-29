@@ -96,6 +96,8 @@ export type CashierStackParamList = {
   // Thêm các màn hình dùng chung
   ChangePassword: undefined;
   BillHistory: undefined;
+  ReturnHistoryArchive: undefined;
+  // Thêm các màn hình dùng chungReturnHistoryArchive: undefined;
   // Thêm các màn hình Menu và Order (giống nhân viên)
   Menu: { tableId: string; tableName: string; orderId?: string; fromOrderConfirmation?: boolean };
   OrderConfirmation: { orderId: string; tableId: string; tableName: string };

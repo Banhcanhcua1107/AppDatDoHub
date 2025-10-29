@@ -1277,7 +1277,12 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
       if (shouldNavigateHome) {
         setTimeout(() => {
           // Quay về MenuScreen rồi goBack() để về AppTabs
-          navigation.navigate(ROUTES.MENU);
+          navigation.navigate('Menu', {
+            tableId,
+            tableName,
+            fromOrderConfirmation: true,
+          });
+
           setTimeout(() => {
             navigation.goBack();
           }, 300);
