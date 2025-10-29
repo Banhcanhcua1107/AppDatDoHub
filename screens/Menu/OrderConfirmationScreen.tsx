@@ -268,7 +268,7 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
     tableId: initialTableId,
     tableName: initialTableName,
     orderId: routeOrderId,
-  } = route.params;
+  } = route.params || {};
   const insets = useSafeAreaInsets();
   const { isOnline } = useNetwork();
   const [loading, setLoading] = useState(true);
@@ -1278,8 +1278,8 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         setTimeout(() => {
           // Quay về MenuScreen rồi goBack() để về AppTabs
           navigation.navigate('Menu', {
-            tableId,
-            tableName,
+            tableId: representativeTable.id,
+            tableName: currentTableNameForDisplay,
             fromOrderConfirmation: true,
           });
 
@@ -1300,7 +1300,7 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
       // [XÓA] Dòng này sẽ được chuyển đi nơi khác
       // setPendingPaymentAction(null); 
     }
-  }, [navigation]);
+  }, [navigation, representativeTable.id, currentTableNameForDisplay]);
 
  // [SỬA LỖI] Cập nhật hàm để xử lý 'momo'
   const handlePaymentMethodSelect = (method: 'cash' | 'momo' | 'transfer') => {
@@ -1431,7 +1431,10 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
       // Navigate về màn hình home
       setTimeout(() => {
         // Quay về MenuScreen rồi goBack() để về AppTabs
-        navigation.navigate(ROUTES.MENU);
+        navigation.navigate(ROUTES.MENU, {
+          tableId: representativeTable.id,
+          tableName: currentTableNameForDisplay,
+        });
         setTimeout(() => {
           navigation.goBack();
         }, 300);

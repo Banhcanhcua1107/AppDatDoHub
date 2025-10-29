@@ -23,7 +23,7 @@ import { AppTabParamList, AppStackParamList, ROUTES } from '../../constants/rout
 import Toast from 'react-native-toast-message';
 import { useNetwork } from '../../context/NetworkContext';
 import ConfirmModal from '../../components/ConfirmModal';
-// --- [SỬA LỖI] Định nghĩa kiểu dữ liệu rõ ràng ---
+
 type TableInfo = { id: string; name: string };
 type ActiveOrder = {
   orderId: string;
@@ -40,13 +40,6 @@ interface MenuItemProps {
   action: string;
   color?: string;
 }
-// interface ItemToReturn {
-//   id: number;
-//   name: string;
-//   quantity: number;
-//   unit_price: number;
-//   image_url: string | null;
-// }
 
 const MenuActionItem: React.FC<{ item: MenuItemProps; onPress: (action: string) => void }> = ({
   item,
@@ -73,9 +66,8 @@ type OrderItemCardProps = {
 };
 
 const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowMenu }) => {
-  // [SỬA LỖI] Thêm dòng này để khai báo state
   const [isToggling, setIsToggling] = useState(false);
-  const [notificationCount, setNotificationCount] = useState(0); // [MỚI] Notification count cho order này
+  const [notificationCount, setNotificationCount] = useState(0);
   const { isOnline } = useNetwork();
   const formatTimeElapsed = (startTime: string) => {
     const start = new Date(startTime).getTime();
@@ -93,6 +85,10 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
   const representativeTable = item.tables[0];
 
   const handlePressCard = () => {
+    if (!representativeTable?.id) {
+      Toast.show({ type: 'error', text1: 'Lỗi', text2: 'Không có thông tin bàn' });
+      return;
+    }
     navigation.navigate(ROUTES.ORDER_CONFIRMATION, {
       tableId: representativeTable.id,
       tableName: displayTableName,
@@ -106,8 +102,6 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
       return;
     }
 
-    // Nếu đã bật tạm tính rồi thì chỉ show thông báo đã cập nhật
-    // (Realtime subscription sẽ tự động refresh)
     if (item.is_provisional) {
       Toast.show({
         type: 'success',
@@ -138,12 +132,9 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
     }
   };
 
-  // [MỚI] Fetch notification count cho order này
   React.useEffect(() => {
     const fetchNotifications = async () => {
       try {
-        // [FIX] Lọc bỏ 'return_item' (notification từ nhân viên gửi cho bếp, không phải cho nhân viên)
-        // Chỉ lấy: item_ready, out_of_stock, cancellation_approved, cancellation_rejected
         const { count, error } = await supabase
           .from('return_notifications')
           .select('*', { count: 'exact', head: true })
@@ -160,20 +151,17 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
 
     fetchNotifications();
 
-    // [MỚI] Subscribe realtime notification - Filter by order_id
     const channel = supabase
       .channel(`return_notifications_for_order_${item.orderId}`)
       .on(
         'postgres_changes',
         { 
-          event: '*', // Lắng nghe mọi thay đổi để cập nhật UI
+          event: '*',
           schema: 'public', 
           table: 'return_notifications',
           filter: `order_id=eq.${item.orderId}`
         },
         (payload: any) => {
-          // [FIX] Chỉ fetch lại nếu notification_type KHÔNG phải 'return_item'
-          // return_item là nhân viên gửi cho bếp, không cần update badge ở OrderScreen
           if (payload.new?.notification_type !== 'return_item') {
             fetchNotifications();
           }
@@ -194,7 +182,6 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
           style={{ backgroundColor: '#3B82F6' }}
           className="flex-row justify-between items-center p-3 rounded-t-lg"
         >
-          {/* [CẬP NHẬT] Thêm thời gian lên header */}
           <View className="flex-row items-center">
             <Ionicons name="time-outline" size={16} color="white" />
             <Text className="text-white font-bold text-sm ml-2">
@@ -211,7 +198,6 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
             <Text className="text-gray-800 font-bold text-xl">{displayTableName}</Text>
           </View>
           <View className="w-1/2 pl-4 items-end">
-            {/* [CẬP NHẬT] Chỉ để lại số tiền, bỏ thời gian */}
             <Text className="text-gray-900 font-bold text-2xl">
               {item.totalPrice.toLocaleString('vi-VN')}
             </Text>
@@ -224,25 +210,33 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
 
       <View className="flex-row justify-around items-center bg-gray-50 border-t border-gray-200 rounded-b-lg">
         <TouchableOpacity
-          onPress={() =>
+          onPress={() => {
+            if (!representativeTable?.id) {
+              Toast.show({ type: 'error', text1: 'Lỗi', text2: 'Không có thông tin bàn' });
+              return;
+            }
             navigation.navigate(ROUTES.ORDER_CONFIRMATION, {
               tableId: representativeTable.id,
               tableName: displayTableName,
               orderId: item.orderId,
-            })
-          }
+            });
+          }}
           className="py-3 items-center justify-center flex-1"
         >
           <Ionicons name="calculator-outline" size={24} color="gray" />
         </TouchableOpacity>
         <TouchableOpacity
-          onPress={() =>
+          onPress={() => {
+            if (!representativeTable?.id) {
+              Toast.show({ type: 'error', text1: 'Lỗi', text2: 'Không có thông tin bàn' });
+              return;
+            }
             navigation.navigate(ROUTES.MENU, {
               tableId: representativeTable.id,
               tableName: displayTableName,
               orderId: item.orderId,
-            })
-          }
+            });
+          }}
           className="py-3 items-center justify-center flex-1"
         >
           <Ionicons name="restaurant-outline" size={24} color="gray" />
@@ -262,7 +256,6 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
             />
           )}
         </TouchableOpacity>
-        {/* [MỚI] Nút thông báo riêng cho bàn */}
         <TouchableOpacity
           onPress={() => navigation.navigate(ROUTES.RETURN_NOTIFICATIONS, { orderId: item.orderId })}
           className="py-3 items-center justify-center flex-1 relative"
@@ -313,29 +306,31 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
   const [isMenuVisible, setMenuVisible] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<ActiveOrder | null>(null);
   const [isCancelModalVisible, setCancelModalVisible] = useState(false);
+  // [THÊM] State để quản lý modal xác nhận đóng tất cả
+  const [isCloseAllModalVisible, setCloseAllModalVisible] = useState(false);
 
   const fetchActiveOrders = useCallback(async (isInitialLoad = false) => {
     if (isInitialLoad) setLoading(true);
     try {
-      // [CẬP NHẬT] Lấy thêm cột is_provisional
       const { data, error } = await supabase
       .from('orders')
       .select(
         `
         id, 
         created_at, 
+        status,
         is_provisional,
         order_items(quantity, unit_price, returned_quantity, menu_items(is_available)), 
         order_tables(tables(id, name))
       `
       )
-      .in('status', ['pending', 'paid']);
+      .neq('status', 'completed'); // Fetch tất cả NGOẠI TRỪ completed (pending, paid, closed đều lấy)
 
       if (error) throw error;
 
       const formattedOrders: ActiveOrder[] = data
+        .filter((order: any) => order.status !== 'closed') // Client-side filter: loại bỏ closed orders
         .map((order) => {
-          // [SỬA LỖI TẠI ĐÂY] Tính lại tổng tiền và số lượng sau khi trừ món trả
           const billableItems = order.order_items.filter(
             (item: any) => item.menu_items?.is_available !== false
           );
@@ -382,10 +377,15 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
 
   useEffect(() => {
     const channel = supabase
-      .channel('public:orders_and_tables_realtime')
-      .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
-        fetchActiveOrders(false);
-      })
+      .channel('public:orders_realtime_updates')
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'orders' }, // Chỉ lắng nghe UPDATE trên orders table
+        (payload) => {
+          console.log('[Realtime] Order updated:', payload.new?.status);
+          fetchActiveOrders(false); // Refetch ngay khi order thay đổi
+        }
+      )
       .subscribe();
 
     return () => {
@@ -419,17 +419,12 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
 
   const handleConfirmCancelOrder = async () => {
     if (!selectedOrder) return;
-    
-    // 1. Đóng modal
     setCancelModalVisible(false);
-
-    // 2. Thực thi logic hủy
     try {
       const { error } = await supabase.rpc('cancel_order_and_reset_tables', {
         p_order_id: selectedOrder.orderId
       });
       if (error) throw error;
-
       Toast.show({
         type: 'success',
         text1: 'Đã hủy order',
@@ -444,6 +439,29 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
     }
   };
 
+  // [THÊM] Hàm gọi RPC để đóng tất cả order và reset bàn
+  const handleConfirmCloseAll = async () => {
+    setCloseAllModalVisible(false);
+    setLoading(true);
+    try {
+        const { data, error } = await supabase.rpc('force_close_all_active_sessions');
+        if (error) throw error;
+        Toast.show({
+            type: 'success',
+            text1: 'Hoàn tất',
+            text2: data 
+        });
+        await fetchActiveOrders(true);
+    } catch (err: any) {
+        Toast.show({
+            type: 'error',
+            text1: 'Lỗi',
+            text2: `Không thể dọn dẹp: ${err.message}`
+        });
+    } finally {
+        setLoading(false);
+    }
+  };
 
   const handleMenuAction = (action: string) => {
     setMenuVisible(false);
@@ -501,12 +519,10 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
           });
           break;
         case 'split_order':
-          // Bước 1: Điều hướng đến màn hình chọn bàn TRỐNG
           navigation.navigate(ROUTES.TABLE_SELECTION, {
             mode: 'single',
-            action: 'split', // Sử dụng action 'split' để lọc bàn trống
+            action: 'split',
             sourceRoute: ROUTES.ORDER_TAB,
-            // Truyền thông tin cần thiết để sau đó điều hướng đến SplitOrderScreen
             sourceTable: {
               id: representativeTable.id,
               name: displayTableName,
@@ -515,7 +531,6 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
           });
           break;
         case 'cancel_order':
-          // --- [THAY THẾ ALERT BẰNG VIỆC MỞ MODAL] ---
           setCancelModalVisible(true);
           break;
         default:
@@ -567,13 +582,21 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
             </TouchableOpacity>
           </View>
           <View className="flex-row items-center" style={{ gap: 12 }}>
-            {/* Nút refresh */}
             <TouchableOpacity
               onPress={() => fetchActiveOrders(true)}
               className="w-12 h-12 bg-white rounded-full items-center justify-center"
               style={styles.menuButtonShadow}
             >
               <Ionicons name="refresh" size={24} color="#111827" />
+            </TouchableOpacity>
+            {/* [THÊM] Nút "Đóng tất cả" */}
+            <TouchableOpacity
+              onPress={() => setCloseAllModalVisible(true)}
+              disabled={activeOrders.length === 0} // Vô hiệu hóa nếu không có order
+              className="w-12 h-12 bg-white rounded-full items-center justify-center"
+              style={[styles.menuButtonShadow, activeOrders.length === 0 && { opacity: 0.5 }]}
+            >
+              <Ionicons name="power-outline" size={28} color="#EF4444" />
             </TouchableOpacity>
           </View>
         </View>
@@ -594,8 +617,7 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
         }
       />
       {renderMenuModal()}
-
-      {/* --- [PHẦN BỊ THIẾU ĐÃ ĐƯỢC THÊM LẠI] --- */}
+      
       {selectedOrder && (
          <ConfirmModal
             isVisible={isCancelModalVisible}
@@ -605,8 +627,20 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
             cancelText="Không"
             onClose={() => setCancelModalVisible(false)}
             onConfirm={handleConfirmCancelOrder}
+            variant="danger"
         />
       )}
+      {/* [THÊM] Modal xác nhận hành động đóng tất cả */}
+      <ConfirmModal
+          isVisible={isCloseAllModalVisible}
+          title="Xác nhận Dọn dẹp Hệ thống"
+          message="Tất cả order đang phục vụ sẽ bị ĐÓNG và tất cả bàn sẽ được reset về 'Trống'. Bạn chắc chắn muốn tiếp tục?"
+          confirmText="Đồng ý, Dọn dẹp"
+          cancelText="Hủy"
+          onClose={() => setCloseAllModalVisible(false)}
+          onConfirm={handleConfirmCloseAll}
+          variant="danger"
+      />
     </View>
   );
 };

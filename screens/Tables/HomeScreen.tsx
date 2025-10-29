@@ -325,20 +325,26 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
       />
       {/* FAB ẩn - Chỉ admin mới có thể tạo bàn thông qua hệ thống quản lý */}
 
-      {selectedTable && (
+      {selectedTable?.id && (
         <OrderInfoBox
-          isVisible={isBoxVisible}
-          onClose={() => setBoxVisible(false)}
+          isVisible={isBoxVisible && !!selectedTable?.id}
+          onClose={() => {
+            setBoxVisible(false);
+            setSelectedTable(null);
+          }}
           tableId={selectedTable.id}
           tableName={selectedTable.name}
           onActionPress={handleOrderAction}
         />
       )}
 
-      {selectedEmptyTable && (
+      {selectedEmptyTable?.id && (
         <EmptyTableActionBox
-          isVisible={emptyTableBoxVisible}
-          onClose={() => setEmptyTableBoxVisible(false)}
+          isVisible={emptyTableBoxVisible && !!selectedEmptyTable?.id}
+          onClose={() => {
+            setEmptyTableBoxVisible(false);
+            setSelectedEmptyTable(null);
+          }}
           tableId={selectedEmptyTable.id}
           tableName={selectedEmptyTable.name}
           onAction={handleEmptyTableAction}
