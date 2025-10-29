@@ -57,7 +57,11 @@ export default function UtilitiesScreen() {
             title="Lịch sử hóa đơn" 
             onPress={() => navigation.navigate(ROUTES.BILL_HISTORY)} // Điều hướng đến màn hình lịch sử
           />
-          <UtilityItem icon="qr-code-outline" title="Thiết lập QR thanh toán" onPress={() => { /* Navigate to QRSetupScreen */ }} />
+          <UtilityItem 
+            icon="arrow-undo-circle-outline" // Thay icon cho phù hợp hơn
+            title="Lịch sử trả món" 
+            onPress={() => navigation.navigate(ROUTES.RETURN_HISTORY_ARCHIVE)} 
+          />
         </View>
         
         {/* ... các khu vực khác */}

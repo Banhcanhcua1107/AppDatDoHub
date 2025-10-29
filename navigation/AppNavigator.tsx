@@ -30,6 +30,7 @@ import VietQRCodeScreen from '../screens/Orders/VietQRCodeScreen';
 import MoMoQRCodeScreen from '../screens/Orders/MoMoQRCodeScreen';
 import ChangePasswordScreen from '../screens/Profile/ChangePasswordScreen';
 import BillHistoryScreen from '../screens/Utilities/BillHistoryScreen';
+import ReturnHistoryArchiveScreen from '../screens/Utilities/ReturnHistoryArchiveScreen';
 // --- [SỬA LỖI] Import KitchenTabs và xóa import KitchenDisplayScreen không cần thiết ---
 import KitchenTabs from './KitchenTabs';
 import KitchenDetailScreen from '../screens/Kitchen/KitchenDetailScreen';
@@ -157,6 +158,7 @@ const MainAppStack = () => (
         <AppStack.Screen name={ROUTES.MOMO_QR_CODE} component={MoMoQRCodeScreen} />
         <AppStack.Screen name={ROUTES.CHANGE_PASSWORD} component={ChangePasswordScreen} />
         <AppStack.Screen name={ROUTES.BILL_HISTORY} component={BillHistoryScreen} />
+        <AppStack.Screen name={ROUTES.RETURN_HISTORY_ARCHIVE} component={ReturnHistoryArchiveScreen} />
         <AppStack.Screen name={ROUTES.MOMO_QR_CODE} component={MoMoQRCodeScreen} />
     </AppStack.Navigator>
 );
@@ -198,6 +200,7 @@ const CashierNavigator = () => (
     <CashierStack.Screen name="AllActivities" component={AllActivitiesScreen} options={{ headerShown: true, title: 'Hoạt động gần đây' }} />
     <CashierStack.Screen name="ChangePassword" component={ChangePasswordScreen} />
     <CashierStack.Screen name="BillHistory" component={BillHistoryScreen} />
+    <CashierStack.Screen name="ReturnHistoryArchive" component={ReturnHistoryArchiveScreen} />
     <CashierStack.Screen name="Menu" component={MenuScreen} />
     <CashierStack.Screen name="OrderConfirmation" component={OrderConfirmationScreen} />
     <CashierStack.Screen name="TableSelection" component={TableSelectionScreen as any} options={{ headerShown: true }} />

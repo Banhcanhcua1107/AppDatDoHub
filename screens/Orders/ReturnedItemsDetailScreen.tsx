@@ -1,4 +1,4 @@
-// --- START OF FILE screens/Orders/ReturnedItemsDetailScreen.tsx (ĐÃ SỬA LỖI TRIỆT ĐỂ) ---
+// --- START OF FILE screens/Orders/ReturnedItemsDetailScreen.tsx (ĐÃ CẢI TIẾN) ---
 
 import React, { useState, useCallback } from 'react';
 import {
@@ -76,25 +76,25 @@ const ReturnedItemsDetailScreen = ({
         .from('return_slips')
         .select(
           `
-                    id, created_at, reason,
-                    return_slip_items (
-                        quantity,
-                        order_items (
-                           menu_items (
-                              name,
-                              image_url
-                           )
-                        )
+            id, created_at, reason,
+            return_slip_items (
+                quantity,
+                order_items (
+                    menu_items (
+                      name,
+                      image_url
                     )
-                `
+                )
+            )
+          `
         )
         .eq('order_id', orderId)
+        // [THÊM] Chỉ lấy các phiếu trả đã được duyệt ('approved')
+        .eq('status', 'approved')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
-      // [ĐÃ SỬA] Sử dụng `any` để tránh lỗi type phức tạp và xử lý trực tiếp.
-      // Đây là cách tiếp cận thực tế và an toàn nhất trong trường hợp này.
       const formattedSlips: ReturnSlip[] = (data as any[]).map((slip: any) => ({
         id: slip.id,
         created_at: slip.created_at,
@@ -141,7 +141,6 @@ const ReturnedItemsDetailScreen = ({
   return (
     <View style={styles.flex1}>
       <StatusBar barStyle="dark-content" />
-      {/* [ĐÃ SỬA] Header mới giống hệt OrderConfirmationScreen */}
       <View style={[styles.headerContainer, { paddingTop: insets.top + 10 }]}>
         <View style={styles.headerContent}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
@@ -196,12 +195,10 @@ const ReturnedItemsDetailScreen = ({
 const styles = StyleSheet.create({
   flex1: { flex: 1, backgroundColor: '#F8F9FA' },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  // [ĐÃ SỬA] Styles cho header mới
   headerContainer: {
-    backgroundColor: '#F8F9FA', // Nền trùng với màu nền của trang
+    backgroundColor: '#F8F9FA',
     paddingHorizontal: 16,
     paddingBottom: 12,
-    // Không có borderBottom
   },
   headerContent: {
     flexDirection: 'row',
@@ -210,7 +207,7 @@ const styles = StyleSheet.create({
   },
   headerButton: {
     padding: 8,
-    marginHorizontal: -8, // Bù lại padding để icon thẳng hàng
+    marginHorizontal: -8,
   },
   headerTitle: {
     flex: 1,

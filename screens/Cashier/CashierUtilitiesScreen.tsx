@@ -9,6 +9,7 @@ import UtilityItem from '../../components/UtilityItem';
 import { useAuth } from '../../context/AuthContext';
 import ConfirmModal from '../../components/ConfirmModal';
 import { CashierStackParamList } from '../../navigation/AppNavigator';
+// import { ROUTES } from '../../constants/routes';
 
 type UtilitiesNavigationProp = NativeStackNavigationProp<CashierStackParamList>;
 
@@ -69,9 +70,9 @@ export default function CashierUtilitiesScreen() {
             onPress={() => navigation.navigate('BillHistory')}
           />
           <UtilityItem 
-            icon="qr-code-outline" 
-            title="Thiết lập QR thanh toán" 
-            onPress={() => {}} 
+            icon="arrow-undo-circle-outline" // Thay icon cho phù hợp hơn
+            title="Lịch sử trả món" 
+            onPress={() => navigation.navigate('ReturnHistoryArchive')} 
           />
         </View>
 

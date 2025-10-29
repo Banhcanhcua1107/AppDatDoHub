@@ -38,6 +38,7 @@ export const ROUTES = {
   PRINT_PREVIEW: 'PrintPreview',
   CHANGE_PASSWORD: 'ChangePassword',
   BILL_HISTORY: 'BillHistory',
+  RETURN_HISTORY_ARCHIVE: 'ReturnHistoryArchive',
   VIET_QR_CODE: 'VietQRCode',
   MOMO_QR_CODE: 'MoMoQRCode',
 
@@ -125,6 +126,7 @@ export type AppStackParamList = {
   };
   [ROUTES.CHANGE_PASSWORD]: undefined;
   [ROUTES.BILL_HISTORY]: undefined;
+  [ROUTES.RETURN_HISTORY_ARCHIVE]: undefined;
   // [XÓA ĐI] Không cần route bếp ở đây nữa vì nó có navigator riêng
   // [ROUTES.KITCHEN_SCREEN]: undefined; 
 };

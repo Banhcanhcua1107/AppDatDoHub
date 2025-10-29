@@ -1,4 +1,4 @@
-// --- START OF FILE screens/Orders/ReturnItemsScreen.tsx (ĐÃ CẢI TIẾN GIAO DIỆN) ---
+// --- START OF FILE screens/Orders/ReturnItemsScreen.tsx (ĐÃ CẢI TIẾN) ---
 
 import React, { useState, useCallback } from 'react';
 import {
@@ -73,20 +73,29 @@ const ReturnItemsScreen = () => {
   const fetchReturnHistory = useCallback(async () => {
     setLoading(true);
     try {
+      // [THAY ĐỔI] Lấy thời điểm bắt đầu của ngày hôm nay
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
       const { data, error } = await supabase
         .from('return_slips')
         .select(
           `
-                    order_id,
-                    created_at,
-                    orders ( order_tables ( tables ( name ) ) ),
-                    return_slip_items ( quantity )
-                `
+            order_id,
+            created_at,
+            orders ( order_tables ( tables ( name ) ) ),
+            return_slip_items ( quantity )
+          `
         )
+        // [THÊM] Chỉ lấy phiếu trả của ngày hôm nay
+        .gte('created_at', today.toISOString())
+        // [THÊM] Chỉ lấy các phiếu trả đã được duyệt ('approved')
+        .eq('status', 'approved')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
+      // Logic gộp nhóm không thay đổi
       const groupedByOrder = (data as any[]).reduce(
         (acc, slip) => {
           const orderId = slip.order_id;
@@ -150,7 +159,8 @@ const ReturnItemsScreen = () => {
           alignItems: 'center',
         }}
       >
-        <Text style={styles.screenTitle}>Lịch sử trả món</Text>
+        {/* [THAY ĐỔI] Sửa tiêu đề cho rõ ràng hơn */}
+        <Text style={styles.screenTitle}>Trả món trong ngày</Text>
         <TouchableOpacity onPress={fetchReturnHistory}>
           <Icon name="refresh-outline" size={26} color="#333" />
         </TouchableOpacity>
@@ -163,7 +173,7 @@ const ReturnItemsScreen = () => {
         ListEmptyComponent={
           <View style={styles.center}>
             <Icon name="document-text-outline" size={60} color="#9CA3AF" />
-            <Text style={styles.emptyText}>Chưa có phiếu trả món nào.</Text>
+            <Text style={styles.emptyText}>Hôm nay chưa có phiếu trả món nào.</Text>
           </View>
         }
       />
