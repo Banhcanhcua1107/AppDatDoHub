@@ -1398,42 +1398,6 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
     }
   };
 
-  const handleProvisionalBill = async () => {
-    if (!isOnline) {
-        Toast.show({ type: 'error', text1: 'Không có kết nối mạng', text2: 'Vui lòng thử lại sau.' });
-        return;
-    }
-    if (!activeOrderId) {
-      Alert.alert('Lỗi', 'Không tìm thấy order để tạm tính.');
-      return;
-    }
-    setLoading(true);
-    try {
-      // [SỬA] Dùng send_provisional_bill thay vì toggle
-      const { error } = await supabase.rpc('send_provisional_bill', {
-        p_order_id: activeOrderId,
-      });
-      if (error) throw error;
-      
-      // Fetch lại để cập nhật UI
-      await fetchAllData(false);
-      
-      Toast.show({
-          type: 'success',
-          text1: 'Đã gửi tạm tính',
-          text2: 'Bàn này đã được đánh dấu tạm tính.'
-      });
-    } catch (error: any) {
-      Toast.show({
-          type: 'error',
-          text1: 'Lỗi tạm tính',
-          text2: error.message
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
   if (loading) {
     return (
       <View style={styles.containerCenter}>
@@ -1560,11 +1524,10 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
             onPress={handleGoToReturnScreen}
           />
           <ActionButton
-            icon="receipt-outline"
-            text="Tạm tính"
+            icon="home-outline"
+            text="Quay về"
             color="#8B5CF6"
-            disabled={(!hasBillableItems && !hasNewItems) || !isOnline}
-            onPress={handleProvisionalBill}
+            onPress={handleGoBack}
           />
           {isSessionClosable ? (
             <ActionButton
@@ -1627,10 +1590,6 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
                 </Text>
               </Text>
               
-              <Text style={styles.paymentQuestion}>
-                Bạn muốn giữ phiên hay kết thúc phục vụ?
-              </Text>
-              
               <View style={styles.paymentButtonContainer}>
                 <TouchableOpacity
                   style={[styles.paymentButton, styles.cancelButton]}
@@ -1648,21 +1607,8 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
                     setTimeout(() => setPaymentMethodBoxVisible(true), 300);
                   }}
                 >
-                  <Icon name="time-outline" size={18} color="white" />
-                  <Text style={styles.keepSessionButtonText}>Giữ phiên</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={[styles.paymentButton, styles.endSessionButton]}
-                  onPress={() => {
-                    setPaymentModalVisible(false);
-                    setPendingPaymentAction('end');
-                    // Hiển thị PaymentMethodBox sau khi đóng modal
-                    setTimeout(() => setPaymentMethodBoxVisible(true), 300);
-                  }}
-                >
-                  <Icon name="checkmark-done-outline" size={18} color="white" />
-                  <Text style={styles.endSessionButtonText}>Kết thúc</Text>
+                  <Icon name="checkmark-outline" size={18} color="white" />
+                  <Text style={styles.keepSessionButtonText}>Xác nhận</Text>
                 </TouchableOpacity>
               </View>
             </View>

@@ -729,40 +729,52 @@ CREATE OR REPLACE FUNCTION "public"."get_daily_cash_reconciliation"("p_target_da
     LANGUAGE "plpgsql"
     AS $$
 DECLARE
-  v_opening_balance DECIMAL;
-  v_total_inflow DECIMAL;   -- Đổi tên biến cho rõ nghĩa: Dòng tiền vào
-  v_total_outflow DECIMAL;  -- Đổi tên biến cho rõ nghĩa: Dòng tiền ra
-  v_closing_balance DECIMAL;
+  v_opening_balance DECIMAL;    -- Tồn đầu ngày (tiền mặt)
+  v_cash_inflow DECIMAL;        -- Thu bằng tiền mặt
+  v_digital_inflow DECIMAL;     -- Thu qua chuyển khoản/momo
+  v_cash_outflow DECIMAL;       -- Chi bằng tiền mặt
+  v_closing_balance DECIMAL;    -- Tồn cuối ngày (tiền mặt)
 BEGIN
-  -- 1. Số dư đầu ngày: Mặc định là 2,000,000
+  -- 1. Số dư đầu ngày: Giữ nguyên là 2,000,000 tiền mặt
   v_opening_balance := 2000000;
 
-  -- 2. TỔNG THU trong ngày (bao gồm cả tiền mặt, momo, chuyển khoản)
-  -- --- GỠ BỎ ĐIỀU KIỆN `payment_method = 'cash'` ---
+  -- 2. TỔNG THU TIỀN MẶT trong ngày
   SELECT COALESCE(SUM(total_price), 0)
-  INTO v_total_inflow
+  INTO v_cash_inflow
   FROM public.orders
   WHERE 
     (created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = p_target_date
-    AND status IN ('paid', 'completed', 'closed');
+    AND status IN ('paid', 'completed', 'closed')
+    AND payment_method = 'cash'; -- Chỉ lấy giao dịch tiền mặt
 
-  -- 3. TỔNG CHI trong ngày (bao gồm tất cả các khoản chi)
-  -- --- GỠ BỎ ĐIỀU KIỆN `payment_method = 'cash'` ---
+  -- 3. [MỚI] TỔNG THU CHUYỂN KHOẢN trong ngày
+  SELECT COALESCE(SUM(total_price), 0)
+  INTO v_digital_inflow
+  FROM public.orders
+  WHERE 
+    (created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = p_target_date
+    AND status IN ('paid', 'completed', 'closed')
+    AND payment_method IN ('momo', 'transfer'); -- Chỉ lấy giao dịch điện tử
+
+  -- 4. TỔNG CHI TIỀN MẶT trong ngày
   SELECT COALESCE(SUM(amount), 0)
-  INTO v_total_outflow
+  INTO v_cash_outflow
   FROM public.expenses
-  WHERE expense_date = p_target_date;
+  WHERE expense_date = p_target_date
+    AND payment_method = 'cash'; -- Chỉ lấy chi phí tiền mặt
 
-  -- 4. Tồn quỹ cuối ngày
-  -- = Đầu ngày + Tổng thu - Tổng chi
-  v_closing_balance := v_opening_balance + v_total_inflow - v_total_outflow;
+  -- 5. Tồn quỹ tiền mặt cuối ngày
+  -- = Đầu ngày + Thu tiền mặt - Chi tiền mặt
+  v_closing_balance := v_opening_balance + v_cash_inflow - v_cash_outflow;
 
-  -- 5. Trả về kết quả
+  -- 6. Trả về kết quả với các trường dữ liệu mới
   RETURN JSON_BUILD_OBJECT(
     'openingBalance', v_opening_balance,
-    'totalInflow', v_total_inflow,     -- Trả về tên mới
-    'totalOutflow', v_total_outflow,   -- Trả về tên mới
-    'closingBalance', v_closing_balance
+    'totalInflow', v_cash_inflow + v_digital_inflow, -- Tổng thu vẫn là tổng tất cả
+    'totalOutflow', v_cash_outflow,                 -- Tổng chi là chi tiền mặt
+    'closingBalance', v_closing_balance,            -- Số dư cuối ngày là tiền mặt
+    'cashInflow', v_cash_inflow,                    -- [MỚI] Tiền mặt nhận
+    'digitalInflow', v_digital_inflow               -- [MỚI] Tiền chuyển khoản
   );
 END;
 $$;
@@ -1423,15 +1435,32 @@ BEGIN
     SELECT
         o.id,
         o.total_price AS amount,
-        o.payment_method,
-        to_char(o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'HH24:MI') AS transaction_time, -- VÀ SỬA Ở ĐÂY
-        COALESCE(o.table_name, 'Mang về') AS table_name,
-        (SELECT COUNT(*) FROM public.order_items oi WHERE oi.order_id = o.id) AS items
+        CASE
+            WHEN LOWER(TRIM(o.payment_method)) = 'momo' THEN 'momo'
+            WHEN LOWER(TRIM(o.payment_method)) IN ('transfer', 'chuyển khoản') THEN 'transfer'
+            ELSE 'cash'
+        END AS payment_method,
+        to_char(o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'HH24:MI') AS transaction_time,
+        COALESCE(
+            (
+                SELECT string_agg(t.name, ', ')
+                FROM public.order_tables ot
+                JOIN public.tables t ON ot.table_id = t.id
+                WHERE ot.order_id = o.id
+            ),
+            'Mang về'
+        ) AS table_name,
+        (
+            SELECT COALESCE(SUM(oi.quantity), 0) FROM public.order_items oi WHERE oi.order_id = o.id
+        ) AS items
     FROM
         public.orders o
     WHERE
         o.status IN ('completed', 'paid', 'closed')
-        AND o.created_at BETWEEN p_start_date AND p_end_date
+        AND o.created_at >= p_start_date
+        AND o.created_at <= p_end_date
+        -- [THÊM ĐIỀU KIỆN] Chỉ lấy các giao dịch có giá trị lớn hơn 0
+        AND o.total_price > 0 
     ORDER BY
         o.created_at DESC;
 END;
@@ -2201,7 +2230,8 @@ CREATE TABLE IF NOT EXISTS "public"."orders" (
     "user_id" "uuid" DEFAULT "auth"."uid"(),
     "updated_at" timestamp with time zone DEFAULT "now"(),
     "table_name" "text",
-    "order_code" "text"
+    "order_code" "text",
+    "paid_at" timestamp with time zone
 );
 
 
@@ -2653,6 +2683,10 @@ CREATE POLICY "Allow authenticated users to manage logs" ON "public"."order_acti
 
 
 
+CREATE POLICY "Allow authenticated users to read all orders" ON "public"."orders" FOR SELECT TO "authenticated" USING (true);
+
+
+
 CREATE POLICY "Allow full access for authenticated users" ON "public"."cancellation_requests" TO "authenticated" USING (true) WITH CHECK (true);
 
 
@@ -2697,7 +2731,15 @@ CREATE POLICY "Allow full access for authenticated users" ON "public"."transacti
 
 
 
+CREATE POLICY "Allow public read access to orders" ON "public"."orders" FOR SELECT USING (true);
+
+
+
 CREATE POLICY "Allow users to read their own profile" ON "public"."profiles" FOR SELECT USING (("auth"."uid"() = "id"));
+
+
+
+CREATE POLICY "Public orders are viewable by everyone." ON "public"."orders" FOR SELECT USING (true);
 
 
 
