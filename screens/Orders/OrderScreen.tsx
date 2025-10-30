@@ -312,24 +312,45 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
   const fetchActiveOrders = useCallback(async (isInitialLoad = false) => {
     if (isInitialLoad) setLoading(true);
     try {
+      // 1. Lấy tất cả các order có khả năng đang hoạt động (pending hoặc paid)
       const { data, error } = await supabase
-      .from('orders')
-      .select(
-        `
-        id, 
-        created_at, 
-        status,
-        is_provisional,
-        order_items(quantity, unit_price, returned_quantity, menu_items(is_available)), 
-        order_tables(tables(id, name))
-      `
-      )
-      .neq('status', 'completed'); // Fetch tất cả NGOẠI TRỪ completed (pending, paid, closed đều lấy)
+        .from('orders')
+        .select(`
+            id, 
+            created_at, 
+            status,
+            is_provisional,
+            order_items(quantity, unit_price, returned_quantity, menu_items(is_available)), 
+            order_tables(tables(id, name))
+        `)
+        .in('status', ['pending', 'paid']); // Chỉ lấy pending và paid
 
       if (error) throw error;
 
-      const formattedOrders: ActiveOrder[] = data
-        .filter((order: any) => order.status !== 'closed') // Client-side filter: loại bỏ closed orders
+      // 2. Xử lý và ưu tiên order 'pending' cho mỗi bàn
+      const prioritizedOrders = new Map<string, any>();
+
+      for (const order of data) {
+        if (!order.order_tables || order.order_tables.length === 0) continue;
+
+        const representativeTableId = order.order_tables[0].tables.id;
+        const existingOrder = prioritizedOrders.get(representativeTableId);
+
+        // Ưu tiên: Luôn giữ order 'pending' nếu có.
+        // Nếu không có 'pending', mới lấy order 'paid' mới nhất.
+        if (order.status === 'pending') {
+          prioritizedOrders.set(representativeTableId, order);
+        } else if (!existingOrder || existingOrder.status !== 'pending') {
+          // Nếu chưa có order nào cho bàn này, hoặc order hiện tại là 'paid'
+          // thì so sánh và giữ lại order 'paid' mới hơn
+          if (!existingOrder || new Date(order.created_at) > new Date(existingOrder.created_at)) {
+            prioritizedOrders.set(representativeTableId, order);
+          }
+        }
+      }
+
+      // 3. Định dạng lại danh sách order đã được ưu tiên để hiển thị
+      const formattedOrders: ActiveOrder[] = Array.from(prioritizedOrders.values())
         .map((order) => {
           const billableItems = order.order_items.filter(
             (item: any) => item.menu_items?.is_available !== false
@@ -355,11 +376,12 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
             is_provisional: order.is_provisional,
           };
         })
-        .filter((order) => order.totalItemCount > 0);
+        .filter((order) => order.tables.length > 0 && order.totalItemCount >= 0); // Giữ cả order rỗng
 
       formattedOrders.sort(
         (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
       );
+
       setActiveOrders(formattedOrders);
     } catch (error: any) {
       if (isInitialLoad) Alert.alert('Lỗi', `Không thể tải danh sách order: ${error.message}`);

@@ -411,6 +411,65 @@ $$;
 ALTER FUNCTION "public"."delete_old_unverified_users"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."force_close_all_active_sessions"() RETURNS "text"
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+    closed_order_count INT;
+    reset_table_count INT;
+BEGIN
+    -- BƯỚC 1: Đóng tất cả các order có trạng thái 'pending' hoặc 'paid'
+    WITH updated_orders AS (
+        UPDATE public.orders
+        SET status = 'closed'
+        WHERE status IN ('pending', 'paid')
+        RETURNING 1
+    )
+    SELECT count(*) INTO closed_order_count FROM updated_orders;
+
+    -- BƯỚC 2: Reset tất cả các bàn không ở trạng thái 'Trống'
+    WITH updated_tables AS (
+        UPDATE public.tables
+        SET status = 'Trống'
+        WHERE status != 'Trống'
+        RETURNING 1
+    )
+    SELECT count(*) INTO reset_table_count FROM updated_tables;
+
+    -- BƯỚC 3: Trả về thông báo tổng hợp
+    RETURN 'Đã đóng ' || closed_order_count || ' order và reset ' || reset_table_count || ' bàn.';
+END;
+$$;
+
+
+ALTER FUNCTION "public"."force_close_all_active_sessions"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."force_close_all_orders"() RETURNS "text"
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+    updated_count INTEGER; -- Biến để đếm số order đã được cập nhật
+BEGIN
+    -- Sử dụng CTE (Common Table Expression) để cập nhật và đếm số dòng bị ảnh hưởng
+    WITH updated_rows AS (
+        UPDATE public.orders
+        SET status = 'closed'
+        WHERE status IN ('pending', 'paid')
+        RETURNING 1 -- Trả về 1 cho mỗi dòng được cập nhật
+    )
+    -- Đếm số dòng đã được trả về từ CTE
+    SELECT count(*) INTO updated_count FROM updated_rows;
+
+    -- Trả về chuỗi thông báo kết quả
+    RETURN 'Đã đóng thành công ' || updated_count || ' order.';
+END;
+$$;
+
+
+ALTER FUNCTION "public"."force_close_all_orders"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."force_close_all_tables"() RETURNS "text"
     LANGUAGE "plpgsql"
     AS $$
@@ -755,37 +814,38 @@ BEGIN
   WHERE 
     (created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = p_target_date
     AND status IN ('paid', 'completed', 'closed')
-    AND LOWER(TRIM(payment_method)) = 'cash'; -- Chỉ lấy giao dịch tiền mặt
+    AND LOWER(TRIM(COALESCE(payment_method, ''))) = 'cash'; -- Chỉ lấy giao dịch tiền mặt
 
-  -- 3. [SỬA LỖI] TỔNG THU CHUYỂN KHOẢN trong ngày
-  -- Chuyển về chữ thường và kiểm tra cả 'transfer' và 'chuyển khoản'
+  -- 3. [SỬA LỖI] TỔNG THU KỸ THUẬT SỐ (Digital)
+  -- Logic mới: Lấy tất cả các giao dịch đã thanh toán mà KHÔNG PHẢI là tiền mặt.
+  -- Điều này đảm bảo bắt được cả trường hợp payment_method là NULL, 'momo', 'transfer', v.v.
   SELECT COALESCE(SUM(total_price), 0)
   INTO v_digital_inflow
   FROM public.orders
   WHERE 
     (created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = p_target_date
     AND status IN ('paid', 'completed', 'closed')
-    AND LOWER(TRIM(payment_method)) IN ('momo', 'transfer', 'chuyển khoản'); -- Chỉ lấy giao dịch điện tử
+    AND LOWER(TRIM(COALESCE(payment_method, ''))) <> 'cash'; -- Lấy tất cả những gì không phải 'cash'
 
   -- 4. TỔNG CHI TIỀN MẶT trong ngày
   SELECT COALESCE(SUM(amount), 0)
   INTO v_cash_outflow
   FROM public.expenses
   WHERE expense_date = p_target_date
-    AND LOWER(TRIM(payment_method)) = 'cash'; -- Chỉ lấy chi phí tiền mặt
+    AND LOWER(TRIM(COALESCE(payment_method, ''))) = 'cash';
 
   -- 5. Tồn quỹ tiền mặt cuối ngày
   -- = Đầu ngày + Thu tiền mặt - Chi tiền mặt
   v_closing_balance := v_opening_balance + v_cash_inflow - v_cash_outflow;
 
-  -- 6. Trả về kết quả với các trường dữ liệu mới
+  -- 6. Trả về kết quả
   RETURN JSON_BUILD_OBJECT(
     'openingBalance', v_opening_balance,
-    'totalInflow', v_cash_inflow + v_digital_inflow, -- Tổng thu vẫn là tổng tất cả
-    'totalOutflow', v_cash_outflow,                 -- Tổng chi là chi tiền mặt
-    'closingBalance', v_closing_balance,            -- Số dư cuối ngày là tiền mặt
-    'cashInflow', v_cash_inflow,                    -- Tiền mặt nhận
-    'digitalInflow', v_digital_inflow               -- Tiền chuyển khoản
+    'totalInflow', v_cash_inflow + v_digital_inflow,
+    'totalOutflow', v_cash_outflow,
+    'closingBalance', v_closing_balance,
+    'cashInflow', v_cash_inflow,
+    'digitalInflow', v_digital_inflow
   );
 END;
 $$;
@@ -1775,19 +1835,28 @@ CREATE OR REPLACE FUNCTION "public"."reset_table_status_on_order_close"() RETURN
 DECLARE
     table_ids_to_reset BIGINT[];
 BEGIN
-    -- Chỉ thực hiện khi trạng thái MỚI là 'closed' hoặc 'cancelled'
-    IF NEW.status IN ('closed', 'cancelled') THEN
+    -- [THAY ĐỔI] Thêm 'paid' vào danh sách các trạng thái cần xử lý
+    -- Giờ đây, trigger sẽ chạy khi order được thanh toán, đóng, hoặc hủy.
+    IF NEW.status IN ('closed', 'cancelled', 'paid') THEN
         -- Lấy danh sách ID các bàn liên quan đến order này
         SELECT array_agg(table_id)
         INTO table_ids_to_reset
         FROM public.order_tables
         WHERE order_id = NEW.id;
 
-        -- Nếu tìm thấy bàn, cập nhật trạng thái của chúng thành 'Trống'
+        -- Nếu tìm thấy bàn liên quan
         IF array_length(table_ids_to_reset, 1) > 0 THEN
-            UPDATE public.tables
-            SET status = 'Trống'
-            WHERE id = ANY(table_ids_to_reset);
+            -- BƯỚC 1: Xóa liên kết trong bảng trung gian order_tables
+            -- Đây là bước quan trọng nhất để ngăn rò rỉ dữ liệu phiên cũ
+            DELETE FROM public.order_tables WHERE order_id = NEW.id;
+
+            -- BƯỚC 2: Chỉ cập nhật trạng thái bàn thành 'Trống' nếu order bị đóng hoặc hủy
+            -- Nếu chỉ thanh toán ('paid') nhưng giữ phiên, ta không đổi trạng thái bàn
+            IF NEW.status IN ('closed', 'cancelled') THEN
+                UPDATE public.tables
+                SET status = 'Trống'
+                WHERE id = ANY(table_ids_to_reset);
+            END IF;
         END IF;
     END IF;
 
@@ -3072,6 +3141,18 @@ GRANT ALL ON FUNCTION "public"."create_random_orders"("num_orders" integer, "day
 GRANT ALL ON FUNCTION "public"."delete_old_unverified_users"() TO "anon";
 GRANT ALL ON FUNCTION "public"."delete_old_unverified_users"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."delete_old_unverified_users"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."force_close_all_active_sessions"() TO "anon";
+GRANT ALL ON FUNCTION "public"."force_close_all_active_sessions"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."force_close_all_active_sessions"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."force_close_all_orders"() TO "anon";
+GRANT ALL ON FUNCTION "public"."force_close_all_orders"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."force_close_all_orders"() TO "service_role";
 
 
 

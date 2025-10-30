@@ -29,6 +29,8 @@ import BillContent from '../../components/BillContent';
 import { BillItem } from '../Orders/ProvisionalBillScreen';
 import ConfirmModal from '../../components/ConfirmModal';
 
+// ... (Các interface DisplayItem, OrderSection, NoteInputModal, OrderListItem, ActionButton giữ nguyên như file của bạn)
+// --- START OF FILE OrderConfirmationScreen.tsx ---
 interface OrderSection {
   title: string;
   data: DisplayItem[];
@@ -45,11 +47,11 @@ interface DisplayItem {
   isNew: boolean;
   isPaid: boolean;
   created_at?: string;
-  status: string; // <-- Đảm bảo chỉ có 'status', không có 'is_served'
+  status: string; 
   returned_quantity: number;
   image_url: string | null;
-  isReturnedItem?: boolean; // Cờ để đánh dấu đây là dòng hiển thị món đã trả
-  is_available?: boolean; // [MỚI] Trạng thái còn hàng của món từ menu_items
+  isReturnedItem?: boolean;
+  is_available?: boolean;
 }
 
 const NoteInputModal: React.FC<{
@@ -110,11 +112,8 @@ const OrderListItem: React.FC<{
     (customizations.toppings?.map((t: any) => t.name) || []).join(', ') || 'Không có';
   const noteText = customizations.note;
   
-  // [MỚI] Kiểm tra món có còn hàng không
   const isOutOfStock = is_available === false;
-  // [MỚI] Kiểm tra món đang được làm
   const isInProgress = status === 'in_progress';
-  // [MỚI] Kiểm tra món đã hoàn thành (phục vụ hoặc hoàn thành)
   const isCompleted = status === 'served' || status === 'completed';
 
   const ExpandedView = () => (
@@ -122,7 +121,6 @@ const OrderListItem: React.FC<{
       <View className="flex-row items-center justify-between">
         <View className="flex-row items-center">
           <Text className="text-gray-600 mr-4">Số lượng:</Text>
-          {/* [CẬP NHẬT] Chỉ có thể sửa số lượng nếu là món mới */}
           <TouchableOpacity
             onPress={() => onUpdateQuantity(item.quantity - 1)}
             disabled={!isNew || isOutOfStock}
@@ -139,7 +137,6 @@ const OrderListItem: React.FC<{
             <Icon name="add" size={18} color={(!isNew || isOutOfStock) ? '#ccc' : 'white'} />
           </TouchableOpacity>
         </View>
-        {/* [CẬP NHẬT] Chỉ mở menu nếu là món mới hoặc mới gửi bếp (chưa hoàn thành) */}
         <TouchableOpacity 
           onPress={onOpenMenu} 
           disabled={isCompleted || isPaid || isReturnedItem || isOutOfStock} 
@@ -161,7 +158,6 @@ const OrderListItem: React.FC<{
         <View className="flex-row justify-between items-start">
           <View className="flex-1 pr-4">
             <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
-              {/* [CẬP NHẬT] Chỉ show icon hoàn thành nếu không phải hết hàng */}
               {(item.status === 'served' || item.status === 'completed') && !isReturnedItem && !isOutOfStock && (
               <Icon name="checkmark-circle" size={20} color="#10B981" style={{ marginRight: 6 }} />
               )}
@@ -188,7 +184,6 @@ const OrderListItem: React.FC<{
                 <Text className="text-green-800 text-xs font-bold">Mới</Text>
               </View>
             )}
-            {/* [CẬP NHẬT] Chỉ show "Hoàn thành" nếu không phải hết hàng - Màu xanh lá */}
             {isCompleted && !isOutOfStock && (
               <View className="bg-green-100 px-2 py-1 rounded-full mb-1">
                 <Text className="text-green-800 text-xs font-bold">Hoàn thành</Text>
@@ -287,16 +282,14 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
   const [isPaymentMethodBoxVisible, setPaymentMethodBoxVisible] = useState(false);
   const [pendingPaymentAction, setPendingPaymentAction] = useState<'keep' | 'end' | null>(null);
   const [isBillModalVisible, setBillModalVisible] = useState(false);
-
-  // State cho Confirm Modals
   const [cancelItemModal, setCancelItemModal] = useState<{
     visible: boolean;
     item: DisplayItem | null;
   }>({ visible: false, item: null });
-  
   const [closeSessionModal, setCloseSessionModal] = useState(false);
 
-  
+  // ... (Toàn bộ các hàm khác như fetchAllData, handleUpdateQuantity, sendNewItemsToKitchen, v.v. giữ nguyên)
+  // ... (Chúng không cần thay đổi vì lỗi nằm ở hàm thanh toán)
   const fetchAllData = useCallback(
     async (isInitialLoad = true) => {
       if (isInitialLoad) setLoading(true);
@@ -328,7 +321,6 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
         let returnedItemsSectionData: DisplayItem[] = [];
 
         if (orderIdToFetch) {
-          // [CẬP NHẬT] Thêm is_available từ menu_items để biết món còn hay hết
           const { data: orderDetails, error: orderError } = await supabase
             .from('orders')
             .select(
@@ -353,7 +345,7 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
             (orderDetails.order_items || []).forEach((item: any) => {
               const name = item.menu_items?.name || item.customizations?.name || 'Món đã xóa';
               const image_url = item.menu_items?.image_url || null;
-              const is_available = item.menu_items?.is_available ?? true; // [MỚI] Lấy trạng thái còn hàng
+              const is_available = item.menu_items?.is_available ?? true; 
 
               if (item.returned_quantity > 0) {
                 returnedItemsSectionData.push({
@@ -366,11 +358,11 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
                   customizations: item.customizations,
                   isNew: false,
                   isPaid: false,
-                  status: 'served', // <--- SỬA THÀNH DÒNG NÀY
+                  status: 'served',
                   returned_quantity: item.returned_quantity,
                   image_url,
                   isReturnedItem: true,
-                  is_available, // [MỚI]
+                  is_available,
                 });
               }
 
@@ -387,30 +379,30 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
                   created_at: item.created_at,
                   isNew: false,
                   isPaid: orderDetails.status === 'paid' || orderDetails.status === 'closed',
-                  status: item.status, // Chỗ này đã đúng từ trước
+                  status: item.status,
                   returned_quantity: item.returned_quantity,
                   image_url,
-                  is_available, // [MỚI] Thêm trạng thái còn hàng
+                  is_available,
                 };
                 if (displayItem.isPaid) paidItemsData.push(displayItem);
                 else pendingItems.push(displayItem);
               }
             });
 
-            // [MỚI] Nếu order pending, luôn lấy tất cả order paid/closed để hiển thị history
             if (orderDetails.status === 'pending') {
               const representativeTableId = freshTables[0]?.id || initialTableId;
               if (representativeTableId) {
-                // Tìm tất cả orders liên kết với bàn này, filter paid orders
-                const { data: paidOrderLinks, error: linkError } = await supabase
+                // Tìm tất cả orders liên kết với bàn này
+                const { data: linkedOrders, error: linkError } = await supabase
                   .from('order_tables')
                   .select('order_id')
                   .eq('table_id', representativeTableId);
 
-                if (!linkError && paidOrderLinks && paidOrderLinks.length > 0) {
-                  const orderIds = paidOrderLinks.map(link => link.order_id);
+                if (!linkError && linkedOrders && linkedOrders.length > 0) {
+                  const orderIds = linkedOrders.map(link => link.order_id);
                   
-                  const { data: recentPaidOrders, error: paidError } = await supabase
+                  // [SỬA LỖI] Lấy TẤT CẢ các order 'paid' liên quan, KHÔNG GIỚI HẠN
+                  const { data: allPaidOrders, error: paidError } = await supabase
                     .from('orders')
                     .select(
                       `
@@ -425,12 +417,11 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
                     )
                     .in('id', orderIds)
                     .eq('status', 'paid')
-                    .order('created_at', { ascending: false }) // Order mới nhất lên đầu
-                    .limit(1); // CHỈ lấy 1 paid order gần nhất (phiên trước đó)
+                    .order('created_at', { ascending: true }); // Sắp xếp từ cũ đến mới để hiển thị đúng thứ tự
+                    // .limit(1); // <<<<====== XÓA BỎ DÒNG NÀY
 
-                  // Xử lý error nếu không có order paid (không phải lỗi critical)
-                  if (!paidError && recentPaidOrders && recentPaidOrders.length > 0) {
-                    recentPaidOrders.forEach((order: any) => {
+                  if (!paidError && allPaidOrders && allPaidOrders.length > 0) {
+                    allPaidOrders.forEach((order: any) => { // Đổi tên biến thành allPaidOrders
                       (order.order_items || []).forEach((item: any) => {
                         const name = item.menu_items?.name || item.customizations?.name || 'Món đã xóa';
                         const image_url = item.menu_items?.image_url || null;
@@ -464,7 +455,6 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
           }
         }
 
-        // Lấy dữ liệu từ giỏ hàng (cart_items), cần join với menu_items để có image_url và is_available
         const representativeTableId = freshTables[0]?.id || initialTableId;
         if (representativeTableId) {
           const { data: cartData, error: cartError } = await supabase
@@ -487,24 +477,20 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
             isPaid: false,
             status: 'new',
             returned_quantity: 0,
-            image_url: item.menu_items?.image_url || null, // Lấy ảnh cho món mới
-            is_available: item.menu_items?.is_available ?? true, // [MỚI] Lấy trạng thái còn hàng
+            image_url: item.menu_items?.image_url || null,
+            is_available: item.menu_items?.is_available ?? true,
           }));
         }
-
-        // [CẬP NHẬT] Tách items hết hàng ra khỏi newItems
+        
         const availableNewItems = newItems.filter(item => item.is_available !== false);
         const outOfStockNewItems = newItems.filter(item => item.is_available === false);
         
-        // [CẬP NHẬT] Tách items hết hàng từ pendingItems
         const availablePendingItems = pendingItems.filter(item => item.is_available !== false);
         const outOfStockPendingItems = pendingItems.filter(item => item.is_available === false);
         
-        // [CẬP NHẬT] Tách items hết hàng từ paidItems
         const availablePaidItems = paidItemsData.filter(item => item.is_available !== false);
         const outOfStockPaidItems = paidItemsData.filter(item => item.is_available === false);
         
-        // [CẬP NHẬT] Tách items hết hàng từ returnedItems
         const availableReturnedItems = returnedItemsSectionData.filter(item => item.is_available !== false);
         const outOfStockReturnedItems = returnedItemsSectionData.filter(item => item.is_available === false);
 
@@ -536,7 +522,6 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
         if (availablePaidItems.length > 0)
           sections.push({ title: 'Món đã thanh toán', data: availablePaidItems });
         
-        // [CẬP NHẬT] Thêm section Món đã hết
         if (outOfStockNewItems.length > 0 || outOfStockPendingItems.length > 0 || outOfStockReturnedItems.length > 0 || outOfStockPaidItems.length > 0) {
           const outOfStockItems = [...outOfStockNewItems, ...outOfStockPendingItems, ...outOfStockReturnedItems, ...outOfStockPaidItems];
           sections.push({ title: 'Món đã hết', data: outOfStockItems });
@@ -561,7 +546,7 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
 
       if (!channelId) {
         console.warn("Không thể đăng ký Realtime vì không có orderId hoặc tableId.");
-        return; // Dừng lại nếu không có ID
+        return;
       }
       const channel = supabase
         .channel(`orders_channel:${channelId}`)
@@ -571,7 +556,7 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
           event: 'UPDATE', 
           schema: 'public', 
           table: 'orders',
-          filter: `id=eq.${activeOrderId}` // Thêm bộ lọc filter
+          filter: `id=eq.${activeOrderId}`
           },
           (payload) => {
             console.log('[Realtime] Cập nhật orders:', payload);
@@ -581,7 +566,6 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
         )
         .subscribe();
       
-      // [MỚI] Lắng nghe thay đổi trên bảng menu_items (khi bếp báo hết món)
       const menuItemsChannel = supabase
         .channel('public:menu_items_availability')
         .on(
@@ -589,7 +573,6 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
           { event: 'UPDATE', schema: 'public', table: 'menu_items' },
           (payload) => {
             console.log('[Realtime] Món ăn thay đổi trạng thái:', payload);
-            // Refresh lại dữ liệu để cập nhật is_available
             fetchAllData(false);
           }
         )
@@ -652,23 +635,19 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
   setDisplayedSections(currentSections => {
     const newSections = JSON.parse(JSON.stringify(currentSections));
 
-    // Tìm và lấy ra section "Món mới"
     const newItemsSectionIndex = newSections.findIndex((s: OrderSection) => s.title === 'Món mới chờ gửi bếp');
     if (newItemsSectionIndex === -1) {
-      return currentSections; // Không có món mới để gửi
+      return currentSections;
     }
     const newItemsSection = newSections[newItemsSectionIndex];
 
-    // Xóa section "Món mới" khỏi danh sách
     newSections.splice(newItemsSectionIndex, 1);
 
-    // Tạo một section "Đang chờ gửi" mới
     const pendingSectionTitle = `Đợt mới (chờ gửi) - ${new Date().toLocaleTimeString('vi-VN', {
       hour: '2-digit',
       minute: '2-digit',
     })}`;
     
-    // Thêm section mới này vào trước các section "Đợt" đã có
     const firstPendingSectionIndex = newSections.findIndex((s: OrderSection) => s.title.startsWith('Đợt '));
     if (firstPendingSectionIndex > -1) {
         newSections.splice(firstPendingSectionIndex, 0, { title: pendingSectionTitle, data: newItemsSection.data });
@@ -682,18 +661,14 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
 
   const optimisticallyUpdateCartItem = (itemId: number, newQuantity: number) => {
   setDisplayedSections(currentSections => {
-    // Tạo một bản sao sâu của mảng sections để tránh thay đổi trực tiếp state
     const newSections = JSON.parse(JSON.stringify(currentSections));
 
-    // Tìm section "Món mới chờ gửi bếp"
     const newItemsSection = newSections.find((s: OrderSection) => s.title === 'Món mới chờ gửi bếp');
-    if (!newItemsSection) return currentSections; // Trả về state cũ nếu không tìm thấy
+    if (!newItemsSection) return currentSections;
 
     if (newQuantity < 1) {
-      // Nếu số lượng mới < 1, xóa món đó khỏi danh sách
       newItemsSection.data = newItemsSection.data.filter((item: DisplayItem) => item.id !== itemId);
     } else {
-      // Nếu không, tìm và cập nhật món đó
       const itemIndex = newItemsSection.data.findIndex((item: DisplayItem) => item.id === itemId);
       if (itemIndex > -1) {
         newItemsSection.data[itemIndex].quantity = newQuantity;
@@ -710,16 +685,14 @@ const optimisticallyRemoveItem = (itemUniqueKey: string) => {
   setDisplayedSections(currentSections => {
     const newSections = JSON.parse(JSON.stringify(currentSections));
 
-    // Lặp qua từng section để tìm và xóa item
     for (const section of newSections) {
         const itemIndex = section.data.findIndex((item: DisplayItem) => item.uniqueKey === itemUniqueKey);
         if (itemIndex > -1) {
             section.data.splice(itemIndex, 1);
-            break; // Dừng lại khi đã tìm thấy và xóa
+            break; 
         }
     }
     
-    // Lọc bỏ những section không còn data
     return newSections.filter((section: OrderSection) => section.data.length > 0);
   });
 };
@@ -728,14 +701,12 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
   setDisplayedSections(currentSections => {
     const newSections = JSON.parse(JSON.stringify(currentSections));
 
-    // Lặp qua tất cả các section để tìm item cần cập nhật
     for (const section of newSections) {
       const itemIndex = section.data.findIndex((item: DisplayItem) => item.uniqueKey === itemUniqueKey);
       
       if (itemIndex > -1) {
-        // Tìm thấy item, cập nhật ghi chú trong customizations
         section.data[itemIndex].customizations.note = newNote;
-        break; // Dừng tìm kiếm
+        break; 
       }
     }
     
@@ -745,7 +716,6 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
 
 
   const handleRemoveItem = (itemToRemove: DisplayItem) => {
-  // [CẬP NHẬT] Chỉ cho phép xóa món mới
   if (!itemToRemove.isNew) {
     Toast.show({
       type: 'error',
@@ -757,7 +727,6 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
 
   const action = async () => {
     if (isOnline) {
-      // --- LOGIC KHI ONLINE ---
       try {
         await supabase
           .from(itemToRemove.isNew ? 'cart_items' : 'order_items')
@@ -766,12 +735,11 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
           .throwOnError();
         
         Toast.show({ type: 'success', text1: 'Đã hủy món' });
-        await fetchAllData(false); // Lấy lại dữ liệu mới nhất
+        await fetchAllData(false);
       } catch (error: any) {
         Toast.show({ type: 'error', text1: 'Lỗi hủy món', text2: error.message });
       }
     } else {
-      // --- LOGIC KHI OFFLINE ---
       const tableName = itemToRemove.isNew ? 'cart_items' : 'order_items';
       
       offlineManager.addActionToQueue({
@@ -781,7 +749,6 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         payload: {}
       });
 
-      // Cập nhật giao diện ngay lập tức
       optimisticallyRemoveItem(itemToRemove.uniqueKey);
       
       Toast.show({
@@ -804,7 +771,6 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
   if (!editingItem) return;
 
   if (isOnline) {
-    // --- LOGIC KHI CÓ MẠNG ---
     try {
       const updatedCustomizations = { ...editingItem.customizations, note: newNote };
       await supabase
@@ -813,21 +779,17 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         .eq('id', editingItem.id)
         .throwOnError();
       
-      // Tải lại dữ liệu để đảm bảo đồng bộ 100%
       await fetchAllData(false); 
     } catch (error: any) {
       Alert.alert('Lỗi', `Không thể lưu ghi chú: ${error.message}`);
     } finally {
-      // Đóng modal dù thành công hay thất bại
       setNoteModalVisible(false);
       setEditingItem(null);
     }
   } else {
-    // --- LOGIC KHI MẤT MẠNG ---
     const tableName = editingItem.isNew ? 'cart_items' : 'order_items';
     const updatedCustomizations = { ...editingItem.customizations, note: newNote };
     
-    // Thêm hành động UPDATE vào hàng đợi
     offlineManager.addActionToQueue({
       type: 'UPDATE',
       tableName: tableName,
@@ -835,7 +797,6 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
       payload: { customizations: updatedCustomizations },
     });
 
-    // Cập nhật giao diện ngay lập tức
     optimisticallyUpdateNote(editingItem.uniqueKey, newNote);
 
     Toast.show({
@@ -844,20 +805,15 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
       text2: 'Ghi chú đã được lưu tạm.',
     });
     
-    // Đóng modal ngay lập tức
     setNoteModalVisible(false);
     setEditingItem(null);
   }
 };
   const itemActions: ActionSheetItem[] = [];
   if (editingItem && !editingItem.isPaid && !editingItem.isReturnedItem) {
-    // [CẬP NHẬT] Chỉ có thể sửa ghi chú nếu là món mới
     const canEditNote = editingItem.isNew;
-    // [CẬP NHẬT] Chỉ có thể hủy nếu là món mới
     const canRemoveItem = editingItem.isNew;
-    // [CẬP NHẬT] Kiểm tra nếu món đã hoàn thành (served/completed)
     const isItemCompleted = editingItem.status === 'served' || editingItem.status === 'completed';
-    // [CẬP NHẬT] Kiểm tra nếu món hết hàng
     const itemIsOutOfStock = editingItem.is_available === false;
     
     if (canEditNote && !isItemCompleted && !itemIsOutOfStock) {
@@ -866,12 +822,10 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         text: 'Thêm/Sửa Ghi chú',
         icon: 'create-outline',
         onPress: () => {
-          // 1. Đóng ActionSheet
           setActionSheetVisible(false);
-          // 2. Đợi một chút cho hiệu ứng đóng hoàn tất rồi mới mở modal ghi chú
           setTimeout(() => {
             setNoteModalVisible(true);
-          }, 250); // 250ms là khoảng thời gian hợp lý
+          }, 250); 
         },
       });
     }
@@ -884,10 +838,8 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         color: '#EF4444',
         onPress: () => {
           const itemToRemove = editingItem;
-          // 1. Đóng ActionSheet và xóa item đang sửa khỏi state
           setActionSheetVisible(false);
           setEditingItem(null);
-          // 2. Đợi một chút rồi mới thực hiện hành động hủy món để UI mượt mà
           setTimeout(() => {
             if (itemToRemove) {
               handleRemoveItem(itemToRemove);
@@ -902,7 +854,6 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
   const representativeTable = currentTables[0] || { id: initialTableId, name: initialTableName };
   const currentTableNameForDisplay = currentTables.map((t) => t.name).join(', ');
   const newItemsFromCart = allItems.filter((item) => item.isNew);
-  // [CẬP NHẬT] Exclude items hết hàng (is_available === false)
   const billableItems = allItems.filter((item) => 
     !item.isPaid && 
     !item.isReturnedItem && 
@@ -965,12 +916,8 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
     console.log('🔄 [handleNavigateToPrint] About to navigate to PrintPreview');
     console.log('   - shouldNavigateToHome:', pendingPaymentAction === 'end');
 
-    // Lưu giá trị pendingPaymentAction trước khi navigate (vì nó có thể bị reset sau)
     const shouldNavigateToHome = pendingPaymentAction === 'end';
 
-    // Điều hướng đến màn hình in bill
-    // `shouldNavigateToHome` sẽ quyết định nút "Đóng" trên màn hình in sẽ làm gì
-    // Dùng replace để ko quay về được khi bấm back ở PrintPreview
     navigation.replace('PrintPreview', { 
       order, 
       items, 
@@ -986,8 +933,6 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
     Toast.show({ type: 'error', text1: 'Lỗi lấy thông tin in bill', text2: error.message });
   } finally {
     setLoading(false);
-    // 🔴 KHÔNG reset pendingPaymentAction ở đây nữa!
-    // Nó sẽ được reset từ VietQRModal callback hoặc handleCompleteCashPayment
     console.log('🔄 [handleNavigateToPrint] Completed');
   }
 }, [navigation, pendingPaymentAction]);
@@ -999,7 +944,6 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
   const sendNewItemsToKitchen = async (): Promise<string | null> => {
     if (!hasNewItems) return activeOrderId;
     if (!isOnline) {
-      // Khi offline, chúng ta chỉ cho phép thêm món vào order đã tồn tại.
       if (!activeOrderId) {
         Toast.show({
           type: 'error',
@@ -1009,7 +953,6 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         return null;
       }
 
-      // Tạo các hành động và thêm vào hàng đợi
       const itemsToInsert = newItemsFromCart.map((item) => ({
         order_id: activeOrderId,
         menu_item_id: item.menuItemId,
@@ -1018,26 +961,19 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         customizations: item.customizations,
       }));
 
-      // Hành động 1: Thêm order_items
       offlineManager.addActionToQueue({
         type: 'INSERT',
         tableName: 'order_items',
         payload: itemsToInsert,
       });
 
-      // Hành động 2: Xóa cart_items sau khi đã thêm
-      // Cần sửa OfflineManager để hỗ trợ delete với 'in'
-      // Tạm thời ta sẽ giả định nó hoạt động với mảng ID
       offlineManager.addActionToQueue({
           type: 'DELETE',
           tableName: 'cart_items',
-          // payload: newItemsFromCart.map((i) => i.id),
-          // Giả định `where` có thể xử lý mảng
           where: { column: 'id', value: newItemsFromCart.map((i) => i.id) },
           payload: {}
       });
 
-      // 2. Cập nhật giao diện ngay lập tức
       optimisticallySendToKitchen();
 
       Toast.show({
@@ -1050,7 +986,6 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
     }
     let orderIdToUse = activeOrderId;
     try {
-      // [FIX] Kiểm tra nếu order hiện tại là 'paid/closed', phải tạo order pending mới
       if (orderIdToUse) {
         const { data: currentOrder, error: checkError } = await supabase
           .from('orders')
@@ -1060,9 +995,8 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         
         if (checkError) throw checkError;
         
-        // Nếu order hiện tại là 'paid' hoặc 'closed', không thể insert items vào, phải tạo order mới
         if (currentOrder?.status === 'paid' || currentOrder?.status === 'closed') {
-          orderIdToUse = null;  // Reset để tạo order mới
+          orderIdToUse = null; 
         }
       }
 
@@ -1123,8 +1057,6 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
   const handleSendToKitchen = async () => {
     setLoading(true);
     await sendNewItemsToKitchen();
-    // Khi offline, ta không fetchAllData vì UI đã được cập nhật rồi
-    // Khi online, ta cần fetch để đảm bảo đồng bộ 100%
     if (isOnline) {
         await fetchAllData(false);
     }
@@ -1141,9 +1073,7 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
     return;
   }
   
-  // [FIX] Tách logic: nếu chỉ có NEW items → gửi bếp thôi, không thanh toán
   if (hasNewItems && billableItems.length === 0) {
-    // Chỉ có items mới chưa gửi bếp, không có items chờ thanh toán
     setLoading(true);
     const returnedOrderId = await sendNewItemsToKitchen();
     setLoading(false);
@@ -1163,29 +1093,17 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
     return;
   }
 
-  // Tính bill từ BILLABLE items (không tính items mới vì có hasNewItems thì ko có billableItems)
-  // hoặc chỉ từ pending items nếu không có hasNewItems
   const finalBillToPay = billableItems.reduce((sum, item) => sum + item.totalPrice, 0);
 
   setPaymentInfo({ orderId: activeOrderId || '', amount: finalBillToPay });
   setPaymentModalVisible(true);
 };
-
+  
+  // [SỬA LỖI] HÀM QUAN TRỌNG CẦN SỬA
   const handleKeepSessionAfterPayment = async (orderId: string, finalBill: number, paymentMethod: string) => {
     setLoading(true);
     try {
-      // 1. Cập nhật order cũ thành 'paid'
-      await supabase
-        .from('orders')
-        .update({ 
-          status: 'paid', 
-          total_price: finalBill,
-          payment_method: paymentMethod // Lưu phương thức thanh toán
-        })
-        .eq('id', orderId)
-        .throwOnError();
-
-      // 2. [MỚI] Tạo một order pending mới để khách tiếp tục order
+      // BƯỚC 1: Lấy thông tin bàn từ order cũ (TRƯỚC KHI CẬP NHẬT)
       const { data: oldOrder, error: fetchError } = await supabase
         .from('orders')
         .select('order_tables(table_id)')
@@ -1193,65 +1111,74 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         .single();
       
       if (fetchError) throw fetchError;
-
       const tableIds = oldOrder.order_tables.map((ot: any) => ot.table_id);
+      if (tableIds.length === 0) throw new Error("Không tìm thấy bàn liên kết với order cũ.");
+      
+      // BƯỚC 2: Cập nhật order cũ thành 'paid'
+      await supabase
+        .from('orders')
+        .update({ 
+          status: 'paid', 
+          total_price: finalBill,
+          payment_method: paymentMethod
+        })
+        .eq('id', orderId)
+        .throwOnError();
 
-      // Tạo order mới
+      // [SỬA LỖI] XÓA BỎ DÒNG SAU ĐÂY. KHÔNG ĐƯỢC XÓA LIÊN KẾT LỊCH SỬ.
+      /*
+      await supabase
+        .from('order_tables')
+        .delete()
+        .eq('order_id', orderId)
+        .throwOnError();
+      */
+      // [KẾT THÚC SỬA LỖI]
+
+      // BƯỚC 3: Tạo một order pending MỚI
       const { data: newOrder, error: createError } = await supabase
         .from('orders')
         .insert([{ status: 'pending' }])
         .select('id')
         .single();
-
       if (createError) throw createError;
-
-      // Liên kết order mới với các bàn cũ
+      
+      // BƯỚC 4: Liên kết order MỚI với các bàn cũ
       const orderTableInserts = tableIds.map((tableId: string) => ({
         order_id: newOrder.id,
         table_id: tableId,
       }));
-
-      const { error: insertError } = await supabase
+      await supabase
         .from('order_tables')
         .insert(orderTableInserts)
         .throwOnError();
 
-      if (insertError) throw insertError;
-
-      // 3. Cập nhật activeOrderId để UI hiển thị order mới
+      // BƯỚC 5: Cập nhật State và UI
       setActiveOrderId(newOrder.id);
-
       Toast.show({
         type: 'success',
         text1: 'Thanh toán thành công',
-        text2: `Đã thanh toán ${finalBill.toLocaleString('vi-VN')}đ qua ${paymentMethod === 'cash' ? 'Tiền mặt' : paymentMethod === 'zalopay' ? 'ZaloPay' : 'Chuyển khoản'}`
+        text2: `Đã thanh toán ${finalBill.toLocaleString('vi-VN')}đ. Phiên mới đã sẵn sàng.`
       });
 
-      // 4. Reload dữ liệu để hiển thị order mới
+      // Tải lại toàn bộ dữ liệu để hiển thị đúng trạng thái mới
       await fetchAllData(false);
+
     } catch (error: any) {
       Toast.show({
         type: 'error',
-        text1: 'Lỗi thanh toán',
+        text1: 'Lỗi khi giữ phiên',
         text2: error.message
       });
     } finally {
       setLoading(false);
     }
   };
-
   const handleEndSessionAfterPayment = useCallback(async (orderId: string, finalBill: number, paymentMethod: string, shouldNavigateHome: boolean = true) => {
     setLoading(true);
     try {
-      const { data: orderTables, error: tablesError } = await supabase
-        .from('order_tables')
-        .select('table_id')
-        .eq('order_id', orderId);
-
-      if (tablesError) throw tablesError;
-      const tableIdsToUpdate = orderTables.map((t) => t.table_id);
-
-      // Cập nhật trạng thái order là 'closed'
+      // Cập nhật trạng thái order là 'closed'.
+      // Trigger SQL mới sẽ tự động dọn dẹp bàn và xóa liên kết order_tables.
       await supabase
         .from('orders')
         .update({ 
@@ -1261,20 +1188,6 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         })
         .eq('id', orderId)
         .throwOnError();
-        
-      // [MỚI] Xóa liên kết order_tables để bàn sạch sẽ (không còn order cũ)
-      await supabase
-        .from('order_tables')
-        .delete()
-        .eq('order_id', orderId)
-        .throwOnError();
-        
-      // Cập nhật trạng thái bàn là 'Trống'
-      await supabase
-        .from('tables')
-        .update({ status: 'Trống' })
-        .in('id', tableIdsToUpdate)
-        .throwOnError();
 
       Toast.show({
         type: 'success',
@@ -1282,23 +1195,17 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         text2: `Đã thanh toán và dọn bàn.`,
       });
 
-      // [MỚI] Reset activeOrderId để xóa sạch UI (không còn hiển thị order cũ)
       setActiveOrderId(null);
-      setDisplayedSections([]); // Xóa tất cả sections để UI trống
+      setDisplayedSections([]);
 
-      // Quay về màn hình chính (home) nếu được yêu cầu
       if (shouldNavigateHome) {
         setTimeout(() => {
-          // Quay về MenuScreen rồi goBack() để về AppTabs
           navigation.navigate('Menu', {
             tableId: representativeTable.id,
             tableName: currentTableNameForDisplay,
             fromOrderConfirmation: true,
           });
-
-          setTimeout(() => {
-            navigation.goBack();
-          }, 300);
+          setTimeout(() => navigation.goBack(), 300);
         }, 500);
       }
       
@@ -1310,105 +1217,67 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
       });
     } finally {
       setLoading(false);
-      // [XÓA] Dòng này sẽ được chuyển đi nơi khác
-      // setPendingPaymentAction(null); 
     }
   }, [navigation, representativeTable.id, currentTableNameForDisplay]);
 
- // [SỬA LỖI] Cập nhật hàm để xử lý 'momo'
   const handlePaymentMethodSelect = (method: 'cash' | 'momo' | 'transfer') => {
-  setPaymentMethodBoxVisible(false);
+    setPaymentMethodBoxVisible(false);
+    if (!paymentInfo || !pendingPaymentAction) return;
 
-  if (!paymentInfo || !pendingPaymentAction) return;
-
-  if (method === 'cash') {
-    setBillModalVisible(true);
-    return;
-  }
-
-  if (method === 'momo') {
-    // Điều hướng đến màn hình MoMoQRCodeScreen và truyền dữ liệu cần thiết
-    navigation.navigate(ROUTES.MOMO_QR_CODE, {
-      orderId: paymentInfo.orderId,
-      amount: paymentInfo.amount,
-      pendingPaymentAction: pendingPaymentAction,
-    });
-    setPendingPaymentAction(null); // Reset sau khi điều hướng
-    return;
-  }
-
-  if (method === 'transfer') {
-    navigation.navigate(ROUTES.VIET_QR_CODE, {
-      orderId: paymentInfo.orderId,
-      amount: paymentInfo.amount,
-      pendingPaymentAction: pendingPaymentAction,
-    });
-    setPendingPaymentAction(null); // Reset sau khi điều hướng
-    return;
-  }
-};
+    if (method === 'cash') {
+      setBillModalVisible(true);
+      return;
+    }
+    if (method === 'momo') {
+      navigation.navigate(ROUTES.MOMO_QR_CODE, {
+        orderId: paymentInfo.orderId,
+        amount: paymentInfo.amount,
+        pendingPaymentAction: pendingPaymentAction,
+      });
+      setPendingPaymentAction(null);
+      return;
+    }
+    if (method === 'transfer') {
+      navigation.navigate(ROUTES.VIET_QR_CODE, {
+        orderId: paymentInfo.orderId,
+        amount: paymentInfo.amount,
+        pendingPaymentAction: pendingPaymentAction,
+      });
+      setPendingPaymentAction(null);
+      return;
+    }
+  };
 
   const handleCompleteCashPayment = async () => {
-    // Đóng modal hiển thị bill
     setBillModalVisible(false);
-    
-    // Kiểm tra các thông tin cần thiết
     if (!paymentInfo || !pendingPaymentAction) return;
     
     try {
-      console.log('[handleCompleteCashPayment] Starting cash payment flow');
-      console.log('   - orderId:', paymentInfo.orderId);
-      console.log('   - pendingPaymentAction:', pendingPaymentAction);
-      
-      // BƯỚC 1: AWAIT ĐIỀU HƯỚNG ĐẾN TRANG IN BILL
-      // Phải await để đảm bảo handleNavigateToPrint chạy xong (fetch data + navigate)
-      console.log('[handleCompleteCashPayment] Awaiting navigation to PrintPreview');
       await handleNavigateToPrint(paymentInfo.orderId, 'cash');
-      console.log('[handleCompleteCashPayment] Navigation completed successfully');
+      Toast.show({ type: 'success', text1: 'Thanh toán thành công', text2: 'Đang chuyển sang in hóa đơn...'});
       
-      Toast.show({
-        type: 'success',
-        text1: 'Thanh toán thành công',
-        text2: 'Đang chuyển sang in hóa đơn...',
-      });
-      
-      // BƯỚC 2: CẬP NHẬT DATABASE Ở CHẾ ĐỘ NỀN (Sau khi navigation)
       setTimeout(async () => {
-        console.log('[handleCompleteCashPayment] Background: Updating database after navigation');
         try {
           if (pendingPaymentAction === 'keep') {
-            // Nếu chỉ giữ phiên, cập nhật trạng thái order là "paid"
-            console.log('[handleCompleteCashPayment] Background: Keeping session - calling handleKeepSessionAfterPayment');
             await handleKeepSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'Tiền mặt');
           } else if (pendingPaymentAction === 'end') {
-            // Nếu kết thúc phiên, cập nhật trạng thái order là "closed" và bàn là "Trống".
-            console.log('[handleCompleteCashPayment] Background: Ending session - calling handleEndSessionAfterPayment');
             await handleEndSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'Tiền mặt', false);
           }
-          console.log('[handleCompleteCashPayment] Background: Database update completed');
           setPendingPaymentAction(null);
         } catch (error: any) {
-          console.error('[handleCompleteCashPayment] Background error:', error);
+          console.error('[Background error]:', error);
           setPendingPaymentAction(null);
         }
       }, 300);
       
     } catch (error: any) {
-      // Xử lý nếu có lỗi xảy ra
-      console.error('[handleCompleteCashPayment] Error:', error);
-      Toast.show({
-        type: 'error',
-        text1: 'Lỗi',
-        text2: error.message
-      });
+      Toast.show({ type: 'error', text1: 'Lỗi', text2: error.message });
       setBillModalVisible(false);
       setPendingPaymentAction(null);
     } finally {
-      // Dọn dẹp sau khi hoàn tất
       setLoading(false);
     }
   };
-
 
   const handleCloseSessionAfterPayment = () => {
     if (!activeOrderId) return;
@@ -1420,51 +1289,26 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
     setLoading(true);
     setCloseSessionModal(false);
     try {
-      const { data: orderTables, error: tablesError } = await supabase
-        .from('order_tables')
-        .select('table_id')
-        .eq('order_id', activeOrderId);
-      if (tablesError) throw tablesError;
-      const tableIdsToUpdate = orderTables.map((t) => t.table_id);
+      // Cập nhật trạng thái order thành 'closed'
       await supabase
         .from('orders')
         .update({ status: 'closed' })
         .eq('id', activeOrderId)
         .throwOnError();
       
-      // [MỚI] Xóa liên kết order_tables để bàn sạch sẽ (không còn order cũ)
-      await supabase
-        .from('order_tables')
-        .delete()
-        .eq('order_id', activeOrderId)
-        .throwOnError();
-      
-      await supabase
-        .from('tables')
-        .update({ status: 'Trống' })
-        .in('id', tableIdsToUpdate)
-        .throwOnError();
       Toast.show({
         type: 'success',
         text1: 'Thành công',
         text2: 'Đã đóng bàn và kết thúc phiên.'
       });
 
-      // [MỚI] Reset activeOrderId để xóa sạch UI (không còn hiển thị order cũ)
-      setActiveOrderId(null);
-      setDisplayedSections([]); // Xóa tất cả sections để UI trống
-
-      // Navigate về màn hình home
+      // [SỬA LỖI ĐIỀU HƯỚNG]
+      // Đợi một chút, sau đó quay về màn hình gốc của stack (chính là màn hình AppTabs)
       setTimeout(() => {
-        // Quay về MenuScreen rồi goBack() để về AppTabs
-        navigation.navigate(ROUTES.MENU, {
-          tableId: representativeTable.id,
-          tableName: currentTableNameForDisplay,
-        });
-        setTimeout(() => {
-          navigation.goBack();
-        }, 300);
+        // Lệnh này sẽ quay về màn hình đầu tiên trong stack, đảm bảo không bị lỗi.
+        navigation.popToTop(); 
       }, 500);
+
     } catch (error: any) {
       Toast.show({
         type: 'error',
@@ -1472,11 +1316,12 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         text2: `Không thể đóng bàn: ${error.message}`
       });
     } finally {
-      setLoading(false);
+      // Không cần setLoading(false) vì màn hình sắp được đóng lại
     }
   };
 
-  const handleGoToReturnScreen = async () => {
+  
+    const handleGoToReturnScreen = async () => {
     if (hasNewItems) {
       Alert.alert(
         'Món mới chưa gửi',
@@ -1501,7 +1346,6 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
     }
   };
 
-  // [SỬA LỖI] Truyền đủ thông tin cần thiết cho logic 5 phút
   const navigateToReturn = () => {
     const itemsToReturn = returnableItems.map((item) => ({
       id: item.id,
@@ -1509,8 +1353,8 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
       quantity: item.quantity,
       unit_price: item.unit_price,
       image_url: item.image_url,
-      status: item.status, // [THÊM] Truyền status để kiểm tra món đang ở trạng thái nào
-      created_at: item.created_at, // [THÊM] Truyền thời gian tạo để tính toán 5 phút
+      status: item.status, 
+      created_at: item.created_at,
     }));
 
     if (itemsToReturn.length === 0) {
@@ -1520,7 +1364,7 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
     if (activeOrderId) {
       navigation.navigate(ROUTES.RETURN_SELECTION, {
         orderId: activeOrderId,
-        tableName: currentTableNameForDisplay, // [THÊM] Truyền tên bàn để hiển thị trong modal
+        tableName: currentTableNameForDisplay, 
         items: itemsToReturn,
       });
     }
@@ -1537,13 +1381,11 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
     }
     setLoading(true);
     try {
-      // [SỬA] Dùng send_provisional_bill thay vì toggle
       const { error } = await supabase.rpc('send_provisional_bill', {
         p_order_id: activeOrderId,
       });
       if (error) throw error;
       
-      // Fetch lại để cập nhật UI
       await fetchAllData(false);
       
       Toast.show({
@@ -1570,8 +1412,6 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
     );
   }
 
-
-
   const AddMoreItemsButton = () => (
     <TouchableOpacity
       style={styles.addMoreButton}
@@ -1580,7 +1420,7 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
           tableId: representativeTable.id,
           tableName: currentTableNameForDisplay,
           orderId: activeOrderId || undefined,
-          fromOrderConfirmation: true, // Đánh dấu đã qua OrderConfirmation
+          fromOrderConfirmation: true,
         })
       }
     >
@@ -1591,28 +1431,24 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
 
   const hasBillableItems = billableItems.length > 0;
   
-  // [CẬP NHẬT] Kiểm tra có món nào có thể trả được
-  // Điều kiện: Phải là món đã gửi bếp (không phải mới), chưa thanh toán, chưa trả, còn hàng, CHƯA hoàn thành
   const returnableItems = allItems.filter((item) =>
-    !item.isNew && // Không phải mới
-    !item.isPaid && // Chưa thanh toán
-    !item.isReturnedItem && // Chưa trả
-    item.is_available !== false && // Còn hàng
-    item.status !== 'new' && // Đảm bảo không phải trạng thái 'new'
-    item.status !== 'served' && // Không phải đã phục vụ
-    item.status !== 'completed' // Không phải đã hoàn thành
+    !item.isNew && 
+    !item.isPaid &&
+    !item.isReturnedItem &&
+    item.is_available !== false &&
+    item.status !== 'new' &&
+    item.status !== 'served' &&
+    item.status !== 'completed'
   );
   const canReturnItems = returnableItems.length > 0;
   
   const isSessionClosable = paidItems.length > 0 && billableItems.length === 0 && !hasNewItems;
 
-
-  
   const handleGoBack = () => {
-    // Luôn quay về màn hình trước đó trong stack
     navigation.goBack();
   };
 
+  // ... (Phần return JSX và styles giữ nguyên, vì logic đã được sửa ở các hàm xử lý)
   return (
     <View style={styles.flex1}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
@@ -1651,7 +1487,6 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
           </Text>
         )}
         ListHeaderComponent={
-          // Đảm bảo bạn truyền đúng activeOrderId
           activeOrderId ? <ReturnedItemsIndicatorCard orderId={activeOrderId} /> : null
         }
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 220 }}
@@ -1726,14 +1561,13 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
           visible={isActionSheetVisible}
           onClose={() => {
             setActionSheetVisible(false);
-            setEditingItem(null); // Reset item đang sửa khi đóng bằng cách nhấn ra ngoài hoặc nút "Đóng"
+            setEditingItem(null);
           }}
           title={`Tùy chỉnh "${editingItem.name}"`}
           actions={itemActions}
         />
       )}
       
-      {/* Modal thanh toán với 3 tùy chọn */}
       {paymentInfo && (
         <Modal
           transparent={true}
@@ -1772,7 +1606,6 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
                   onPress={() => {
                     setPaymentModalVisible(false);
                     setPendingPaymentAction('keep');
-                    // Hiển thị PaymentMethodBox sau khi đóng modal
                     setTimeout(() => setPaymentMethodBoxVisible(true), 300);
                   }}
                 >
@@ -1785,7 +1618,6 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
                   onPress={() => {
                     setPaymentModalVisible(false);
                     setPendingPaymentAction('end');
-                    // Hiển thị PaymentMethodBox sau khi đóng modal
                     setTimeout(() => setPaymentMethodBoxVisible(true), 300);
                   }}
                 >
@@ -1798,7 +1630,6 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         </Modal>
       )}
       
-      {/* Payment Method Box - Chọn phương thức thanh toán */}
       {paymentInfo && (
         <PaymentMethodBox
           isVisible={isPaymentMethodBoxVisible}
@@ -1811,7 +1642,6 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         />
       )}
       
-      {/* Bill Modal - Hiển thị hóa đơn khi thanh toán tiền mặt */}
       {paymentInfo && (
         <Modal
           transparent={true}
@@ -1869,7 +1699,6 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         </Modal>
       )}
 
-      {/* Confirm Modal cho Hủy Món */}
       <ConfirmModal
         isVisible={cancelItemModal.visible}
         title="Xác nhận Hủy Món"
@@ -1880,7 +1709,6 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
           const itemToRemove = cancelItemModal.item;
           setCancelItemModal({ visible: false, item: null });
           
-          // Action để thực hiện hủy món (logic giống action trong handleRemoveItem)
           if (isOnline) {
             try {
               await supabase
@@ -1918,7 +1746,6 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         variant="danger"
       />
 
-      {/* Confirm Modal cho Đóng Bàn */}
       <ConfirmModal
         isVisible={closeSessionModal}
         title="Xác nhận Đóng Bàn"
@@ -1932,7 +1759,6 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
     </View>
   );
 };
-
 const styles = StyleSheet.create({
   flex1: { flex: 1, backgroundColor: '#F8F9FA' },
   containerCenter: { flex: 1, justifyContent: 'center', alignItems: 'center' },
@@ -1952,9 +1778,7 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 8,
   },
-  outOfStockSectionHeader: {
-    // Giữ style bình thường, không đỏ
-  },
+  outOfStockSectionHeader: {},
   bottomBar: {
     position: 'absolute',
     bottom: 0,
@@ -2018,8 +1842,6 @@ const styles = StyleSheet.create({
   modalButtonText: { fontSize: 16, fontWeight: '600' },
   saveButton: { backgroundColor: '#3B82F6', marginLeft: 12 },
   saveButtonText: { color: 'white' },
-  
-  // Payment Modal Styles
   paymentModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -2107,8 +1929,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
   },
-  
-  // Bill Modal Styles
   billModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
