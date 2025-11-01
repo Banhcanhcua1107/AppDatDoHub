@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { SafeAreaView, View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+// Giả sử supabaseService là nơi bạn gọi hàm RPC get_daily_cash_reconciliation
 import { getDailyCashReconciliation as getDailySummary } from '../../services/supabaseService';
 import { useNavigation } from '@react-navigation/native';
 
@@ -70,14 +71,6 @@ export default function FinancialSummaryScreen() {
                  !reportData ? ( <Text style={styles.emptyText}>Không có dữ liệu.</Text> ) : 
                  (
                     <>
-                        <View style={styles.summaryCard}>
-                            <Text style={styles.summaryLabel}>Tiền mặt trong quỹ cuối ngày</Text>
-                            <Text style={[styles.summaryValue, { color: reportData.closingBalance >= 0 ? '#2563EB' : '#EF4444' }]}>
-                                {formatCurrency(reportData.closingBalance)} ₫
-                            </Text>
-                            <Text style={styles.summarySubtext}>= Đầu ngày + Thu tiền mặt - Chi tiền mặt</Text>
-                        </View>
-                        
                         {/* Khu vực đối soát tiền mặt */}
                         <View style={styles.detailSection}>
                             <View style={styles.detailRow}>
@@ -106,7 +99,7 @@ export default function FinancialSummaryScreen() {
                             </View>
                         </View>
 
-                        {/* [SỬA] Gộp chung MoMo và CK vào "Thu qua App/Thẻ" */}
+                        {/* Khu vực thu qua kênh khác */}
                         <View style={styles.otherRevenueCard}>
                             <View style={styles.detailRow}>
                                 <Text style={styles.detailLabel}>Thu qua App/Thẻ</Text>
@@ -125,46 +118,17 @@ export default function FinancialSummaryScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8FAFC' },
-    header: { 
-        flexDirection: 'row', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        paddingHorizontal: 16, 
-        paddingVertical: 12, 
-        backgroundColor: '#fff', 
-        borderBottomWidth: 1, 
-        borderBottomColor: '#F1F5F9' 
-    },
-    headerTitle: { 
-        fontSize: 18, 
-        fontWeight: '600', 
-        color: '#1F2937' 
-    },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+    headerTitle: { fontSize: 18, fontWeight: '600', color: '#1F2937' },
     scrollContent: { padding: 16 },
     emptyText: { textAlign: 'center', color: '#64748B', marginTop: 32 },
     dateSelectorButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#EFF6FF', paddingVertical: 12, borderRadius: 10, marginBottom: 20 },
     dateSelectorText: { marginLeft: 8, fontSize: 16, fontWeight: '600', color: '#3B82F6' },
-    summaryCard: { backgroundColor: '#fff', borderRadius: 16, padding: 24, alignItems: 'center', marginBottom: 20, borderWidth: 1, borderColor: '#F1F5F9' },
-    summaryLabel: { fontSize: 15, color: '#64748B' },
-    summaryValue: { fontSize: 32, fontWeight: 'bold', marginVertical: 8 },
-    summarySubtext: { fontSize: 14, color: '#9CA3AF' },
     detailSection: { backgroundColor: '#fff', borderRadius: 16, paddingHorizontal: 16, borderWidth: 1, borderColor: '#F1F5F9' },
     detailRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 16, alignItems: 'center' },
     detailLabel: { fontSize: 16, color: '#475569' },
     detailValue: { fontSize: 16, fontWeight: '600', color: '#1E293B' },
     divider: { height: 1, backgroundColor: '#F1F5F9' },
-    otherRevenueCard: {
-        marginTop: 16,
-        backgroundColor: '#F0FDF4',
-        borderRadius: 16,
-        paddingHorizontal: 16,
-        borderWidth: 1,
-        borderColor: '#BBF7D0'
-    },
-    otherRevenueSubtext: {
-        fontSize: 13,
-        color: '#4ADE80',
-        paddingBottom: 16,
-        marginTop: -10,
-    }
+    otherRevenueCard: { marginTop: 16, backgroundColor: '#F0FDF4', borderRadius: 16, paddingHorizontal: 16, borderWidth: 1, borderColor: '#BBF7D0' },
+    otherRevenueSubtext: { fontSize: 13, color: '#4ADE80', paddingBottom: 16, marginTop: -10, }
 });

@@ -212,7 +212,9 @@ const VietQRCodeScreen: React.FC<Props> = ({ route, navigation }) => {
       .update({
         status: 'paid',
         payment_method: 'transfer',
-        paid_at: new Date().toISOString()
+        paid_at: new Date().toISOString(),
+        // ✅ SỬA LỖI: Thêm tổng tiền đã thanh toán vào đây
+        total_price: amount 
       })
       .eq('id', orderId);
 

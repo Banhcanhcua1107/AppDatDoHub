@@ -47,7 +47,7 @@ serve(async (req) => {
 
       const { error } = await supabaseAdmin
         .from('orders')
-        .update({ status: 'paid', payment_method: 'MoMo', paid_at: new Date().toISOString() })
+        .update({ status: 'paid', payment_method: 'momo', paid_at: new Date().toISOString() })
         .eq('id', originalOrderId) // Bây giờ sẽ dùng ID gốc chính xác
 
       if (error) {

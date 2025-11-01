@@ -158,42 +158,43 @@ const OrderListItem: React.FC<{
         <View className="flex-row justify-between items-start">
           <View className="flex-1 pr-4">
             <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
-              {(item.status === 'served' || item.status === 'completed') && !isReturnedItem && !isOutOfStock && (
-              <Icon name="checkmark-circle" size={20} color="#10B981" style={{ marginRight: 6 }} />
-              )}
-              {item.status === 'in_progress' && !isOutOfStock && (
-                <Icon name="flame" size={20} color="#F97316" style={{ marginRight: 6 }} />
-              )}
-              <Text
-                className={`text-lg font-bold ${(isPaid || isReturnedItem || isOutOfStock || isCompleted) ? 'text-gray-500' : 'text-gray-800'} ${(isReturnedItem || isOutOfStock) ? 'line-through' : ''}`}
-              >
-                {item.name}
-              </Text>
+            {(item.status === 'served' || item.status === 'completed') && !isReturnedItem && !isOutOfStock && (
+            <Icon name="checkmark-circle" size={20} color="#10B981" style={{ marginRight: 6 }} />
+            )}
+            {item.status === 'in_progress' && !isOutOfStock && (
+            <Icon name="flame" size={20} color="#F97316" style={{ marginRight: 6 }} />
+            )}
+            <Text
+            className={`text-lg font-bold ${(isPaid || isReturnedItem || isOutOfStock || isCompleted) ? 'text-gray-500' : 'text-gray-800'} ${(isReturnedItem || isOutOfStock) ? 'line-through' : ''}`}
+            >
+            {item.name}
+            </Text>
             </View>
             <Text className="text-sm text-gray-500 mt-1">{`Size: ${sizeText}, Đường: ${sugarText}`}</Text>
             <Text className="text-sm text-gray-500">{`Topping: ${toppingsText}`}</Text>
             {noteText && (
-              <View className="bg-yellow-50 p-2 rounded-md mt-2">
+                <View className="bg-yellow-50 p-2 rounded-md mt-2">
                 <Text className="text-sm text-yellow-800 italic">Ghi chú: {noteText}</Text>
-              </View>
+                </View>
             )}
-          </View>
-          <View className="items-end">
+            </View>
+            <View className="items-end">
             {isNew && (
-              <View className="bg-green-100 px-2 py-1 rounded-full mb-1">
+                <View className="bg-green-100 px-2 py-1 rounded-full mb-1">
                 <Text className="text-green-800 text-xs font-bold">Mới</Text>
-              </View>
+                </View>
             )}
-            {isCompleted && !isOutOfStock && (
-              <View className="bg-green-100 px-2 py-1 rounded-full mb-1">
+            {/* SỬA ĐỔI TẠI ĐÂY */}
+            {isCompleted && !isReturnedItem && !isOutOfStock && (
+                <View className="bg-green-100 px-2 py-1 rounded-full mb-1">
                 <Text className="text-green-800 text-xs font-bold">Hoàn thành</Text>
-              </View>
+                </View>
             )}
-            {isInProgress && !isCompleted && !isOutOfStock && (
-              <View className="bg-orange-100 px-2 py-1 rounded-full mb-1">
-                <Text className="text-orange-800 text-xs font-bold">Đang làm</Text>
-              </View>
-            )}
+        {isInProgress && !isCompleted && !isOutOfStock && (
+            <View className="bg-orange-100 px-2 py-1 rounded-full mb-1">
+            <Text className="text-orange-800 text-xs font-bold">Đang làm</Text>
+            </View>
+        )}
             {isPaid && (
               <View className="bg-gray-200 px-2 py-1 rounded-full mb-1">
                 <Text className="text-gray-600 text-xs font-bold">Đã trả bill</Text>
