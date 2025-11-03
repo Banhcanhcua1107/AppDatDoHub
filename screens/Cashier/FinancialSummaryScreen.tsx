@@ -4,13 +4,23 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { SafeAreaView, View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-// Giả sử supabaseService là nơi bạn gọi hàm RPC get_daily_cash_reconciliation
-import { getDailyCashReconciliation as getDailySummary } from '../../services/supabaseService';
-import { useNavigation } from '@react-navigation/native';
+import { supabase } from '../../services/supabase'; // Import supabase client
+// import { useNavigation } from '@react-navigation/native';
+
+// Hàm gọi RPC mới
+const getDailySummary = async (date: Date) => {
+    const dateString = date.toISOString().split('T')[0];
+    const { data, error } = await supabase.rpc('get_daily_summary_report', { 
+        p_target_date: dateString 
+    });
+    if (error) throw error;
+    return data;
+};
 
 const formatCurrency = (amount: number = 0) => (amount || 0).toLocaleString('vi-VN');
-const formatDate = (date: Date) => date.toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric'});
+const formatDate = (date: Date) => date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric'});
 
+// Component chọn ngày (không đổi)
 const DateSelector = ({ date, onDateChange }: { date: Date, onDateChange: (newDate: Date) => void }) => {
     const [showPicker, setShowPicker] = useState(false);
     const handleDateChange = (event: any, selectedDate?: Date) => {
@@ -25,11 +35,8 @@ const DateSelector = ({ date, onDateChange }: { date: Date, onDateChange: (newDa
             </TouchableOpacity>
             {showPicker && (
                 <DateTimePicker
-                    value={date}
-                    mode="date"
-                    display="default"
-                    onChange={handleDateChange}
-                    maximumDate={new Date()}
+                    value={date} mode="date" display="default"
+                    onChange={handleDateChange} maximumDate={new Date()}
                 />
             )}
         </View>
@@ -37,7 +44,7 @@ const DateSelector = ({ date, onDateChange }: { date: Date, onDateChange: (newDa
 };
 
 export default function FinancialSummaryScreen() {
-    const navigation = useNavigation();
+    // const navigation = useNavigation();
     const [loading, setLoading] = useState(true);
     const [reportData, setReportData] = useState<any>(null);
     const [selectedDate, setSelectedDate] = useState(new Date());
@@ -58,12 +65,6 @@ export default function FinancialSummaryScreen() {
     
     return (
         <SafeAreaView style={styles.container}>
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()}><Ionicons name="chevron-back" size={28} color="#334155" /></TouchableOpacity>
-                <Text style={styles.headerTitle}>Tổng kết tài chính</Text>
-                <View style={{ width: 28 }} />
-            </View>
-
             <ScrollView contentContainerStyle={styles.scrollContent}>
                 <DateSelector date={selectedDate} onDateChange={setSelectedDate} />
                 
@@ -71,26 +72,43 @@ export default function FinancialSummaryScreen() {
                  !reportData ? ( <Text style={styles.emptyText}>Không có dữ liệu.</Text> ) : 
                  (
                     <>
-                        {/* Khu vực đối soát tiền mặt */}
+                        {/* --- Phần 1: Báo cáo Lãi/Lỗ --- */}
+                        <Text style={styles.sectionTitle}>Kết quả kinh doanh</Text>
+                        <View style={styles.detailSection}>
+                            <View style={styles.detailRow}>
+                                <Text style={styles.detailLabel}>Tổng Doanh thu</Text>
+                                <Text style={[styles.detailValue, { color: '#10B981' }]}>+{formatCurrency(reportData.totalRevenue)} ₫</Text>
+                            </View>
+                            <View style={styles.detailRow}>
+                                <Text style={styles.detailLabel}>Tổng Chi phí</Text>
+                                <Text style={[styles.detailValue, { color: '#EF4444' }]}>-{formatCurrency(reportData.totalCogs + reportData.operatingExpenses)} ₫</Text>
+                            </View>
+                             <View style={styles.divider} />
+                            <View style={styles.detailRow}>
+                                <Text style={[styles.detailLabel, { fontWeight: 'bold' }]}>Lợi nhuận ròng</Text>
+                                <Text style={[styles.detailValue, { fontWeight: 'bold', color: reportData.netProfit >= 0 ? '#10B981' : '#EF4444' }]}>
+                                    {formatCurrency(reportData.netProfit)} ₫
+                                </Text>
+                            </View>
+                        </View>
+
+                        {/* --- Phần 2: Đối soát Quỹ Tiền mặt --- */}
+                        <Text style={styles.sectionTitle}>Đối soát quỹ tiền mặt</Text>
                         <View style={styles.detailSection}>
                             <View style={styles.detailRow}>
                                 <Text style={styles.detailLabel}>Số dư đầu ngày</Text>
                                 <Text style={styles.detailValue}>{formatCurrency(reportData.openingBalance)} ₫</Text>
                             </View>
                             <View style={styles.divider} />
-
                             <View style={styles.detailRow}>
                                 <Text style={styles.detailLabel}>Thu bằng tiền mặt</Text>
                                 <Text style={[styles.detailValue, { color: '#10B981' }]}>+{formatCurrency(reportData.cashInflow)} ₫</Text>
                             </View>
-                            
                             <View style={styles.detailRow}>
                                 <Text style={styles.detailLabel}>Chi bằng tiền mặt</Text>
-                                <Text style={[styles.detailValue, { color: '#EF4444' }]}>-{formatCurrency(reportData.totalOutflow)} ₫</Text>
+                                <Text style={[styles.detailValue, { color: '#EF4444' }]}>-{formatCurrency(reportData.cashOutflow)} ₫</Text>
                             </View>
-
                             <View style={styles.divider} />
-                            
                             <View style={styles.detailRow}>
                                 <Text style={[styles.detailLabel, { fontWeight: 'bold' }]}>Số dư tiền mặt cuối ngày</Text>
                                 <Text style={[styles.detailValue, { fontWeight: 'bold', color: '#2563EB' }]}>
@@ -98,9 +116,9 @@ export default function FinancialSummaryScreen() {
                                 </Text>
                             </View>
                         </View>
-
-                        {/* Khu vực thu qua kênh khác */}
-                        <View style={styles.otherRevenueCard}>
+                        
+                        {/* --- Phần 3: Các khoản thu khác --- */}
+                         <View style={styles.otherRevenueCard}>
                             <View style={styles.detailRow}>
                                 <Text style={styles.detailLabel}>Thu qua App/Thẻ</Text>
                                 <Text style={[styles.detailValue, { color: '#16A34A' }]}>
@@ -124,6 +142,7 @@ const styles = StyleSheet.create({
     emptyText: { textAlign: 'center', color: '#64748B', marginTop: 32 },
     dateSelectorButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#EFF6FF', paddingVertical: 12, borderRadius: 10, marginBottom: 20 },
     dateSelectorText: { marginLeft: 8, fontSize: 16, fontWeight: '600', color: '#3B82F6' },
+    sectionTitle: { fontSize: 18, fontWeight: '600', color: '#475569', marginTop: 20, marginBottom: 12, paddingLeft: 4},
     detailSection: { backgroundColor: '#fff', borderRadius: 16, paddingHorizontal: 16, borderWidth: 1, borderColor: '#F1F5F9' },
     detailRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 16, alignItems: 'center' },
     detailLabel: { fontSize: 16, color: '#475569' },

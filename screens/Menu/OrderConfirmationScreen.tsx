@@ -1260,9 +1260,9 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
       setTimeout(async () => {
         try {
           if (pendingPaymentAction === 'keep') {
-            await handleKeepSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'Tiền mặt');
+            await handleKeepSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'cash');
           } else if (pendingPaymentAction === 'end') {
-            await handleEndSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'Tiền mặt', false);
+            await handleEndSessionAfterPayment(paymentInfo.orderId, paymentInfo.amount, 'cash', false);
           }
           setPendingPaymentAction(null);
         } catch (error: any) {

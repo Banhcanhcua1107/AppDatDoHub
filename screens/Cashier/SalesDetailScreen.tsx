@@ -1,41 +1,48 @@
 // screens/Cashier/SalesDetailScreen.tsx
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { SafeAreaView, View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { SafeAreaView, View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Alert, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { getTransactions } from '../../services/supabaseService';
-import PeriodSelector from '../../components/PeriodSelector';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
-const getDateRangeForPeriod = (period: string) => {
-    const today = new Date();
-    const endOfDay = new Date();
-    endOfDay.setHours(23, 59, 59, 999);
+// ✅ SỬA LỖI: Thêm kiểm tra an toàn để tránh crash nếu `date` không hợp lệ
+const formatDate = (date: Date) => {
+    // Nếu không có ngày, trả về một chuỗi mặc định thay vì gây lỗi
+    if (!date) return 'Chọn ngày...'; 
+    return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric'});
+};
 
-    switch (period) {
-        case 'today':
-            today.setHours(0, 0, 0, 0);
-            return { start: today, end: endOfDay };
-        case 'yesterday':
-            const yStart = new Date();
-            yStart.setDate(yStart.getDate() - 1);
-            yStart.setHours(0, 0, 0, 0);
-            const yEnd = new Date(yStart);
-            yEnd.setHours(23, 59, 59, 999);
-            return { start: yStart, end: yEnd };
-        case 'this_week':
-            const wStart = new Date();
-            wStart.setDate(wStart.getDate() - today.getDay() + (today.getDay() === 0 ? -6 : 1)); 
-            wStart.setHours(0, 0, 0, 0);
-            return { start: wStart, end: endOfDay };
-        case 'this_month':
-            const mStart = new Date(today.getFullYear(), today.getMonth(), 1);
-            mStart.setHours(0, 0, 0, 0);
-            return { start: mStart, end: endOfDay };
-        default:
-            today.setHours(0, 0, 0, 0);
-            return { start: today, end: endOfDay };
-    }
+const getDateRangeForDay = (date: Date) => {
+    const start = new Date(date);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(date);
+    end.setHours(23, 59, 59, 999);
+    return { start, end };
+};
+
+const DateSelector = ({ date, onDateChange }: { date: Date, onDateChange: (newDate: Date) => void }) => {
+    const [showPicker, setShowPicker] = useState(false);
+    const handleDateChange = (event: any, selectedDate?: Date) => {
+        setShowPicker(Platform.OS === 'ios');
+        if (selectedDate) onDateChange(selectedDate);
+    };
+    return (
+        <View>
+            <TouchableOpacity style={styles.dateSelectorButton} onPress={() => setShowPicker(true)}>
+                <Ionicons name="calendar-outline" size={20} color="#3B82F6" />
+                <Text style={styles.dateSelectorText}>Xem ngày: {formatDate(date)}</Text>
+            </TouchableOpacity>
+            {showPicker && (
+                <DateTimePicker
+                    value={date || new Date()} // Đảm bảo value luôn hợp lệ
+                    mode="date" display="default"
+                    onChange={handleDateChange} maximumDate={new Date()}
+                />
+            )}
+        </View>
+    );
 };
 
 const paymentMethodDetails = {
@@ -50,11 +57,15 @@ export default function SalesDetailScreen() {
     const navigation = useNavigation();
     const [loading, setLoading] = useState(true);
     const [transactions, setTransactions] = useState<any[]>([]);
+    
+    // ✅ SỬA LỖI: Đảm bảo state luôn được khởi tạo với một Date object hợp lệ
+    const [selectedDate, setSelectedDate] = useState(new Date());
 
-    const loadData = useCallback(async (period: string) => {
+    const loadData = useCallback(async (date: Date) => {
+        if (!date) return; // Không tải dữ liệu nếu ngày không tồn tại
         try {
             setLoading(true);
-            const { start, end } = getDateRangeForPeriod(period);
+            const { start, end } = getDateRangeForDay(date);
             const data = await getTransactions(start, end);
             setTransactions(data);
         } catch (error: any) {
@@ -65,8 +76,8 @@ export default function SalesDetailScreen() {
     }, []);
 
     useEffect(() => {
-        loadData('today');
-    }, [loadData]);
+        loadData(selectedDate);
+    }, [selectedDate, loadData]);
 
     const totalRevenue = transactions.reduce((sum, t) => sum + t.amount, 0);
 
@@ -78,7 +89,8 @@ export default function SalesDetailScreen() {
                 <View style={{ width: 28 }} />
             </View>
             <ScrollView contentContainerStyle={styles.scrollContent}>
-                <PeriodSelector onPeriodChange={(period) => loadData(period)} />
+                <DateSelector date={selectedDate} onDateChange={setSelectedDate} />
+                
                 {loading ? ( <ActivityIndicator style={{ marginTop: 32 }} size="large" color="#3B82F6" /> ) : 
                 (
                     <>
@@ -92,18 +104,14 @@ export default function SalesDetailScreen() {
                         {transactions.length > 0 ? (
                             <View style={styles.transactionList}>
                                 {transactions.map(item => {
-                                    // [CẬP NHẬT] Thay đổi phương thức thanh toán mặc định
-                                    // Giờ đây nếu có lỗi, nó sẽ hiển thị là "Tiền mặt" thay vì "Không rõ"
-                                    const defaultPayment = { icon: 'cash-outline', color: '#10B981', label: 'Tiền mặt' };
-                                    const payment = (paymentMethodDetails as any)[item.payment_method] || defaultPayment;
-
+                                    const payment = (paymentMethodDetails as any)[item.payment_method] || paymentMethodDetails.cash;
                                     return (
                                         <View key={item.id} style={styles.transactionItem}>
                                             <View style={[styles.iconContainer, { backgroundColor: `${payment.color}20` }]}>
                                                 <Ionicons name={payment.icon as any} size={22} color={payment.color} />
                                             </View>
                                             <View style={styles.transactionInfo}>
-                                                <Text style={styles.transactionTitle}>{item.table_name || 'Đơn mang về'}</Text>
+                                                <Text style={styles.transactionTitle}>{item.table_name || 'Mang về'}</Text>
                                                 <Text style={styles.transactionSubtitle}>{`${payment.label} • ${item.transaction_time}`}</Text>
                                             </View>
                                             <View style={styles.transactionAmountContainer}>
@@ -115,7 +123,7 @@ export default function SalesDetailScreen() {
                                 })}
                             </View>
                         ) : (
-                            <Text style={styles.emptyText}>Không có giao dịch trong khoảng thời gian này.</Text>
+                            <Text style={styles.emptyText}>Không có giao dịch trong ngày này.</Text>
                         )}
                     </>
                 )}
@@ -124,12 +132,14 @@ export default function SalesDetailScreen() {
     );
 }
 
-// Styles giữ nguyên
+// Styles không thay đổi
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8FAFC' },
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
     headerTitle: { fontSize: 18, fontWeight: '600', color: '#1F2937' },
     scrollContent: { padding: 16 },
+    dateSelectorButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#EFF6FF', paddingVertical: 12, borderRadius: 10, marginBottom: 20 },
+    dateSelectorText: { marginLeft: 8, fontSize: 16, fontWeight: '600', color: '#3B82F6' },
     emptyText: { textAlign: 'center', color: '#9CA3AF', marginTop: 20, fontStyle: 'italic' },
     summaryCard: { backgroundColor: '#fff', borderRadius: 16, padding: 24, alignItems: 'center', marginBottom: 24, borderWidth: 1, borderColor: '#F1F5F9' },
     summaryLabel: { fontSize: 15, color: '#64748B' },
