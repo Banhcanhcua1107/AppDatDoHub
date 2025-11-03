@@ -72,13 +72,6 @@ export default function PurchaseOrderDetailScreen() {
     if (!order) {
         return (
             <SafeAreaView style={styles.container}>
-                <View style={styles.header}>
-                    <TouchableOpacity onPress={() => navigation.goBack()}>
-                        <Ionicons name="arrow-back" size={24} color="#334155" />
-                    </TouchableOpacity>
-                    <Text style={styles.headerTitle}>Chi tiết Phiếu nhập</Text>
-                    <View style={{width: 24}} />
-                </View>
                 <View style={styles.emptyContainer}>
                     <Ionicons name="document-outline" size={64} color="#CBD5E1" />
                     <Text style={styles.emptyText}>Không tìm thấy phiếu nhập.</Text>
@@ -93,13 +86,6 @@ export default function PurchaseOrderDetailScreen() {
     
     return (
         <SafeAreaView style={styles.container}>
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()}>
-                    <Ionicons name="arrow-back" size={24} color="#334155" />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Chi tiết Phiếu nhập</Text>
-                <View style={{width: 24}} />
-            </View>
 
             <FlatList
                 data={order.purchase_order_items}
@@ -192,6 +178,7 @@ const styles = StyleSheet.create({
         color: '#1E293B' 
     },
     listContent: {
+        paddingTop: 12,
         paddingHorizontal: 16,
         paddingBottom: 20,
     },
@@ -208,6 +195,7 @@ const styles = StyleSheet.create({
     },
     summaryContainer: { 
         padding: 16, 
+        paddingTop: 12,
         backgroundColor: '#fff', 
         borderRadius: 12,
         marginBottom: 16,
@@ -221,6 +209,7 @@ const styles = StyleSheet.create({
         marginBottom: 12,
     },
     idContainer: {
+        paddingTop: 12,
         flexDirection: 'row',
         alignItems: 'center',
         gap: 10,
