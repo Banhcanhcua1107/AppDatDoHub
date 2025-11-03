@@ -49,6 +49,8 @@ import InventoryDetailScreen from '../screens/Cashier/InventoryDetailScreen';
 // import CashFlowDetailScreen from '../screens/Cashier/CashFlowDetailScreen';
 import PurchaseScreen from '../screens/Cashier/PurchaseScreen';
 import InventoryScreen from '../screens/Cashier/InventoryScreen';
+import CreatePurchaseOrderScreen from '../screens/Cashier/CreatePurchaseOrderScreen';
+import PurchaseOrderDetailScreen from '../screens/Cashier/PurchaseOrderDetailScreen';
 import CashFundScreen from '../screens/Cashier/CashFundScreen';
 import BankFundScreen from '../screens/Cashier/BankFundScreen';
 import ExpensesScreen from '../screens/Cashier/ExpensesScreen';
@@ -192,6 +194,8 @@ const CashierNavigator = () => (
     {/* <CashierStack.Screen name="CashFlowDetail" component={CashFlowDetailScreen} options={{ headerShown: false }} /> */}
     <CashierStack.Screen name="Purchase" component={PurchaseScreen} options={{ headerShown: true, title: 'Mua hàng' }} />
     <CashierStack.Screen name="Inventory" component={InventoryScreen} options={{ headerShown: true, title: 'Kho' }} />
+    <CashierStack.Screen name="CreatePurchaseOrder" component={CreatePurchaseOrderScreen} options={{ headerShown: true, title: 'Tạo đơn hàng' }} />
+    <CashierStack.Screen name="PurchaseOrderDetail" component={PurchaseOrderDetailScreen} options={{ headerShown: true, title: 'Chi tiết đơn hàng' }} />
     <CashierStack.Screen name="CashFund" component={CashFundScreen} options={{ headerShown: true, title: 'Quỹ tiền mặt' }} />
     <CashierStack.Screen name="BankFund" component={BankFundScreen} options={{ headerShown: true, title: 'Quỹ tiền gửi' }} />
     <CashierStack.Screen name="Expenses" component={ExpensesScreen} options={{ headerShown: true, title: 'Chi phí' }} />

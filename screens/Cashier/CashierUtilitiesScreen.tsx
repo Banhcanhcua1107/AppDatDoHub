@@ -88,16 +88,11 @@ export default function CashierUtilitiesScreen() {
             title="Báo cáo" 
             onPress={() => navigation.navigate('CashierReport')}
           />
-          <UtilityItem 
+          {/* <UtilityItem 
             icon="wallet-outline" 
             title="Quỹ tiền" 
             onPress={() => navigation.navigate('CashFlowDetail')}
-          />
-          <UtilityItem 
-            icon="trending-down-outline" 
-            title="Chi phí" 
-            onPress={() => navigation.navigate('Expenses')}
-          />
+          /> */}
            <UtilityItem 
             icon="cube-outline" 
             title="Kho" 
@@ -113,11 +108,11 @@ export default function CashierUtilitiesScreen() {
             title="Thực đơn" 
             onPress={() => navigation.navigate('MenuManagement')}
           />
-           <UtilityItem 
+           {/* <UtilityItem 
             icon="pricetag-outline" 
             title="Khuyến mãi" 
             onPress={() => navigation.navigate('Promotions')}
-          />
+          /> */}
         </View>
       </ScrollView>
 
