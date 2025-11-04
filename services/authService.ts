@@ -61,17 +61,24 @@ export const loginUser = async (email: string, password: string): Promise<{ sess
   }
 
   // Bước 2: Dùng user.id từ session để lấy profile từ bảng "profiles"
+  console.log("🔍 Tìm profile cho user ID:", authData.user.id);
+  
   const { data: userProfile, error: profileError } = await supabase
     .from('profiles')
     .select('*') // Lấy tất cả các cột, bao gồm cả 'role'
     .eq('id', authData.user.id)
     .single(); // .single() để lấy về 1 object duy nhất
 
+  console.log("📋 Profile data:", userProfile);
+  console.log("❌ Profile error:", profileError);
+
   if (profileError) {
-    throw new Error('Đăng nhập thành công nhưng không tìm thấy hồ sơ người dùng.');
+    console.error("💥 LỖI LẤY PROFILE:", JSON.stringify(profileError, null, 2));
+    throw new Error(`Đăng nhập thành công nhưng không tìm thấy hồ sơ người dùng. ${profileError?.message || ''}`);
   }
 
   // Bước 3: Trả về một object chứa cả session và userProfile
+  console.log("✅ Đăng nhập thành công, trả về profile:", userProfile);
   return { session: authData.session, userProfile };
 };
 

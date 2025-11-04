@@ -5,7 +5,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 // 1. IMPORT MỌI THỨ TỪ FILE routes.ts
-import { ROUTES, AuthStackParamList, AppStackParamList } from '../constants/routes';
+import { ROUTES, AuthStackParamList } from '../constants/routes';
 
 // Import các màn hình Auth
 import LoginScreen from '../screens/Auth/LoginScreen';
@@ -13,19 +13,20 @@ import RegisterScreen from '../screens/Auth/RegisterScreen';
 // ... import các màn hình Auth khác ...
 
 // Import các màn hình App (nằm ngoài Tabs)
-import MenuScreen from '../screens/Menu/MenuScreen';
-import OrderConfirmationScreen from '../screens/Menu/OrderConfirmationScreen';
+// import MenuScreen from '../screens/Menu/MenuScreen';
+// import OrderConfirmationScreen from '../screens/Menu/OrderConfirmationScreen';
 
 // Import AppTabsNavigator vừa tạo
 import AppTabsNavigator from './AppNavigator';
 import CashierTabs from './CashierTabs';
+import AdminTabs from './AdminTabs';
 
 // Import AuthContext
 import { useAuth } from '../context/AuthContext';
 
 // 2. TẠO HAI STACK NAVIGATOR VỚI TYPE TƯƠNG ỨNG
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
-const AppStack = createNativeStackNavigator<AppStackParamList>();
+// const AppStack = createNativeStackNavigator<AppStackParamList>();
 
 // Component cho luồng xác thực (chưa đăng nhập)
 const AuthNavigator = () => (
@@ -38,23 +39,23 @@ const AuthNavigator = () => (
 
 // [SỬA LỖI Ở ĐÂY] Component cho luồng ứng dụng chính (đã đăng nhập)
 const AppNavigator = ({ userRole }: { userRole: string }) => {
-  // Chọn Tab Navigator dựa trên role
-  const TabsComponent = userRole === 'thu_ngan' ? CashierTabs : AppTabsNavigator;
+  console.log("🔍 AppNavigator - Chọn navigator cho role:", userRole);
   
-  return (
-    <AppStack.Navigator
-      screenOptions={{ headerShown: false }}
-      // Route ban đầu của AppStack là AppTabs
-      initialRouteName={ROUTES.APP_TABS}
-    >
-      {/* Màn hình chính sẽ là cả cụm Bottom Tabs */}
-      <AppStack.Screen name={ROUTES.APP_TABS} component={TabsComponent} />
-
-      {/* Các màn hình khác trong AppStack (có thể điều hướng tới từ bên trong Tabs) */}
-      <AppStack.Screen name={ROUTES.MENU} component={MenuScreen} />
-      <AppStack.Screen name={ROUTES.ORDER_CONFIRMATION} component={OrderConfirmationScreen} />
-    </AppStack.Navigator>
-  );
+  // Nếu admin, return AdminTabs TRỰC TIẾP (không dùng AppStack wrapper)
+  if (userRole === 'admin') {
+    console.log("✅ ADMIN ROLE - Render AdminTabs directly");
+    return <AdminTabs />;
+  }
+  
+  // Nếu cashier, return CashierTabs TRỰC TIẾP
+  if (userRole === 'thu_ngan') {
+    console.log("✅ CASHIER ROLE - Render CashierTabs directly");
+    return <CashierTabs />;
+  }
+  
+  // Nếu user role khác, return AppTabsNavigator
+  console.log("✅ USER ROLE - Render AppTabsNavigator directly");
+  return <AppTabsNavigator />;
 };
 
 // 3. NAVIGATOR GỐC - Quyết định hiển thị luồng nào
@@ -62,10 +63,19 @@ export default function RootNavigator() {
   // Sử dụng AuthContext để lấy thông tin user
   const { isAuthenticated, userProfile } = useAuth();
 
+  console.log("🔍 [RootNavigator] isAuthenticated:", isAuthenticated);
+  console.log("🔍 [RootNavigator] userProfile:", JSON.stringify(userProfile, null, 2));
+  console.log("🔍 [RootNavigator] userRole:", userProfile?.role);
+
+  const userRole = userProfile?.role || 'nhan_vien';
+  console.log("🔍 [RootNavigator] Chọn TabsComponent cho role:", userRole);
+
   return (
     <NavigationContainer>
       {isAuthenticated ? (
-        <AppNavigator userRole={userProfile?.role || 'nhan_vien'} />
+        <>
+          <AppNavigator userRole={userRole} />
+        </>
       ) : (
         <AuthNavigator />
       )}

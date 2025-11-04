@@ -177,6 +177,32 @@ $$;
 ALTER FUNCTION "public"."approve_cancellation_request"("p_request_id" "uuid") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."calculate_ingredients_needed"("p_menu_item_id" "uuid", "p_quantity" integer DEFAULT 1) RETURNS TABLE("ingredient_name" "text", "unit" "text", "amount_needed" numeric, "stock_available" numeric, "is_enough" boolean, "alert" "text")
+    LANGUAGE "sql"
+    AS $$
+SELECT
+    ing.name,
+    ing.unit,
+    (mii.quantity_required * p_quantity)::NUMERIC AS amount_needed,
+    ing.stock_quantity,
+    ing.stock_quantity >= (mii.quantity_required * p_quantity) AS is_enough,
+    CASE
+        WHEN ing.stock_quantity < (mii.quantity_required * p_quantity) THEN
+            '❌ Không đủ - Còn ' || ing.stock_quantity || ' ' || ing.unit
+        WHEN ing.stock_quantity <= (mii.quantity_required * p_quantity * 2) THEN
+            '⚠️ Sắp hết - Cần nhập'
+        ELSE
+            '✅ Đủ'
+    END AS alert
+FROM "public"."menu_item_ingredients" mii
+JOIN "public"."ingredients" ing ON mii.ingredient_id = ing.id
+WHERE mii.menu_item_id = p_menu_item_id;
+$$;
+
+
+ALTER FUNCTION "public"."calculate_ingredients_needed"("p_menu_item_id" "uuid", "p_quantity" integer) OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."cancel_order_and_reset_tables"("p_order_id" "uuid") RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
@@ -267,27 +293,47 @@ CREATE OR REPLACE FUNCTION "public"."complete_purchase_order"("p_po_id" "uuid") 
     AS $$
 DECLARE
     po_item RECORD;
+    v_purchase_order public.purchase_orders;
 BEGIN
-    UPDATE public.purchase_orders
-    SET status = 'completed', completed_at = NOW()
+    -- Lấy thông tin phiếu nhập, bao gồm cả total_cost
+    SELECT * INTO v_purchase_order FROM public.purchase_orders
     WHERE id = p_po_id AND status = 'pending';
 
-    IF NOT FOUND THEN
+    IF v_purchase_order IS NULL THEN
         RAISE EXCEPTION 'Phiếu nhập không tồn tại hoặc đã được xử lý.';
     END IF;
 
+    -- Cập nhật trạng thái phiếu nhập
+    UPDATE public.purchase_orders
+    SET status = 'completed', completed_at = NOW()
+    WHERE id = p_po_id;
+
+    -- Lặp qua các món trong phiếu để cộng vào kho
     FOR po_item IN
         SELECT ingredient_id, quantity
         FROM public.purchase_order_items
         WHERE purchase_order_id = p_po_id
     LOOP
+        -- Cập nhật tồn kho
         UPDATE public.ingredients
         SET stock_quantity = stock_quantity + po_item.quantity
         WHERE id = po_item.ingredient_id;
 
-        INSERT INTO public.stock_history (ingredient_id, quantity_change)
-        VALUES (po_item.ingredient_id, po_item.quantity);
+        -- Ghi lịch sử nhập kho
+        INSERT INTO public.stock_history (ingredient_id, quantity_change, notes)
+        VALUES (po_item.ingredient_id, po_item.quantity, 'Nhập kho từ phiếu ' || v_purchase_order.po_code);
     END LOOP;
+
+    -- TỰ ĐỘNG TẠO PHIẾU CHI
+    IF v_purchase_order.total_cost > 0 THEN
+        INSERT INTO public.expenses (description, amount, category, payment_method)
+        VALUES (
+            'Chi tiền nhập hàng cho phiếu ' || v_purchase_order.po_code,
+            v_purchase_order.total_cost,
+            'Nhập nguyên liệu',
+            'transfer' -- Hoặc 'cash' tùy theo logic của bạn
+        );
+    END IF;
 END;
 $$;
 
@@ -433,18 +479,28 @@ CREATE OR REPLACE FUNCTION "public"."deduct_ingredients_on_order"() RETURNS "tri
 DECLARE
     recipe_item RECORD;
 BEGIN
-    -- Lặp qua tất cả nguyên liệu trong công thức của món ăn vừa được đặt
+    -- Lặp qua tất cả nguyên liệu của món ăn vừa được đặt
     FOR recipe_item IN
         SELECT
             mii.ingredient_id,
-            mii.quantity_required * NEW.quantity AS total_to_deduct -- Nhân với số lượng món bán ra
-        FROM public.menu_item_ingredients mii
+            mii.quantity_required
+        FROM "public"."menu_item_ingredients" mii
         WHERE mii.menu_item_id = NEW.menu_item_id
     LOOP
-        -- Cập nhật (trừ đi) số lượng tồn kho của nguyên liệu đó
-        UPDATE public.ingredients
-        SET stock_quantity = stock_quantity - recipe_item.total_to_deduct
+        -- Trừ nguyên liệu (số lượng món × số lượng nguyên liệu per 1 món)
+        UPDATE "public"."ingredients"
+        SET stock_quantity = stock_quantity - (recipe_item.quantity_required * NEW.quantity)
         WHERE id = recipe_item.ingredient_id;
+        
+        -- Ghi vào lịch sử (optional - Phase 2)
+        INSERT INTO "public"."stock_history" (ingredient_id, quantity_change, user_id, notes)
+        VALUES (
+            recipe_item.ingredient_id,
+            -(recipe_item.quantity_required * NEW.quantity),
+            NEW.user_id,
+            'Bán ' || NEW.quantity || ' ' || (SELECT name FROM "public"."menu_items" WHERE id = NEW.menu_item_id)
+        )
+        ON CONFLICT DO NOTHING;
     END LOOP;
 
     RETURN NEW;
@@ -1584,6 +1640,33 @@ $$;
 ALTER FUNCTION "public"."get_receivables_report"("p_start_date" "date", "p_end_date" "date") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."get_reorder_suggestions"() RETURNS TABLE("id" "uuid", "name" "text", "unit" "text", "stock_quantity" numeric, "low_stock_threshold" numeric, "suggested_quantity" numeric, "status" "text")
+    LANGUAGE "sql"
+    AS $$
+SELECT
+    ing.id,
+    ing.name,
+    ing.unit,
+    ing.stock_quantity,
+    ing.low_stock_threshold,
+    -- Logic gợi ý: Nếu hết thì nhập gấp rưỡi, nếu sắp hết thì nhập đầy
+    CASE
+        WHEN ing.stock_quantity <= 0 THEN ing.initial_stock * 1.5
+        ELSE ing.initial_stock - ing.stock_quantity
+    END::numeric(10,2) AS suggested_quantity,
+    CASE
+        WHEN ing.stock_quantity <= 0 THEN 'Hết hàng'
+        ELSE 'Sắp hết'
+    END AS status
+FROM public.ingredients ing
+WHERE ing.stock_quantity <= ing.low_stock_threshold
+ORDER BY ing.stock_quantity ASC;
+$$;
+
+
+ALTER FUNCTION "public"."get_reorder_suggestions"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."get_sales_report"("p_start_date" "date" DEFAULT CURRENT_DATE, "p_end_date" "date" DEFAULT CURRENT_DATE) RETURNS json
     LANGUAGE "plpgsql"
     AS $$
@@ -1794,6 +1877,30 @@ $$;
 
 
 ALTER FUNCTION "public"."handle_cancellation_request_update"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."handle_ingredient_stock_change"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+    affected_menu_item_record RECORD;
+BEGIN
+    -- Lặp qua tất cả các món ăn có chứa nguyên liệu vừa thay đổi số lượng
+    FOR affected_menu_item_record IN
+        SELECT menu_item_id
+        FROM public.menu_item_ingredients
+        WHERE ingredient_id = NEW.id
+    LOOP
+        -- Gọi hàm kiểm tra cho từng món
+        PERFORM public.update_menu_item_availability(affected_menu_item_record.menu_item_id);
+    END LOOP;
+
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."handle_ingredient_stock_change"() OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."handle_item_return"("p_order_id" "uuid", "p_reason" "text", "p_items" "jsonb") RETURNS "void"
@@ -2032,6 +2139,26 @@ $$;
 ALTER FUNCTION "public"."moddatetime"() OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."reset_daily_stock"() RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+BEGIN
+  -- Reset tất cả nguyên liệu về initial_stock nếu chưa reset hôm nay
+  UPDATE "public"."ingredients"
+  SET 
+    stock_quantity = initial_stock,
+    last_reset_date = CURRENT_DATE
+  WHERE last_reset_date < CURRENT_DATE;
+  
+  -- Log hoạt động (optional - để debug)
+  RAISE NOTICE 'Reset daily stock at %', NOW();
+END;
+$$;
+
+
+ALTER FUNCTION "public"."reset_daily_stock"() OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."reset_table_status_on_order_close"() RETURNS "trigger"
     LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
@@ -2088,6 +2215,64 @@ $$;
 
 
 ALTER FUNCTION "public"."send_provisional_bill"("p_order_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."setup_ingredient"("p_name" "text", "p_unit" "text", "p_initial_stock" numeric DEFAULT 100, "p_low_threshold" numeric DEFAULT 50) RETURNS TABLE("id" "uuid", "name" "text", "created" boolean)
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+    v_id UUID;
+BEGIN
+    -- Check xem đã tồn tại chưa
+    SELECT "public"."ingredients"."id" INTO v_id FROM "public"."ingredients" WHERE "public"."ingredients"."name" = p_name LIMIT 1;
+    
+    IF v_id IS NULL THEN
+        -- Tạo nguyên liệu mới
+        INSERT INTO "public"."ingredients" (name, unit, initial_stock, stock_quantity, low_stock_threshold)
+        VALUES (p_name, p_unit, p_initial_stock, p_initial_stock, p_low_threshold)
+        RETURNING "public"."ingredients".id INTO v_id;
+        
+        RETURN QUERY SELECT v_id, p_name, true;
+    ELSE
+        -- Nguyên liệu đã tồn tại
+        RETURN QUERY SELECT v_id, p_name, false;
+    END IF;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."setup_ingredient"("p_name" "text", "p_unit" "text", "p_initial_stock" numeric, "p_low_threshold" numeric) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."setup_menu_recipe"("p_menu_item_id" "uuid", "p_ingredient_name" "text", "p_quantity_required" numeric) RETURNS boolean
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+    v_ingredient_id UUID;
+BEGIN
+    -- Tìm nguyên liệu theo tên
+    SELECT "public"."ingredients"."id" INTO v_ingredient_id FROM "public"."ingredients" WHERE "public"."ingredients"."name" = p_ingredient_name LIMIT 1;
+    
+    IF v_ingredient_id IS NULL THEN
+        RAISE EXCEPTION 'Nguyên liệu không tồn tại: %', p_ingredient_name;
+    END IF;
+    
+    -- Xóa công thức cũ nếu có
+    DELETE FROM "public"."menu_item_ingredients"
+    WHERE menu_item_id = p_menu_item_id AND ingredient_id = v_ingredient_id;
+    
+    -- Thêm công thức mới
+    INSERT INTO "public"."menu_item_ingredients" (menu_item_id, ingredient_id, quantity_required)
+    VALUES (p_menu_item_id, v_ingredient_id, p_quantity_required)
+    ON CONFLICT (menu_item_id, ingredient_id) 
+    DO UPDATE SET quantity_required = p_quantity_required;
+    
+    RETURN true;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."setup_menu_recipe"("p_menu_item_id" "uuid", "p_ingredient_name" "text", "p_quantity_required" numeric) OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."sp_handle_item_return"("p_order_id" "uuid", "p_reason" "text", "p_items" "jsonb") RETURNS "void"
@@ -2191,6 +2376,32 @@ $$;
 ALTER FUNCTION "public"."sp_process_item_return"("p_order_id" "uuid", "p_reason" "text", "p_items" "jsonb") OWNER TO "postgres";
 
 
+CREATE OR REPLACE FUNCTION "public"."suggest_import_quantity"("p_ingredient_id" "uuid") RETURNS TABLE("ingredient_name" "text", "current_stock" numeric, "initial_stock" numeric, "low_threshold" numeric, "suggest_quantity" numeric, "reason" "text")
+    LANGUAGE "sql"
+    AS $$
+SELECT
+    ing.name,
+    ing.stock_quantity,
+    ing.initial_stock,
+    ing.low_stock_threshold,
+    CASE
+        WHEN ing.stock_quantity <= 0 THEN ing.initial_stock * 1.5  -- Hết → Nhập gấp 1.5
+        WHEN ing.stock_quantity <= ing.low_stock_threshold THEN ing.initial_stock  -- Sắp hết → Nhập full
+        ELSE 0  -- Đủ → Không cần nhập
+    END::NUMERIC AS suggest_quantity,
+    CASE
+        WHEN ing.stock_quantity <= 0 THEN 'Hết - Nhập ngay gấp 1.5 lần'
+        WHEN ing.stock_quantity <= ing.low_stock_threshold THEN 'Sắp hết - Nhập full'
+        ELSE 'Đủ - Không cần'
+    END AS reason
+FROM "public"."ingredients" ing
+WHERE ing.id = p_ingredient_id;
+$$;
+
+
+ALTER FUNCTION "public"."suggest_import_quantity"("p_ingredient_id" "uuid") OWNER TO "postgres";
+
+
 CREATE OR REPLACE FUNCTION "public"."toggle_provisional_bill_status"("p_order_id" "uuid") RETURNS "void"
     LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
@@ -2234,6 +2445,33 @@ $$;
 
 
 ALTER FUNCTION "public"."transfer_order_to_new_table"("p_order_id" "uuid", "p_old_table_id" bigint, "p_new_table_id" bigint) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."update_menu_item_availability"("p_menu_item_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+    v_is_available boolean;
+BEGIN
+    -- Mặc định là có sẵn, sau đó kiểm tra từng nguyên liệu
+    v_is_available := true;
+
+    -- Kiểm tra xem có bất kỳ nguyên liệu nào không đủ không
+    SELECT false INTO v_is_available
+    FROM public.menu_item_ingredients mii
+    JOIN public.ingredients i ON mii.ingredient_id = i.id
+    WHERE mii.menu_item_id = p_menu_item_id
+      AND i.stock_quantity < mii.quantity_required;
+
+    -- Cập nhật lại bảng menu_items
+    UPDATE public.menu_items
+    SET is_available = v_is_available
+    WHERE id = p_menu_item_id;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."update_menu_item_availability"("p_menu_item_id" "uuid") OWNER TO "postgres";
 
 
 CREATE OR REPLACE FUNCTION "public"."update_order_timestamp_on_item_change"() RETURNS "trigger"
@@ -2371,11 +2609,39 @@ CREATE TABLE IF NOT EXISTS "public"."ingredients" (
     "name" "text" NOT NULL,
     "unit" "text" NOT NULL,
     "stock_quantity" numeric(10,2) DEFAULT 0 NOT NULL,
-    "low_stock_threshold" numeric(10,2) DEFAULT 100
+    "low_stock_threshold" numeric(10,2) DEFAULT 100,
+    "initial_stock" numeric(10,2) DEFAULT 100,
+    "last_reset_date" "date" DEFAULT CURRENT_DATE
 );
 
 
 ALTER TABLE "public"."ingredients" OWNER TO "postgres";
+
+
+CREATE OR REPLACE VIEW "public"."ingredients_need_reorder" AS
+ SELECT "id",
+    "name",
+    "unit",
+    "stock_quantity",
+    "low_stock_threshold",
+    "initial_stock",
+        CASE
+            WHEN ("stock_quantity" <= (0)::numeric) THEN 'Hết'::"text"
+            WHEN ("stock_quantity" <= "low_stock_threshold") THEN 'Sắp hết'::"text"
+            ELSE 'Đủ'::"text"
+        END AS "status",
+        CASE
+            WHEN ("stock_quantity" <= (0)::numeric) THEN 'Cần nhập ngay'::"text"
+            WHEN ("stock_quantity" <= "low_stock_threshold") THEN 'Nên nhập trong ngày'::"text"
+            ELSE 'Tồn kho ổn định'::"text"
+        END AS "recommendation",
+    "round"(((("stock_quantity")::numeric / ("low_stock_threshold")::numeric) * (100)::numeric), 1) AS "percentage_of_threshold"
+   FROM "public"."ingredients"
+  WHERE ("stock_quantity" <= "low_stock_threshold")
+  ORDER BY "stock_quantity";
+
+
+ALTER VIEW "public"."ingredients_need_reorder" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."menu_item_ingredients" (
@@ -2386,15 +2652,6 @@ CREATE TABLE IF NOT EXISTS "public"."menu_item_ingredients" (
 
 
 ALTER TABLE "public"."menu_item_ingredients" OWNER TO "postgres";
-
-
-CREATE TABLE IF NOT EXISTS "public"."menu_item_options" (
-    "menu_item_id" "uuid" NOT NULL,
-    "option_group_id" bigint NOT NULL
-);
-
-
-ALTER TABLE "public"."menu_item_options" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."menu_items" (
@@ -2414,6 +2671,92 @@ CREATE TABLE IF NOT EXISTS "public"."menu_items" (
 
 
 ALTER TABLE "public"."menu_items" OWNER TO "postgres";
+
+
+CREATE OR REPLACE VIEW "public"."menu_cost_analysis" AS
+ SELECT "mi"."id",
+    "mi"."name",
+    "mi"."price",
+    COALESCE("sum"(
+        CASE
+            WHEN ("ing"."unit" = 'kg'::"text") THEN ("mii"."quantity_required" * (50000)::numeric)
+            WHEN ("ing"."unit" = 'lít'::"text") THEN ("mii"."quantity_required" * (30000)::numeric)
+            WHEN ("ing"."unit" = 'hộp'::"text") THEN ("mii"."quantity_required" * (25000)::numeric)
+            WHEN ("ing"."unit" = 'chai'::"text") THEN ("mii"."quantity_required" * (40000)::numeric)
+            ELSE ("mii"."quantity_required" * (20000)::numeric)
+        END), (0)::numeric) AS "estimated_cost",
+    ("mi"."price" - COALESCE("sum"(
+        CASE
+            WHEN ("ing"."unit" = 'kg'::"text") THEN ("mii"."quantity_required" * (50000)::numeric)
+            WHEN ("ing"."unit" = 'lít'::"text") THEN ("mii"."quantity_required" * (30000)::numeric)
+            WHEN ("ing"."unit" = 'hộp'::"text") THEN ("mii"."quantity_required" * (25000)::numeric)
+            WHEN ("ing"."unit" = 'chai'::"text") THEN ("mii"."quantity_required" * (40000)::numeric)
+            ELSE ("mii"."quantity_required" * (20000)::numeric)
+        END), (0)::numeric)) AS "estimated_profit",
+    "round"(((("mi"."price" - COALESCE("sum"(
+        CASE
+            WHEN ("ing"."unit" = 'kg'::"text") THEN ("mii"."quantity_required" * (50000)::numeric)
+            WHEN ("ing"."unit" = 'lít'::"text") THEN ("mii"."quantity_required" * (30000)::numeric)
+            WHEN ("ing"."unit" = 'hộp'::"text") THEN ("mii"."quantity_required" * (25000)::numeric)
+            WHEN ("ing"."unit" = 'chai'::"text") THEN ("mii"."quantity_required" * (40000)::numeric)
+            ELSE ("mii"."quantity_required" * (20000)::numeric)
+        END), (0)::numeric)) / "mi"."price") * (100)::numeric)) AS "profit_margin_percent"
+   FROM (("public"."menu_items" "mi"
+     LEFT JOIN "public"."menu_item_ingredients" "mii" ON (("mi"."id" = "mii"."menu_item_id")))
+     LEFT JOIN "public"."ingredients" "ing" ON (("mii"."ingredient_id" = "ing"."id")))
+  WHERE ("mi"."is_active" = true)
+  GROUP BY "mi"."id", "mi"."name", "mi"."price";
+
+
+ALTER VIEW "public"."menu_cost_analysis" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."menu_item_options" (
+    "menu_item_id" "uuid" NOT NULL,
+    "option_group_id" bigint NOT NULL
+);
+
+
+ALTER TABLE "public"."menu_item_options" OWNER TO "postgres";
+
+
+CREATE OR REPLACE VIEW "public"."menu_recipes" AS
+ SELECT "mi"."id" AS "menu_item_id",
+    "mi"."name" AS "menu_name",
+    "ing"."id" AS "ingredient_id",
+    "ing"."name" AS "ingredient_name",
+    "ing"."unit",
+    "mii"."quantity_required" AS "quantity_per_serving",
+        CASE
+            WHEN ("ing"."unit" = 'kg'::"text") THEN (("mii"."quantity_required" * (1000)::numeric) || ' g'::"text")
+            WHEN ("ing"."unit" = 'lít'::"text") THEN (("mii"."quantity_required" * (1000)::numeric) || ' ml'::"text")
+            ELSE "concat"("mii"."quantity_required", ' ', "ing"."unit")
+        END AS "display_quantity"
+   FROM (("public"."menu_items" "mi"
+     JOIN "public"."menu_item_ingredients" "mii" ON (("mi"."id" = "mii"."menu_item_id")))
+     JOIN "public"."ingredients" "ing" ON (("mii"."ingredient_id" = "ing"."id")))
+  ORDER BY "mi"."name", "ing"."name";
+
+
+ALTER VIEW "public"."menu_recipes" OWNER TO "postgres";
+
+
+CREATE OR REPLACE VIEW "public"."menu_with_recipes" AS
+ SELECT "mi"."id",
+    "mi"."name",
+    "mi"."price",
+    "mi"."category_id",
+    "mi"."is_available",
+    "count"("mii"."ingredient_id") AS "num_ingredients",
+    "string_agg"("concat"("ing"."name", ' (', "mii"."quantity_required", "ing"."unit", ')'), ', '::"text") AS "recipe"
+   FROM (("public"."menu_items" "mi"
+     LEFT JOIN "public"."menu_item_ingredients" "mii" ON (("mi"."id" = "mii"."menu_item_id")))
+     LEFT JOIN "public"."ingredients" "ing" ON (("mii"."ingredient_id" = "ing"."id")))
+  WHERE ("mi"."is_active" = true)
+  GROUP BY "mi"."id", "mi"."name", "mi"."price", "mi"."category_id", "mi"."is_available";
+
+
+ALTER VIEW "public"."menu_with_recipes" OWNER TO "postgres";
 
 
 CREATE TABLE IF NOT EXISTS "public"."option_choices" (
@@ -2733,6 +3076,27 @@ ALTER SEQUENCE "public"."tables_id_seq" OWNED BY "public"."tables"."id";
 
 
 
+CREATE OR REPLACE VIEW "public"."today_ingredient_consumption" AS
+ SELECT "ing"."id",
+    "ing"."name",
+    "ing"."unit",
+    COALESCE("sum"((- "sh"."quantity_change")), (0)::numeric) AS "consumed_today",
+    "ing"."stock_quantity" AS "remaining",
+    "ing"."low_stock_threshold",
+        CASE
+            WHEN (("ing"."stock_quantity" / ("ing"."low_stock_threshold")::numeric) < 0.25) THEN '🔴 Nguy hiểm'::"text"
+            WHEN (("ing"."stock_quantity" / ("ing"."low_stock_threshold")::numeric) < 0.5) THEN '🟠 Cảnh báo'::"text"
+            ELSE '🟢 An toàn'::"text"
+        END AS "alert_level"
+   FROM ("public"."ingredients" "ing"
+     LEFT JOIN "public"."stock_history" "sh" ON ((("sh"."ingredient_id" = "ing"."id") AND ("date"("sh"."created_at") = CURRENT_DATE))))
+  GROUP BY "ing"."id", "ing"."name", "ing"."unit", "ing"."stock_quantity", "ing"."low_stock_threshold"
+  ORDER BY COALESCE("sum"((- "sh"."quantity_change")), (0)::numeric) DESC;
+
+
+ALTER VIEW "public"."today_ingredient_consumption" OWNER TO "postgres";
+
+
 CREATE TABLE IF NOT EXISTS "public"."transactions" (
     "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
     "order_id" "uuid" NOT NULL,
@@ -2932,7 +3296,15 @@ ALTER TABLE ONLY "public"."transactions"
 
 
 
+CREATE OR REPLACE TRIGGER "deduct_ingredients_on_order" AFTER INSERT ON "public"."order_items" FOR EACH ROW EXECUTE FUNCTION "public"."deduct_ingredients_on_order"();
+
+
+
 CREATE OR REPLACE TRIGGER "handle_updated_at" BEFORE UPDATE ON "public"."orders" FOR EACH ROW EXECUTE FUNCTION "public"."moddatetime"();
+
+
+
+CREATE OR REPLACE TRIGGER "on_ingredient_stock_update" AFTER UPDATE OF "stock_quantity" ON "public"."ingredients" FOR EACH ROW EXECUTE FUNCTION "public"."handle_ingredient_stock_change"();
 
 
 
@@ -3504,6 +3876,12 @@ GRANT ALL ON FUNCTION "public"."approve_cancellation_request"("p_request_id" "uu
 
 
 
+GRANT ALL ON FUNCTION "public"."calculate_ingredients_needed"("p_menu_item_id" "uuid", "p_quantity" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."calculate_ingredients_needed"("p_menu_item_id" "uuid", "p_quantity" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."calculate_ingredients_needed"("p_menu_item_id" "uuid", "p_quantity" integer) TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."cancel_order_and_reset_tables"("p_order_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."cancel_order_and_reset_tables"("p_order_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."cancel_order_and_reset_tables"("p_order_id" "uuid") TO "service_role";
@@ -3696,6 +4074,12 @@ GRANT ALL ON FUNCTION "public"."get_receivables_report"("p_start_date" "date", "
 
 
 
+GRANT ALL ON FUNCTION "public"."get_reorder_suggestions"() TO "anon";
+GRANT ALL ON FUNCTION "public"."get_reorder_suggestions"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_reorder_suggestions"() TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."get_sales_report"("p_start_date" "date", "p_end_date" "date") TO "anon";
 GRANT ALL ON FUNCTION "public"."get_sales_report"("p_start_date" "date", "p_end_date" "date") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."get_sales_report"("p_start_date" "date", "p_end_date" "date") TO "service_role";
@@ -3723,6 +4107,12 @@ GRANT ALL ON FUNCTION "public"."get_transactions_with_details"("p_start_date" ti
 GRANT ALL ON FUNCTION "public"."handle_cancellation_request_update"() TO "anon";
 GRANT ALL ON FUNCTION "public"."handle_cancellation_request_update"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."handle_cancellation_request_update"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."handle_ingredient_stock_change"() TO "anon";
+GRANT ALL ON FUNCTION "public"."handle_ingredient_stock_change"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."handle_ingredient_stock_change"() TO "service_role";
 
 
 
@@ -3774,6 +4164,12 @@ GRANT ALL ON FUNCTION "public"."moddatetime"() TO "service_role";
 
 
 
+GRANT ALL ON FUNCTION "public"."reset_daily_stock"() TO "anon";
+GRANT ALL ON FUNCTION "public"."reset_daily_stock"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."reset_daily_stock"() TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."reset_table_status_on_order_close"() TO "anon";
 GRANT ALL ON FUNCTION "public"."reset_table_status_on_order_close"() TO "authenticated";
 GRANT ALL ON FUNCTION "public"."reset_table_status_on_order_close"() TO "service_role";
@@ -3783,6 +4179,18 @@ GRANT ALL ON FUNCTION "public"."reset_table_status_on_order_close"() TO "service
 GRANT ALL ON FUNCTION "public"."send_provisional_bill"("p_order_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."send_provisional_bill"("p_order_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."send_provisional_bill"("p_order_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."setup_ingredient"("p_name" "text", "p_unit" "text", "p_initial_stock" numeric, "p_low_threshold" numeric) TO "anon";
+GRANT ALL ON FUNCTION "public"."setup_ingredient"("p_name" "text", "p_unit" "text", "p_initial_stock" numeric, "p_low_threshold" numeric) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."setup_ingredient"("p_name" "text", "p_unit" "text", "p_initial_stock" numeric, "p_low_threshold" numeric) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."setup_menu_recipe"("p_menu_item_id" "uuid", "p_ingredient_name" "text", "p_quantity_required" numeric) TO "anon";
+GRANT ALL ON FUNCTION "public"."setup_menu_recipe"("p_menu_item_id" "uuid", "p_ingredient_name" "text", "p_quantity_required" numeric) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."setup_menu_recipe"("p_menu_item_id" "uuid", "p_ingredient_name" "text", "p_quantity_required" numeric) TO "service_role";
 
 
 
@@ -3798,6 +4206,12 @@ GRANT ALL ON FUNCTION "public"."sp_process_item_return"("p_order_id" "uuid", "p_
 
 
 
+GRANT ALL ON FUNCTION "public"."suggest_import_quantity"("p_ingredient_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."suggest_import_quantity"("p_ingredient_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."suggest_import_quantity"("p_ingredient_id" "uuid") TO "service_role";
+
+
+
 GRANT ALL ON FUNCTION "public"."toggle_provisional_bill_status"("p_order_id" "uuid") TO "anon";
 GRANT ALL ON FUNCTION "public"."toggle_provisional_bill_status"("p_order_id" "uuid") TO "authenticated";
 GRANT ALL ON FUNCTION "public"."toggle_provisional_bill_status"("p_order_id" "uuid") TO "service_role";
@@ -3807,6 +4221,12 @@ GRANT ALL ON FUNCTION "public"."toggle_provisional_bill_status"("p_order_id" "uu
 GRANT ALL ON FUNCTION "public"."transfer_order_to_new_table"("p_order_id" "uuid", "p_old_table_id" bigint, "p_new_table_id" bigint) TO "anon";
 GRANT ALL ON FUNCTION "public"."transfer_order_to_new_table"("p_order_id" "uuid", "p_old_table_id" bigint, "p_new_table_id" bigint) TO "authenticated";
 GRANT ALL ON FUNCTION "public"."transfer_order_to_new_table"("p_order_id" "uuid", "p_old_table_id" bigint, "p_new_table_id" bigint) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."update_menu_item_availability"("p_menu_item_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."update_menu_item_availability"("p_menu_item_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."update_menu_item_availability"("p_menu_item_id" "uuid") TO "service_role";
 
 
 
@@ -3891,9 +4311,27 @@ GRANT ALL ON TABLE "public"."ingredients" TO "service_role";
 
 
 
+GRANT ALL ON TABLE "public"."ingredients_need_reorder" TO "anon";
+GRANT ALL ON TABLE "public"."ingredients_need_reorder" TO "authenticated";
+GRANT ALL ON TABLE "public"."ingredients_need_reorder" TO "service_role";
+
+
+
 GRANT ALL ON TABLE "public"."menu_item_ingredients" TO "anon";
 GRANT ALL ON TABLE "public"."menu_item_ingredients" TO "authenticated";
 GRANT ALL ON TABLE "public"."menu_item_ingredients" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."menu_items" TO "anon";
+GRANT ALL ON TABLE "public"."menu_items" TO "authenticated";
+GRANT ALL ON TABLE "public"."menu_items" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."menu_cost_analysis" TO "anon";
+GRANT ALL ON TABLE "public"."menu_cost_analysis" TO "authenticated";
+GRANT ALL ON TABLE "public"."menu_cost_analysis" TO "service_role";
 
 
 
@@ -3903,9 +4341,15 @@ GRANT ALL ON TABLE "public"."menu_item_options" TO "service_role";
 
 
 
-GRANT ALL ON TABLE "public"."menu_items" TO "anon";
-GRANT ALL ON TABLE "public"."menu_items" TO "authenticated";
-GRANT ALL ON TABLE "public"."menu_items" TO "service_role";
+GRANT ALL ON TABLE "public"."menu_recipes" TO "anon";
+GRANT ALL ON TABLE "public"."menu_recipes" TO "authenticated";
+GRANT ALL ON TABLE "public"."menu_recipes" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."menu_with_recipes" TO "anon";
+GRANT ALL ON TABLE "public"."menu_with_recipes" TO "authenticated";
+GRANT ALL ON TABLE "public"."menu_with_recipes" TO "service_role";
 
 
 
@@ -4050,6 +4494,12 @@ GRANT ALL ON TABLE "public"."tables" TO "service_role";
 GRANT ALL ON SEQUENCE "public"."tables_id_seq" TO "anon";
 GRANT ALL ON SEQUENCE "public"."tables_id_seq" TO "authenticated";
 GRANT ALL ON SEQUENCE "public"."tables_id_seq" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."today_ingredient_consumption" TO "anon";
+GRANT ALL ON TABLE "public"."today_ingredient_consumption" TO "authenticated";
+GRANT ALL ON TABLE "public"."today_ingredient_consumption" TO "service_role";
 
 
 

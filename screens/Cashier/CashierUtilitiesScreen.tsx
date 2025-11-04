@@ -98,21 +98,7 @@ export default function CashierUtilitiesScreen() {
             title="Kho" 
             onPress={() => navigation.navigate('Inventory')}
           />
-          <UtilityItem 
-            icon="cart-outline" 
-            title="Mua hàng" 
-            onPress={() => navigation.navigate('Purchase')}
-          />
-          <UtilityItem 
-            icon="restaurant-outline" 
-            title="Thực đơn" 
-            onPress={() => navigation.navigate('MenuManagement')}
-          />
-           {/* <UtilityItem 
-            icon="pricetag-outline" 
-            title="Khuyến mãi" 
-            onPress={() => navigation.navigate('Promotions')}
-          /> */}
+         
         </View>
       </ScrollView>
 

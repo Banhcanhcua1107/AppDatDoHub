@@ -56,7 +56,8 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
             // [THAY ĐỔI LỚN] loginUser bây giờ trả về một object
             const loginData = await loginUser(email, password);
 
-            // console.log("DỮ LIỆU ĐĂNG NHẬP NHẬN ĐƯỢC:", JSON.stringify(loginData, null, 2));ư
+            console.log("DỮ LIỆU ĐĂNG NHẬP NHẬN ĐƯỢC:", JSON.stringify(loginData, null, 2));
+            console.log("🔍 Role từ profile:", loginData?.userProfile?.role);
 
             // Truyền toàn bộ object { session, userProfile } vào hàm login của context
             login(loginData); 
@@ -64,13 +65,15 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
             Toast.show({
               type: 'success',
               text1: 'Đăng nhập thành công',
-              text2: 'Chào mừng trở lại!',
+              text2: `Role: ${loginData?.userProfile?.role || 'unknown'}`,
             });
 
             // Sau khi login thành công, AppNavigator sẽ tự động chuyển màn hình
             // dựa trên vai trò, bạn không cần gọi navigation.navigate ở đây.
 
           } catch (error: any) {
+            console.error("❌ LoginScreen ERROR:", error);
+            console.error("❌ Error Message:", error.message);
             Toast.show({
               type: 'error',
               text1: 'Đăng nhập thất bại',

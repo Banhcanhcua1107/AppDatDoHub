@@ -228,19 +228,7 @@ export default function CreatePurchaseOrderScreen() {
 
     return (
         <SafeAreaView style={styles.container}>
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()}>
-                    <Ionicons name="arrow-back" size={24} color="#334155" />
-                </TouchableOpacity>
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                    <Text style={styles.headerTitle}>Tạo Phiếu Nhập Kho</Text>
-                    <Text style={styles.headerSubtitle}>{selectedIngredients.length} loại nguyên liệu</Text>
-                </View>
-                <View style={styles.itemCountBadge}>
-                    <Text style={styles.itemCountText}>{selectedIngredients.length}</Text>
-                </View>
-            </View>
-
+        
             <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
                 {selectedIngredients.length > 0 && (
                     <View style={styles.statsCard}>

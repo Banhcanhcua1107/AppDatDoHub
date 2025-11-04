@@ -31,23 +31,19 @@ import MoMoQRCodeScreen from '../screens/Orders/MoMoQRCodeScreen';
 import ChangePasswordScreen from '../screens/Profile/ChangePasswordScreen';
 import BillHistoryScreen from '../screens/Utilities/BillHistoryScreen';
 import ReturnHistoryArchiveScreen from '../screens/Utilities/ReturnHistoryArchiveScreen';
-// --- [SỬA LỖI] Import KitchenTabs và xóa import KitchenDisplayScreen không cần thiết ---
 import KitchenTabs from './KitchenTabs';
 import KitchenDetailScreen from '../screens/Kitchen/KitchenDetailScreen';
 import KitchenSummaryDetailScreen from '../screens/Kitchen/KitchenSummaryDetailScreen';
 import KitchenProcessingReportScreen from 'screens/Kitchen/KitchenProcessingReportScreen';
 import ItemAvailabilityScreen from 'screens/Kitchen/ItemAvailabilityScreen';
-import ReturnHistoryScreen from 'screens/Kitchen/ReturnHistoryScreen'; // [MỚI]
-import CancellationRequestsDetailScreen from '../screens/Kitchen/CancellationRequestsDetailScreen'; // [MỚI]
-// --- [THÊM] Import CashierTabs và các màn hình Thu ngân ---
+import ReturnHistoryScreen from 'screens/Kitchen/ReturnHistoryScreen';
+import CancellationRequestsDetailScreen from '../screens/Kitchen/CancellationRequestsDetailScreen';
 import CashierTabs from './CashierTabs';
 import DashboardScreen from '../screens/Cashier/DashboardScreen';
 import CashierReportScreen from '../screens/Cashier/CashierReportScreen';
 import ProfitDetailScreen from '../screens/Cashier/ProfitDetailScreen';
 import SalesDetailScreen from '../screens/Cashier/SalesDetailScreen';
 import InventoryDetailScreen from '../screens/Cashier/InventoryDetailScreen';
-// import CashFlowDetailScreen from '../screens/Cashier/CashFlowDetailScreen';
-import PurchaseScreen from '../screens/Cashier/PurchaseScreen';
 import InventoryScreen from '../screens/Cashier/InventoryScreen';
 import CreatePurchaseOrderScreen from '../screens/Cashier/CreatePurchaseOrderScreen';
 import PurchaseOrderDetailScreen from '../screens/Cashier/PurchaseOrderDetailScreen';
@@ -55,52 +51,50 @@ import CashFundScreen from '../screens/Cashier/CashFundScreen';
 import BankFundScreen from '../screens/Cashier/BankFundScreen';
 import ExpensesScreen from '../screens/Cashier/ExpensesScreen';
 import PromotionsScreen from '../screens/Cashier/PromotionsScreen';
-import MenuManagementScreen from '../screens/Cashier/MenuManagementScreen';
 import TopItemsScreen from '../screens/Cashier/TopItemsScreen';
 import AllActivitiesScreen from '../screens/Cashier/AllActivitiesScreen';
 import FinancialSummaryScreen from 'screens/Cashier/FinancialSummaryScreen';
 
+// --- [THÊM] Import AdminTabs ---
+import AdminTabs from './AdminTabs';
+
+
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 const AppStack = createNativeStackNavigator<AppStackParamList>();
-// --- [SỬA LỖI] Khai báo KitchenStack ở đây, MỘT LẦN DUY NHẤT ---
+
 export type KitchenStackParamList = {
-  KitchenRoot: undefined; // Màn hình chứa các tab
-  KitchenDetail: { orderId: string; tableName: string }; // Màn hình chi tiết
-  KitchenSummaryDetail: { itemName: string }; 
+  KitchenRoot: undefined;
+  KitchenDetail: { orderId: string; tableName: string };
+  KitchenSummaryDetail: { itemName: string };
   KitchenProcessingReport: undefined;
   ItemAvailability: undefined;
-  ReturnHistory: undefined; // [MỚI] Lịch sử trả món
+  ReturnHistory: undefined;
   CancellationRequests: undefined;
-  CancellationRequestsDetail: { orderId: string; tableName: string }; // [MỚI] Danh sách yêu cầu hủy/trả cho từng bàn
+  CancellationRequestsDetail: { orderId: string; tableName: string };
 };
 
 const KitchenStack = createNativeStackNavigator<KitchenStackParamList>();
 
-// --- [THÊM] Khai báo CashierStack cho Thu ngân ---
 export type CashierStackParamList = {
-  CashierRoot: undefined; // Màn hình chứa các tab
-  Dashboard: undefined; // Tổng quan
+  CashierRoot: undefined;
+  Dashboard: undefined;
   CashierReport: undefined;
-  ProfitDetail: undefined; // [MỚI] Chi tiết lợi nhuận
-  SalesDetail: undefined; // [MỚI] Chi tiết doanh thu
-  InventoryDetail: undefined; // [MỚI] Chi tiết tồn kho
-  CashFlowDetail: undefined; // [MỚI] Chi tiết quỹ tiền
+  ProfitDetail: undefined;
+  SalesDetail: undefined;
+  InventoryDetail: undefined;
+  CashFlowDetail: undefined;
   FinancialSummary: undefined;
-  Purchase: undefined;
   Inventory: undefined;
   CashFund: undefined;
   BankFund: undefined;
   Expenses: undefined;
   Promotions: undefined;
   MenuManagement: undefined;
-  TopItems: undefined; // [MỚI] Xem tất cả món bán chạy
-  AllActivities: undefined; // [MỚI] Xem tất cả hoạt động
-  // Thêm các màn hình dùng chung
+  TopItems: undefined;
+  AllActivities: undefined;
   ChangePassword: undefined;
   BillHistory: undefined;
   ReturnHistoryArchive: undefined;
-  // Thêm các màn hình dùng chungReturnHistoryArchive: undefined;
-  // Thêm các màn hình Menu và Order (giống nhân viên)
   Menu: { tableId: string; tableName: string; orderId?: string; fromOrderConfirmation?: boolean };
   OrderConfirmation: { orderId: string; tableId: string; tableName: string };
   TableSelection: any;
@@ -131,7 +125,6 @@ export type CashierStackParamList = {
 const CashierStack = createNativeStackNavigator<CashierStackParamList>();
 
 
-// --- Navigator cho luồng Xác thực (Giữ nguyên) ---
 const AuthNavigator = () => (
     <AuthStack.Navigator initialRouteName={ROUTES.LOGIN} screenOptions={{ headerShown: false }}>
         <AuthStack.Screen name={ROUTES.LOGIN} component={LoginScreen} />
@@ -144,7 +137,6 @@ const AuthNavigator = () => (
     </AuthStack.Navigator>
 );
 
-// --- Navigator cho luồng Nhân Viên (Giữ nguyên) ---
 const MainAppStack = () => (
     <AppStack.Navigator screenOptions={{ headerShown: false }}>
         <AppStack.Screen name={ROUTES.APP_TABS} component={BottomTabs} />
@@ -163,13 +155,12 @@ const MainAppStack = () => (
         <AppStack.Screen name={ROUTES.CHANGE_PASSWORD} component={ChangePasswordScreen} />
         <AppStack.Screen name={ROUTES.BILL_HISTORY} component={BillHistoryScreen} />
         <AppStack.Screen name={ROUTES.RETURN_HISTORY_ARCHIVE} component={ReturnHistoryArchiveScreen} />
-        <AppStack.Screen name={ROUTES.MOMO_QR_CODE} component={MoMoQRCodeScreen} />
+        {/* Dòng MoMo thứ hai bị trùng lặp, có thể xóa đi */}
+        {/* <AppStack.Screen name={ROUTES.MOMO_QR_CODE} component={MoMoQRCodeScreen} /> */}
     </AppStack.Navigator>
 );
 
 
-// --- [SỬA LỖI] Xóa bỏ hoàn toàn KitchenNavigator và các component tạm thời cũ ---
-// --- Navigator mới cho luồng Bếp ---
 const KitchenNavigator = () => (
   <KitchenStack.Navigator screenOptions={{ headerShown: false }}>
     <KitchenStack.Screen name="KitchenRoot" component={KitchenTabs} />
@@ -182,7 +173,6 @@ const KitchenNavigator = () => (
   </KitchenStack.Navigator>
 );
 
-// --- [THÊM] Navigator mới cho luồng Thu ngân ---
 const CashierNavigator = () => (
   <CashierStack.Navigator screenOptions={{ headerShown: false }}>
     <CashierStack.Screen name="CashierRoot" component={CashierTabs} />
@@ -191,8 +181,6 @@ const CashierNavigator = () => (
     <CashierStack.Screen name="ProfitDetail" component={ProfitDetailScreen} options={{ headerShown: false }} />
     <CashierStack.Screen name="SalesDetail" component={SalesDetailScreen} options={{ headerShown: false }} />
     <CashierStack.Screen name="InventoryDetail" component={InventoryDetailScreen} options={{ headerShown: false }} />
-    {/* <CashierStack.Screen name="CashFlowDetail" component={CashFlowDetailScreen} options={{ headerShown: false }} /> */}
-    <CashierStack.Screen name="Purchase" component={PurchaseScreen} options={{ headerShown: true, title: 'Mua hàng' }} />
     <CashierStack.Screen name="Inventory" component={InventoryScreen} options={{ headerShown: true, title: 'Kho' }} />
     <CashierStack.Screen name="CreatePurchaseOrder" component={CreatePurchaseOrderScreen} options={{ headerShown: true, title: 'Tạo đơn hàng' }} />
     <CashierStack.Screen name="PurchaseOrderDetail" component={PurchaseOrderDetailScreen} options={{ headerShown: true, title: 'Chi tiết đơn hàng' }} />
@@ -201,7 +189,6 @@ const CashierNavigator = () => (
     <CashierStack.Screen name="Expenses" component={ExpensesScreen} options={{ headerShown: true, title: 'Chi phí' }} />
     <CashierStack.Screen name="FinancialSummary" component={FinancialSummaryScreen} options={{ headerShown: true, title: 'Tổng kết tài chính' }} />
     <CashierStack.Screen name="Promotions" component={PromotionsScreen} options={{ headerShown: true, title: 'Khuyến mãi' }} />
-    <CashierStack.Screen name="MenuManagement" component={MenuManagementScreen} options={{ headerShown: true, title: 'Thực đơn' }} />
     <CashierStack.Screen name="TopItems" component={TopItemsScreen} options={{ headerShown: true, title: 'Món bán chạy' }} />
     <CashierStack.Screen name="AllActivities" component={AllActivitiesScreen} options={{ headerShown: true, title: 'Hoạt động gần đây' }} />
     <CashierStack.Screen name="ChangePassword" component={ChangePasswordScreen} />
@@ -222,8 +209,6 @@ const CashierNavigator = () => (
   </CashierStack.Navigator>
 );
 
-
-// --- Component Navigator Chính (Đã được cập nhật) ---
 export default function AppNavigator() {
   const { isAuthenticated, isLoading, userProfile } = useAuth();
 
@@ -239,6 +224,8 @@ export default function AppNavigator() {
     <NavigationContainer>
       {isAuthenticated && userProfile ? (
         <>
+          {/* --- [SỬA ĐỔI] Thêm điều kiện cho vai trò 'admin' --- */}
+          {userProfile.role === 'admin' && <AdminTabs />}
           {userProfile.role === 'bep' && <KitchenNavigator />}
           {userProfile.role === 'nhan_vien' && <MainAppStack />}
           {userProfile.role === 'thu_ngan' && <CashierNavigator />}
