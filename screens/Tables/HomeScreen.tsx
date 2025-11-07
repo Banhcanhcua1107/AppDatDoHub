@@ -1,6 +1,6 @@
-// --- START OF FILE HomeScreen.tsx ---
+// screens/Home/HomeScreen.tsx
 
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react'; // [SỬA LỖI] Thêm useCallback
 import {
   View,
   Text,
@@ -23,9 +23,19 @@ import OrderInfoBox from '../Menu/OrderInfoBox';
 import EmptyTableActionBox from '../Menu/EmptyTableActionBox';
 import ConfirmModal from '../../components/ConfirmModal';
 import ActionSheetModal from '../../components/ActionSheetModal';
-type TableStatus = 'Trống' | 'Đang phục vụ' | 'Đặt trước';
-type TableItemData = { id: string; name: string; status: TableStatus; seats?: number };
 
+type TableStatus = 'Trống' | 'Đang phục vụ' | 'Đặt trước';
+
+type TableItemData = {
+  id: string;
+  name: string;
+  status: TableStatus;
+  seats?: number;
+  has_out_of_stock_alert?: boolean;
+  orderId?: string; // [MỚI] Thêm orderId để truyền khi mở thông báo
+};
+
+// --- Component StatusLegend và TableGridItem không thay đổi ---
 const StatusLegend: React.FC<{ color: string; text: string }> = ({ color, text }) => (
   <View className="flex-row items-center mr-5">
     <View style={{ backgroundColor: color }} className="w-4 h-4 rounded-sm mr-2" />
@@ -37,7 +47,8 @@ const TableGridItem: React.FC<{
   item: TableItemData;
   onPress: () => void;
   onLongPress: () => void;
-}> = ({ item, onPress, onLongPress }) => {
+  onAlertPress?: () => void; // [MỚI] Callback khi bấm icon cảnh báo
+}> = ({ item, onPress, onLongPress, onAlertPress }) => {
   const getStatusTheme = () => {
     switch (item.status) {
       case 'Trống':
@@ -59,9 +70,17 @@ const TableGridItem: React.FC<{
         style={({ pressed }) => [{ transform: [{ scale: pressed ? 0.98 : 1 }] }]}
       >
         <View className="bg-white rounded-2xl p-4" style={styleSheet.shadow}>
-          <View className="flex-row items-center mb-2">
-            <Icon name="reader-outline" size={30} color={theme.color} />
-            <Text className="text-base font-bold text-gray-800 ml-2">{item.name}</Text>
+          {/* Header với tên bàn và icon cảnh báo */}
+          <View className="flex-row items-center justify-between mb-2">
+            <View className="flex-row items-center flex-1">
+              <Icon name="reader-outline" size={30} color={theme.color} />
+              <Text className="text-base font-bold text-gray-800 ml-2">{item.name}</Text>
+            </View>
+            {item.has_out_of_stock_alert && (
+              <TouchableOpacity onPress={onAlertPress} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}>
+                <Icon name="alert-circle" size={24} color="#EF4444" />
+              </TouchableOpacity>
+            )}
           </View>
           <View className="flex-row items-center justify-between">
             <Text className={`text-sm font-semibold ${theme.textColor}`}>{item.status}</Text>
@@ -78,6 +97,7 @@ const TableGridItem: React.FC<{
   );
 };
 
+
 type HomeScreenProps = CompositeScreenProps<
   BottomTabScreenProps<AppTabParamList, typeof ROUTES.HOME_TAB>,
   NativeStackScreenProps<AppStackParamList>
@@ -85,15 +105,13 @@ type HomeScreenProps = CompositeScreenProps<
 
 const HomeScreen = ({ navigation }: HomeScreenProps) => {
   const insets = useSafeAreaInsets();
-  const [tables, setTables] = React.useState<TableItemData[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  // [PHỤC HỒI] State để quản lý OrderInfoBox
+  const [tables, setTables] = useState<TableItemData[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isBoxVisible, setBoxVisible] = useState(false);
   const [selectedTable, setSelectedTable] = useState<{ id: string; name: string } | null>(null);
   const [emptyTableBoxVisible, setEmptyTableBoxVisible] = useState(false);
   const [selectedEmptyTable, setSelectedEmptyTable] = useState<{ id: string; name: string } | null>(null);
   
-  // State cho modals
   const [cancelReservationModal, setCancelReservationModal] = useState<{
     visible: boolean;
     table: TableItemData | null;
@@ -104,41 +122,80 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
     table: TableItemData | null;
   }>({ visible: false, table: null });
 
-  const fetchTables = React.useCallback(async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from('tables')
-      .select('id, name, status, seats')
-      .order('id', { ascending: true });
-    if (error) {
-      Alert.alert('Lỗi', 'Không thể tải danh sách bàn.');
-    } else if (data) {
-      setTables(data.map((item) => ({ ...item, id: String(item.id) })));
-    }
-    setLoading(false);
-  }, []);
+  // [SỬA LỖI] Tách hàm fetchTables ra và không cho nó phụ thuộc vào state `loading`
+  const fetchTables = useCallback(async (isInitialLoad = false) => {
+    if (isInitialLoad) setLoading(true); // Chỉ set loading true khi là lần load đầu
 
+    try {
+        const { data, error } = await supabase.rpc('get_tables_with_notifications');
+
+        if (error) {
+            Alert.alert('Lỗi', 'Không thể tải danh sách bàn: ' + error.message);
+        } else if (data) {
+            // [MỚI] Lấy orderId cho mỗi bàn
+            const tablesWithOrders = await Promise.all(
+              data.map(async (item: any) => {
+                const { data: orderData } = await supabase
+                  .from('order_tables')
+                  .select('orders(id)')
+                  .eq('table_id', item.id)
+                  .in('orders.status', ['pending', 'paid'])
+                  .limit(1)
+                  .single();
+                
+                return {
+                  ...item,
+                  id: String(item.id),
+                  orderId: orderData?.orders?.id || undefined,
+                };
+              })
+            );
+            setTables(tablesWithOrders);
+        }
+    } catch (error: any) {
+        console.error('Error fetching tables:', error.message);
+    } finally {
+        if (isInitialLoad) setLoading(false); // Đảm bảo luôn set loading false sau khi load xong
+    }
+  }, []); // Dependency array rỗng để hàm không bị tạo lại
+
+  // [SỬA LỖI] Cấu trúc lại useFocusEffect
   useFocusEffect(
-    React.useCallback(() => {
-      fetchTables();
-      const channel = supabase
+    useCallback(() => {
+      // Gọi fetchTables cho lần load đầu tiên
+      fetchTables(true);
+
+      const tablesChannel = supabase
         .channel('public:tables_home')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, (payload) => {
-          console.log('Table change detected, refetching.');
-          fetchTables();
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, 
+        () => fetchTables(false) // Gọi refresh nền, không set loading
+        )
+        .subscribe();
+      
+      const notificationsChannel = supabase
+        .channel('public:return_notifications_home')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'return_notifications' }, (payload) => {
+            if(payload.new?.notification_type === 'out_of_stock' || payload.old?.notification_type === 'out_of_stock') {
+                 fetchTables(false); // Gọi refresh nền, không set loading
+            }
         })
         .subscribe();
+
       return () => {
-        supabase.removeChannel(channel);
+        supabase.removeChannel(tablesChannel);
+        supabase.removeChannel(notificationsChannel);
       };
-    }, [fetchTables])
+    }, [fetchTables]) // Chỉ phụ thuộc vào fetchTables (hàm này giờ đã ổn định)
   );
 
-  // Hàm tạo bàn đã ẩn - chỉ admin có thể tạo thông qua hệ thống quản lý
-  // const handleAddTable = async () => { ... };
 
-  // [SỬA LỖI TRIỆT ĐỂ] Thay đổi luồng xử lý khi nhấn vào bàn
   const handlePressTable = (table: TableItemData) => {
+    if (table.has_out_of_stock_alert) {
+        setSelectedTable({ id: table.id, name: table.name });
+        setBoxVisible(true); 
+        return;
+    }
+
     if (table.status === 'Trống') {
       setSelectedEmptyTable({ id: table.id, name: table.name });
       setEmptyTableBoxVisible(true);
@@ -161,7 +218,9 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
     if (error) Alert.alert('Lỗi', `Không thể cập nhật trạng thái bàn thành "${status}".`);
   };
 
-  const handleEmptyTableAction = (action: string, data?: any) => {
+  // Các hàm còn lại giữ nguyên, không thay đổi
+  // ... (handleEmptyTableAction, handleOrderAction, return JSX...)
+    const handleEmptyTableAction = (action: string, data?: any) => {
     setEmptyTableBoxVisible(false);
     if (!data?.tableId) {
       return;
@@ -199,7 +258,6 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
       return;
     }
     
-    // Xử lý từng action cụ thể
     switch (action) {
       case 'go_to_order_details':
       case 'go_to_payment':
@@ -266,12 +324,11 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
         Alert.alert('Thông báo', 'Chức năng in phiếu kiểm đồ đang được phát triển.');
         break;
         
-      // cancel_order sẽ được xử lý trực tiếp trong OrderInfoBox
       default:
         break;
     }
   };
-
+  
   if (loading) {
     return (
       <View
@@ -290,7 +347,6 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
   return (
     <View style={{ flex: 1, backgroundColor: '#F8F9FA' }}>
       <StatusBar barStyle="dark-content" backgroundColor="#F8F9FA" />
-      {/* ... (Phần Header không đổi) ... */}
       <View style={{ paddingTop: insets.top + 20 }} className="px-5 pt-4 pb-3">
         <View className="flex-row items-center justify-between">
           <View>
@@ -317,14 +373,22 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
             item={item}
             onPress={() => handlePressTable(item)}
             onLongPress={() => handleLongPressTable(item)}
+            onAlertPress={() => {
+              // [MỚI] Điều hướng đến trang thông báo chỉ cho order của bàn này
+              if (item.orderId) {
+                navigation.navigate(ROUTES.RETURN_NOTIFICATIONS, {
+                  orderId: item.orderId,
+                });
+              } else {
+                Alert.alert('Thông báo', 'Bàn này không có order nào đang phục vụ.');
+              }
+            }}
           />
         )}
         keyExtractor={(item) => item.id}
         numColumns={2}
         contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: 100, paddingTop: 16 }}
       />
-      {/* FAB ẩn - Chỉ admin mới có thể tạo bàn thông qua hệ thống quản lý */}
-
       {selectedTable?.id && (
         <OrderInfoBox
           isVisible={isBoxVisible && !!selectedTable?.id}
@@ -337,7 +401,6 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
           onActionPress={handleOrderAction}
         />
       )}
-
       {selectedEmptyTable?.id && (
         <EmptyTableActionBox
           isVisible={emptyTableBoxVisible && !!selectedEmptyTable?.id}
@@ -350,8 +413,6 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
           onAction={handleEmptyTableAction}
         />
       )}
-
-      {/* Action Sheet cho bàn Đặt trước */}
       <ActionSheetModal
         visible={actionSheetVisible.visible && actionSheetVisible.table?.status === 'Đặt trước'}
         onClose={() => setActionSheetVisible({ visible: false, table: null })}
@@ -386,8 +447,6 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
           },
         ]}
       />
-
-      {/* Action Sheet cho bàn Trống (long press) */}
       <ActionSheetModal
         visible={actionSheetVisible.visible && actionSheetVisible.table?.status === 'Trống'}
         onClose={() => setActionSheetVisible({ visible: false, table: null })}
@@ -422,8 +481,6 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
           },
         ]}
       />
-
-      {/* Confirm Modal cho Hủy đặt */}
       <ConfirmModal
         isVisible={cancelReservationModal.visible}
         title="Xác nhận Hủy Đặt"
@@ -458,20 +515,14 @@ const styleSheet = StyleSheet.create({
     shadowRadius: 12,
     elevation: 5,
   },
-  fab: {
+  alertIconContainer: {
     position: 'absolute',
-    right: 20,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#3B82F6',
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
+    top: -5,
+    right: -5,
+    backgroundColor: 'white',
+    borderRadius: 15,
+    padding: 2,
+    zIndex: 1,
   },
 });
 

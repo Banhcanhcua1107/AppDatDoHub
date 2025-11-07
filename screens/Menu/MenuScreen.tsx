@@ -250,6 +250,34 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
   const [isFilterModalVisible, setFilterModalVisible] = useState(false);
   const [selectedFilterCategoryIds, setSelectedFilterCategoryIds] = useState<string[]>([]);
 
+  // [MỚI] Hàm tự động cập nhật remaining_quantity = 0 cho các món hết hàng
+  const syncOutOfStockItems = useCallback(async () => {
+    try {
+      const { data: outOfStockItems, error } = await supabase
+        .from('menu_items')
+        .select('id, is_available, remaining_quantity')
+        .eq('is_available', false);
+      
+      if (error) throw error;
+      
+      if (outOfStockItems && outOfStockItems.length > 0) {
+        // Chỉ update những món có remaining_quantity !== 0
+        const itemsToUpdate = outOfStockItems.filter(item => item.remaining_quantity !== 0);
+        
+        if (itemsToUpdate.length > 0) {
+          const { error: updateError } = await supabase
+            .from('menu_items')
+            .update({ remaining_quantity: 0 })
+            .in('id', itemsToUpdate.map(item => item.id));
+          
+          if (updateError) throw updateError;
+        }
+      }
+    } catch (error: any) {
+      console.error('[syncOutOfStockItems] Lỗi:', error.message);
+    }
+  }, []);
+
   // [CẬP NHẬT] Callback được giữ nguyên logic, chỉ cần gọi trong useFocusEffect
   const fetchData = useCallback(async () => {
         try {
@@ -321,6 +349,7 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
       const initializeData = async () => {
         if (!isActive) return;
         setLoading(true);
+        await syncOutOfStockItems(); // [MỚI] Cập nhật remaining_quantity trước tiên
         await fetchData();
         if (isActive) setLoading(false);
       };
@@ -348,12 +377,24 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
         }
         supabase.removeChannel(channel);
       };
-    }, [tableId, fetchData])
+    }, [tableId, fetchData, syncOutOfStockItems])
   );
 
-  const handleSelectItem = (item: MenuItemFromDB) => {
+  const handleSelectItem = async (item: MenuItemFromDB) => {
     if (!item.is_available) {
+      // [MỚI] Cập nhật remaining_quantity về 0 khi hết hàng
+      try {
+        await supabase
+          .from('menu_items')
+          .update({ remaining_quantity: 0 })
+          .eq('id', item.id)
+          .throwOnError();
+      } catch (error: any) {
+        console.error('Lỗi cập nhật số lượng:', error.message);
+      }
+      
       Toast.show({ type: 'info', text1: 'Thông báo', text2: `Món "${item.name}" đã hết hàng.` });
+      await fetchData(); // Tải lại dữ liệu để cập nhật UI
       return;
     }
     setSelectedItem(item);

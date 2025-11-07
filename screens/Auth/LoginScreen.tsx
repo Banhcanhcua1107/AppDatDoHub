@@ -72,8 +72,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
             // dựa trên vai trò, bạn không cần gọi navigation.navigate ở đây.
 
           } catch (error: any) {
-            console.error("❌ LoginScreen ERROR:", error);
-            console.error("❌ Error Message:", error.message);
             Toast.show({
               type: 'error',
               text1: 'Đăng nhập thất bại',

@@ -23,7 +23,7 @@ export default function AdminTabs() {
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: '#999',
         tabBarStyle: { paddingBottom: 5, height: 60, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '500' },
+        tabBarLabelStyle: { fontSize: 12, fontWeight: '500' },
         tabBarIcon: ({ focused, color, size }) => {
           let iconName: React.ComponentProps<typeof Ionicons>['name'] = 'alert-circle-outline';
 
