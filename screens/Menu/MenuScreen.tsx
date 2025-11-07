@@ -60,6 +60,8 @@ interface MenuItemFromDB {
   image_url: string | null;
   categoryId: string;
   is_available: boolean; // Tùy chọn, để tương thích với ItemAvailabilityScreen
+  remaining_quantity: number | null;
+  daily_stock_limit: number | null;
 }
 interface CategoryFromDB {
   id: string;
@@ -177,12 +179,14 @@ const MenuItemGrid: React.FC<{ item: MenuItemFromDB; onSelect: () => void }> = (
 
   return (
     <View style={styles.gridItem}>
+      {/* [SỬA] Thay đổi nhỏ ở đây: thêm class `flex flex-col` để đảm bảo layout co giãn tốt */}
       <TouchableOpacity
         onPress={onSelect}
-        disabled={!isAvailable} // <-- Vô hiệu hóa nút
-        style={[styles.shadow, !isAvailable && styles.disabledGridItem]} // <-- Thêm style khi hết hàng
-        className="bg-white rounded-2xl p-3 h-full justify-between"
+        disabled={!isAvailable}
+        style={[styles.shadow, !isAvailable && styles.disabledGridItem]}
+        className="bg-white rounded-2xl p-3 h-full flex flex-col justify-between"
       >
+        {/* Phần View này bọc tên, mô tả và số lượng */}
         <View>
           <Image
             source={{ uri: item.image_url || placeholderImage }}
@@ -191,24 +195,34 @@ const MenuItemGrid: React.FC<{ item: MenuItemFromDB; onSelect: () => void }> = (
           <Text className="text-base font-bold text-gray-800" numberOfLines={1}>
             {item.name}
           </Text>
-          <Text className="text-sm text-gray-500">{item.description || 'Món ngon'}</Text>
+          <Text className="text-sm text-gray-500" numberOfLines={1}>
+            {item.description || 'Món ngon'}
+          </Text>
+          {item.remaining_quantity !== null && (
+            <Text className="text-sm text-red-600 font-semibold mt-1">
+              {`Số lượng: ${item.remaining_quantity}`}
+            </Text>
+          )}
         </View>
+
+        {/* Phần View này bọc giá và nút +, sẽ luôn nằm ở dưới cùng */}
         <View className="flex-row items-center justify-between mt-2">
           <Text className="text-lg font-semibold text-gray-900">
             {item.price.toLocaleString('vi-VN')}đ
           </Text>
           <View
-            className={`w-10 h-10 rounded-full items-center justify-center ${isAvailable ? 'bg-blue-500' : 'bg-gray-300'}`}
+            className={`w-10 h-10 rounded-full items-center justify-center ${
+              isAvailable ? 'bg-blue-500' : 'bg-gray-300'
+            }`}
           >
             <Icon name="add" size={24} color="white" />
           </View>
         </View>
-        
-        {/* Lớp phủ "Hết món" */}
+
         {!isAvailable && (
-            <View style={styles.outOfStockOverlay}>
-                <Text style={styles.outOfStockText}>Hết món</Text>
-            </View>
+          <View style={styles.outOfStockOverlay}>
+            <Text style={styles.outOfStockText}>Hết món</Text>
+          </View>
         )}
       </TouchableOpacity>
     </View>
@@ -238,13 +252,15 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
 
   // [CẬP NHẬT] Callback được giữ nguyên logic, chỉ cần gọi trong useFocusEffect
   const fetchData = useCallback(async () => {
-    try {
-      const [menuResponse, hotItemsResponse, cartResponse, orderLinkResponse] = await Promise.all([
-        supabase
-          .from('categories')
-          .select(`id, name, menu_items (id, name, description, price, image_url, is_available)`),
-        supabase.from('menu_items').select('*, is_available').eq('is_hot', true).limit(10),
-        supabase.from('cart_items').select(`*`).eq('table_id', tableId),
+        try {
+          const [menuResponse, hotItemsResponse, cartResponse, orderLinkResponse] = await Promise.all([
+            supabase
+              .from('categories')
+              // [CẬP NHẬT] Lấy thêm 2 trường mới
+              .select(`id, name, menu_items (id, name, description, price, image_url, is_available, remaining_quantity, daily_stock_limit)`),
+            // [CẬP NHẬT] Lấy thêm 2 trường mới cho món hot
+            supabase.from('menu_items').select('*, is_available, remaining_quantity, daily_stock_limit').eq('is_hot', true).limit(10),
+            supabase.from('cart_items').select(`*`).eq('table_id', tableId),
         supabase
           .from('order_tables')
           .select('orders!inner(id, status)')
@@ -300,30 +316,36 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
   useFocusEffect(
     useCallback(() => {
       let isActive = true;
-      setLoading(true);
+      let interactionTask: any = null;
 
-      const loadInitialData = async () => {
+      const initializeData = async () => {
         if (!isActive) return;
+        setLoading(true);
         await fetchData();
         if (isActive) setLoading(false);
       };
 
-      const task = InteractionManager.runAfterInteractions(loadInitialData);
+      // Chạy lần đầu sau khi UI tải xong
+      interactionTask = InteractionManager.runAfterInteractions(initializeData);
 
+      // Setup realtime subscription
       const channel = supabase
         .channel(`realtime-menu-${tableId}`)
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'cart_items', filter: `table_id=eq.${tableId}` },
-          (payload) => {
+          () => {
             if (isActive) fetchData();
           }
         )
         .subscribe();
 
+      // Cleanup function
       return () => {
         isActive = false;
-        task.cancel();
+        if (interactionTask) {
+          interactionTask.cancel();
+        }
         supabase.removeChannel(channel);
       };
     }, [tableId, fetchData])

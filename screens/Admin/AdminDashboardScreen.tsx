@@ -1,10 +1,12 @@
 // screens/Admin/AdminDashboardScreen.tsx
 
 import React, { useEffect, useState } from 'react';
-import { View, ScrollView, Text, StyleSheet, TouchableOpacity, SafeAreaView } from 'react-native';
+import { View, ScrollView, Text, StyleSheet, TouchableOpacity, SafeAreaView, ActivityIndicator, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { COLORS } from '../../constants/colors';
+import { supabase } from '../../services/supabase'; // Import Supabase client
 
 type AdminStackParamList = {
   AdminDashboard: undefined;
@@ -16,239 +18,305 @@ type AdminStackParamList = {
 
 type Props = NativeStackScreenProps<AdminStackParamList, 'AdminDashboard'>;
 
+// Kiểu dữ liệu khớp với kết quả trả về từ RPC
+interface DashboardData {
+  kpis: {
+    total_revenue: number;
+    total_orders: number;
+  };
+  totalUsers: number;
+  totalMenuItems: number;
+}
+
 export default function AdminDashboardScreen({ navigation }: Props) {
-  console.log("✅ [AdminDashboardScreen] Rendering admin dashboard...");
-  
   const { userProfile } = useAuth();
-  console.log("🔍 [AdminDashboardScreen] userProfile:", userProfile);
-  
-  const [stats, setStats] = useState({
-    totalOrders: 0,
-    totalRevenue: 0,
-    totalUsers: 0,
-    totalMenuItems: 0,
-  });
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadDashboardStats();
+    loadDashboardData();
   }, []);
 
-  const loadDashboardStats = async () => {
+  const loadDashboardData = async () => {
+    setLoading(true);
     try {
-      // TODO: Gọi API để lấy thống kê
-      setStats({
-        totalOrders: 1250,
-        totalRevenue: 125000000,
-        totalUsers: 45,
-        totalMenuItems: 80,
+      // Gọi RPC function để lấy dữ liệu tổng quan
+      const { data: overviewData, error: overviewError } = await supabase.rpc('get_dashboard_overview');
+      if (overviewError) throw new Error("Không thể lấy dữ liệu tổng quan.");
+
+      // Lấy tổng số nhân viên
+      const { count: userCount, error: userError } = await supabase.from('profiles').select('*', { count: 'exact', head: true });
+      if (userError) throw new Error("Không thể đếm số nhân viên.");
+      
+      // Lấy tổng số sản phẩm
+      const { count: menuCount, error: menuError } = await supabase.from('menu_items').select('*', { count: 'exact', head: true });
+      if (menuError) throw new Error("Không thể đếm số sản phẩm.");
+
+      setData({
+        kpis: overviewData.kpis,
+        totalUsers: userCount || 0,
+        totalMenuItems: menuCount || 0,
       });
-    } catch (error) {
-      console.error('Error loading dashboard stats:', error);
+
+    } catch (error: any) {
+      Alert.alert('Lỗi', error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
   const menuItems = [
-    {
-      id: 'menu',
-      title: 'Quản lý Menu & Sản phẩm',
-      description: 'Thêm, sửa, xóa sản phẩm',
-      icon: '🍽️',
-      onPress: () => navigation.navigate('AdminMenu'),
-    },
-    {
-      id: 'orders',
-      title: 'Quản lý Đơn hàng',
-      description: 'Xem và quản lý tất cả đơn hàng',
-      icon: '📋',
-      onPress: () => navigation.navigate('AdminOrders'),
-    },
-    {
-      id: 'users',
-      title: 'Quản lý Nhân viên & Phân quyền',
-      description: 'Quản lý tài khoản nhân viên',
-      icon: '👥',
-      onPress: () => navigation.navigate('AdminUsers'),
-    },
-    {
-      id: 'reports',
-      title: 'Báo cáo Doanh thu',
-      description: 'Doanh thu theo tuần/tháng',
-      icon: '📊',
-      onPress: () => navigation.navigate('AdminReports'),
-    },
+    { id: 'menu', title: 'Quản lý Menu', description: 'Thêm, sửa, xóa sản phẩm', icon: '🍽️', onPress: () => navigation.navigate('AdminMenu'), color: '#FF6B6B' },
+    { id: 'orders', title: 'Quản lý Đơn hàng', description: 'Xem và quản lý tất cả đơn hàng', icon: '📋', onPress: () => navigation.navigate('AdminOrders'), color: '#4ECDC4' },
+    { id: 'users', title: 'Quản lý Nhân viên', description: 'Quản lý tài khoản nhân viên', icon: '👥', onPress: () => navigation.navigate('AdminUsers'), color: '#FFD93D' },
+    { id: 'reports', title: 'Báo cáo Doanh thu', description: 'Doanh thu theo tuần/tháng', icon: '📊', onPress: () => navigation.navigate('AdminReports'), color: '#6BCB77' },
   ];
+
+  if (loading) {
+    return (
+      <SafeAreaView style={[styles.safeArea, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.welcome}>Xin chào, {userProfile?.full_name || 'Admin'}!</Text>
-        <Text style={styles.subtitle}>Trang quản lý hệ thống</Text>
-      </View>
+        {/* Header */}
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.greetingText}>Xin chào 👋</Text>
+            <Text style={styles.userName}>{userProfile?.full_name || 'Admin'}</Text>
+          </View>
+        </View>
 
-      {/* Stats Cards */}
-      <View style={styles.statsContainer}>
-        <StatCard
-          title="Tổng Đơn Hàng"
-          value={stats.totalOrders.toString()}
-          color={COLORS.primary}
-        />
-        <StatCard
-          title="Doanh Thu"
-          value={`${(stats.totalRevenue / 1000000).toFixed(1)}M`}
-          color={COLORS.success}
-        />
-      </View>
+        {/* KPI Stats - Horizontal Scroll */}
+        <View style={styles.kpiSection}>
+          <Text style={styles.sectionLabel}>Tổng Quan Hôm Nay</Text>
+          <View style={styles.kpiGrid}>
+            <KPICard 
+              label="Doanh Thu"
+              value={`${((data?.kpis?.total_revenue || 0) / 1000000).toFixed(1)}M`}
+              icon="trending-up"
+            />
+            <KPICard 
+              label="Đơn Hàng"
+              value={data?.kpis?.total_orders?.toString() || '0'}
+              icon="receipt"
+            />
+            <KPICard 
+              label="Nhân Viên"
+              value={data?.totalUsers?.toString() || '0'}
+              icon="people"
+            />
+            <KPICard 
+              label="Sản Phẩm"
+              value={data?.totalMenuItems?.toString() || '0'}
+              icon="restaurant"
+            />
+          </View>
+        </View>
 
-      <View style={styles.statsContainer}>
-        <StatCard
-          title="Nhân Viên"
-          value={stats.totalUsers.toString()}
-          color={COLORS.warning}
-        />
-        <StatCard
-          title="Sản Phẩm"
-          value={stats.totalMenuItems.toString()}
-          color={COLORS.info}
-        />
-      </View>
+        {/* Main Functions */}
+        <View style={styles.functionsSection}>
+          <Text style={styles.sectionLabel}>Chức Năng Chính</Text>
+          {menuItems.map((item, index) => (
+            <FunctionButton 
+              key={item.id}
+              item={item}
+              isLast={index === menuItems.length - 1}
+            />
+          ))}
+        </View>
 
-      {/* Menu Items */}
-      <View style={styles.menuSection}>
-        <Text style={styles.sectionTitle}>Chức Năng Quản Lý</Text>
-        {menuItems.map((item) => (
-          <TouchableOpacity
-            key={item.id}
-            style={styles.menuItem}
-            onPress={item.onPress}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.menuIcon}>{item.icon}</Text>
-            <View style={styles.menuContent}>
-              <Text style={styles.menuTitle}>{item.title}</Text>
-              <Text style={styles.menuDescription}>{item.description}</Text>
-            </View>
-            <Text style={styles.menuArrow}>›</Text>
+        {/* Quick Actions */}
+        <View style={styles.actionsSection}>
+          <Text style={styles.sectionLabel}>Tác Vụ Nhanh</Text>
+          <TouchableOpacity style={styles.actionRow} onPress={loadDashboardData} activeOpacity={0.6}>
+            <Ionicons name="refresh" size={20} color={COLORS.primary} />
+            <Text style={styles.actionLabel}>Cập nhật dữ liệu</Text>
+            <Ionicons name="chevron-forward" size={18} color="#ccc" />
           </TouchableOpacity>
-        ))}
-      </View>
-    </ScrollView>
+          <TouchableOpacity style={styles.actionRow} onPress={() => Alert.alert('Thông báo', 'Chức năng đang phát triển')} activeOpacity={0.6}>
+            <Ionicons name="download" size={20} color={COLORS.primary} />
+            <Text style={styles.actionLabel}>Xuất báo cáo</Text>
+            <Ionicons name="chevron-forward" size={18} color="#ccc" />
+          </TouchableOpacity>
+        </View>
+
+        <View style={{ height: 20 }} />
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
-interface StatCardProps {
-  title: string;
+// ===== Component KPICard =====
+const KPICard = ({ 
+  label, 
+  value, 
+  icon 
+}: { 
+  label: string;
   value: string;
-  color: string;
-}
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+}) => (
+  <View style={styles.kpiCard}>
+    <Ionicons name={icon} size={22} color={COLORS.primary} />
+    <Text style={styles.kpiValue}>{value}</Text>
+    <Text style={styles.kpiLabel}>{label}</Text>
+  </View>
+);
 
-function StatCard({ title, value, color }: StatCardProps) {
-  return (
-    <View style={[styles.statCard, { borderLeftColor: color }]}>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statTitle}>{title}</Text>
+// ===== Component FunctionButton =====
+const FunctionButton = ({ 
+  item,
+  isLast
+}: { 
+  item: { 
+    id: string;
+    title: string;
+    description: string;
+    icon: string;
+    onPress: () => void;
+  };
+  isLast: boolean;
+}) => (
+  <TouchableOpacity 
+    style={[styles.functionRow, !isLast && { borderBottomWidth: 1, borderBottomColor: '#f0f0f0' }]}
+    onPress={item.onPress}
+    activeOpacity={0.6}
+  >
+    <View style={styles.functionIcon}>
+      <Text style={{ fontSize: 20 }}>{item.icon}</Text>
     </View>
-  );
-}
+    <View style={styles.functionContent}>
+      <Text style={styles.functionTitle}>{item.title}</Text>
+      <Text style={styles.functionDesc}>{item.description}</Text>
+    </View>
+    <Ionicons name="chevron-forward" size={18} color="#ddd" />
+  </TouchableOpacity>
+);
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#fff',
   },
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#fff',
   },
+
+  // ===== Header =====
   header: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 24,
     backgroundColor: COLORS.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 20,
   },
-  welcome: {
-    fontSize: 28,
+  greetingText: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.85)',
+    fontWeight: '500',
+  },
+  userName: {
+    fontSize: 26,
     fontWeight: '700',
     color: '#fff',
-    marginBottom: 4,
+    marginTop: 4,
   },
-  subtitle: {
-    fontSize: 14,
-    color: '#e0e0e0',
-  },
-  statsContainer: {
-    flexDirection: 'row',
+
+  // ===== KPI Section =====
+  kpiSection: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 20,
+  },
+  sectionLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 12,
+  },
+  kpiGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     gap: 12,
   },
-  statCard: {
+  kpiCard: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#f8f9fa',
     borderRadius: 12,
-    padding: 16,
-    borderLeftWidth: 4,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    padding: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  statValue: {
-    fontSize: 24,
+  kpiValue: {
+    fontSize: 18,
     fontWeight: '700',
     color: '#333',
-    marginBottom: 4,
+    marginTop: 8,
   },
-  statTitle: {
-    fontSize: 12,
+  kpiLabel: {
+    fontSize: 11,
     color: '#999',
+    marginTop: 4,
+    textAlign: 'center',
   },
-  menuSection: {
+
+  // ===== Functions Section =====
+  functionsSection: {
     paddingHorizontal: 16,
-    paddingVertical: 16,
+    paddingVertical: 20,
+    backgroundColor: '#fafafa',
   },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 12,
-  },
-  menuItem: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+  functionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
   },
-  menuIcon: {
-    fontSize: 32,
+  functionIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
     marginRight: 12,
   },
-  menuContent: {
+  functionContent: {
     flex: 1,
   },
-  menuTitle: {
+  functionTitle: {
     fontSize: 14,
     fontWeight: '600',
     color: '#333',
-    marginBottom: 4,
+    marginBottom: 2,
   },
-  menuDescription: {
+  functionDesc: {
     fontSize: 12,
     color: '#999',
   },
-  menuArrow: {
-    fontSize: 24,
-    color: COLORS.primary,
-    fontWeight: '300',
+
+  // ===== Actions Section =====
+  actionsSection: {
+    paddingHorizontal: 16,
+    paddingVertical: 20,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 10,
+  },
+  actionLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#333',
+    marginLeft: 12,
   },
 });

@@ -5,26 +5,25 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/colors';
 
-// --- [SỬA ĐỔI] Import AdminDashboardScreen ---
+// --- [SỬA ĐỔI] Import các màn hình chức năng thực tế ---
 import AdminDashboardScreen from '../screens/Admin/AdminDashboardScreen';
-import AdminMenuPlaceholder from '../screens/Admin/Placeholders/MenuPlaceholder';
-import AdminOrdersPlaceholder from '../screens/Admin/Placeholders/OrdersPlaceholder';
-import AdminUsersPlaceholder from '../screens/Admin/Placeholders/UsersPlaceholder';
-import AdminReportsPlaceholder from '../screens/Admin/Placeholders/ReportsPlaceholder';
+import AdminMenuScreen from '../screens/Admin/AdminMenuScreen';
+import AdminOrdersScreen from '../screens/Admin/AdminOrdersScreen';
+import AdminUsersScreen from '../screens/Admin/AdminUsersScreen';
+import AdminReportsScreen from '../screens/Admin/AdminReportsScreen';
+import AdminUtilitiesScreen from '../screens/Admin/AdminUtilitiesScreen';
 
 const Tab = createBottomTabNavigator();
 
 export default function AdminTabs() {
-  console.log("✅ [AdminTabs] Rendering admin tabs...");
-  
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: '#999',
-        tabBarStyle: { paddingBottom: 5, height: 60 },
-        tabBarLabelStyle: { fontSize: 12 },
+        tabBarStyle: { paddingBottom: 5, height: 60, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '500' },
         tabBarIcon: ({ focused, color, size }) => {
           let iconName: React.ComponentProps<typeof Ionicons>['name'] = 'alert-circle-outline';
 
@@ -33,11 +32,13 @@ export default function AdminTabs() {
           } else if (route.name === 'AdminMenu') {
             iconName = focused ? 'restaurant' : 'restaurant-outline';
           } else if (route.name === 'AdminOrders') {
-            iconName = focused ? 'list' : 'list-outline';
+            iconName = focused ? 'list-circle' : 'list-circle-outline';
           } else if (route.name === 'AdminUsers') {
             iconName = focused ? 'people' : 'people-outline';
           } else if (route.name === 'AdminReports') {
             iconName = focused ? 'stats-chart' : 'stats-chart-outline';
+          } else if (route.name === 'AdminUtilities') {
+            iconName = focused ? 'settings' : 'settings-outline';
           }
 
           return <Ionicons name={iconName} size={size} color={color} />;
@@ -46,39 +47,38 @@ export default function AdminTabs() {
     >
       <Tab.Screen
         name="AdminDashboard"
-        // --- [SỬA ĐỔI] Trỏ đến AdminDashboardScreen ---
         component={AdminDashboardScreen} 
-        options={{
-          tabBarLabel: 'Trang chủ',
-        }}
+        options={{ tabBarLabel: 'Trang chủ' }}
       />
       <Tab.Screen
         name="AdminMenu"
-        component={AdminMenuPlaceholder}
-        options={{
-          tabBarLabel: 'Menu',
-        }}
+        // --- [SỬA ĐỔI] Trỏ đến AdminMenuScreen ---
+        component={AdminMenuScreen}
+        options={{ tabBarLabel: 'Menu' }}
       />
       <Tab.Screen
         name="AdminOrders"
-        component={AdminOrdersPlaceholder}
-        options={{
-          tabBarLabel: 'Đơn hàng',
-        }}
+        // --- [SỬA ĐỔI] Trỏ đến AdminOrdersScreen ---
+        component={AdminOrdersScreen}
+        options={{ tabBarLabel: 'Đơn hàng' }}
       />
       <Tab.Screen
         name="AdminUsers"
-        component={AdminUsersPlaceholder}
-        options={{
-          tabBarLabel: 'Nhân viên',
-        }}
+        // --- [SỬA ĐỔI] Trỏ đến AdminUsersScreen ---
+        component={AdminUsersScreen}
+        options={{ tabBarLabel: 'Nhân viên' }}
       />
       <Tab.Screen
         name="AdminReports"
-        component={AdminReportsPlaceholder}
-        options={{
-          tabBarLabel: 'Báo cáo',
-        }}
+        // --- [SỬA ĐỔI] Trỏ đến AdminReportsScreen ---
+        component={AdminReportsScreen}
+        options={{ tabBarLabel: 'Báo cáo' }}
+      />
+      <Tab.Screen
+        name="AdminUtilities"
+        // --- [MỚI] Thêm tab Tiện ích ---
+        component={AdminUtilitiesScreen}
+        options={{ tabBarLabel: 'Tiện ích' }}
       />
     </Tab.Navigator>
   );

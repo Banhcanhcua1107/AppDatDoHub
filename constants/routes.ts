@@ -46,6 +46,7 @@ export const ROUTES = {
   KITCHEN_TABS: 'KitchenTabs', // Tên cho navigator
   KITCHEN_ORDERS_TAB: 'Bếp Orders', // Tên cho tab 1
   KITCHEN_UTILITIES_TAB: 'Bếp Tiện ích', // Tên cho tab 2
+  
 
 } as const;
 
@@ -127,6 +128,7 @@ export type AppStackParamList = {
   [ROUTES.CHANGE_PASSWORD]: undefined;
   [ROUTES.BILL_HISTORY]: undefined;
   [ROUTES.RETURN_HISTORY_ARCHIVE]: undefined;
+  [ROUTES.ITEM_QUANTITY]: undefined;
   // [XÓA ĐI] Không cần route bếp ở đây nữa vì nó có navigator riêng
   // [ROUTES.KITCHEN_SCREEN]: undefined; 
 };

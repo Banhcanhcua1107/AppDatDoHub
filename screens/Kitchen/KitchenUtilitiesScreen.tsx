@@ -34,9 +34,19 @@ const KitchenUtilitiesScreen = () => {
             onPress={() => navigation.navigate('KitchenProcessingReport')}
           />
         </View>
+        {/* Khu vực quản lý món */}
+        <View style={styles.section}>
+          
+          <UtilityItem
+            icon="cube-outline"
+            title="Quản lý số lượng món"
+            onPress={() => navigation.navigate('ItemQuantity')}
+          />
+        </View>
 
         {/* Khu vực quản lý món */}
         <View style={styles.section}>
+          
           <UtilityItem
             icon="swap-horizontal-outline"
             title="Báo hết / Báo còn"

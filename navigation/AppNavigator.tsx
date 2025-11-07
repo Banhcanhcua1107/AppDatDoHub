@@ -36,6 +36,7 @@ import KitchenDetailScreen from '../screens/Kitchen/KitchenDetailScreen';
 import KitchenSummaryDetailScreen from '../screens/Kitchen/KitchenSummaryDetailScreen';
 import KitchenProcessingReportScreen from 'screens/Kitchen/KitchenProcessingReportScreen';
 import ItemAvailabilityScreen from 'screens/Kitchen/ItemAvailabilityScreen';
+import ItemQuantityScreen from 'screens/Kitchen/ItemQuantityScreen';
 import ReturnHistoryScreen from 'screens/Kitchen/ReturnHistoryScreen';
 import CancellationRequestsDetailScreen from '../screens/Kitchen/CancellationRequestsDetailScreen';
 import CashierTabs from './CashierTabs';
@@ -67,6 +68,7 @@ export type KitchenStackParamList = {
   KitchenDetail: { orderId: string; tableName: string };
   KitchenSummaryDetail: { itemName: string };
   KitchenProcessingReport: undefined;
+  ItemQuantity: undefined;
   ItemAvailability: undefined;
   ReturnHistory: undefined;
   CancellationRequests: undefined;
@@ -167,6 +169,7 @@ const KitchenNavigator = () => (
     <KitchenStack.Screen name="KitchenDetail" component={KitchenDetailScreen} />
     <KitchenStack.Screen name="KitchenSummaryDetail" component={KitchenSummaryDetailScreen} />
     <KitchenStack.Screen name="KitchenProcessingReport" component={KitchenProcessingReportScreen} options={{ headerShown: false }} />
+    <KitchenStack.Screen name="ItemQuantity" component={ItemQuantityScreen} options={{ headerShown: false }} />
     <KitchenStack.Screen name="ItemAvailability" component={ItemAvailabilityScreen} options={{ headerShown: false }} />
     <KitchenStack.Screen name="ReturnHistory" component={ReturnHistoryScreen} options={{ headerShown: false }} />
     <KitchenStack.Screen name="CancellationRequestsDetail" component={CancellationRequestsDetailScreen} />
@@ -208,6 +211,7 @@ const CashierNavigator = () => (
     <CashierStack.Screen name="MoMoQRCode" component={MoMoQRCodeScreen} />
   </CashierStack.Navigator>
 );
+
 
 export default function AppNavigator() {
   const { isAuthenticated, isLoading, userProfile } = useAuth();

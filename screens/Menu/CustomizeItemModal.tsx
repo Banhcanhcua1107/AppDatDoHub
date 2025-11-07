@@ -62,6 +62,7 @@ type MenuItemForModal = {
   name: string;
   image: string;
   price: number;
+  remaining_quantity?: number | null; // [MỚI] Thêm số lượng còn lại
 };
 
 type CustomizeItemModalProps = {
@@ -241,7 +242,16 @@ const CustomizeItemModal: React.FC<CustomizeItemModalProps> = ({
             <View className="flex-row items-center mb-4">
               <Image source={{ uri: item.image }} className="w-20 h-20 rounded-xl mr-4" />
               <View className="flex-1">
-                <Text className="text-xl font-bold text-gray-800">{item.name}</Text>
+                <View className="flex-row items-center gap-2">
+                  <Text className="text-xl font-bold text-gray-800">{item.name}</Text>
+                  {item.remaining_quantity !== null && item.remaining_quantity !== undefined && (
+                    <View className="bg-orange-100 px-2 py-1 rounded-lg">
+                      <Text className="text-orange-700 font-semibold text-xs">
+                        SL: {item.remaining_quantity}
+                      </Text>
+                    </View>
+                  )}
+                </View>
                 <Text className="text-lg text-green-600 font-semibold mt-1">
                   {item.price.toLocaleString('vi-VN')} đ
                 </Text>
