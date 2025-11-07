@@ -284,17 +284,25 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
           const [menuResponse, hotItemsResponse, cartResponse, orderLinkResponse] = await Promise.all([
             supabase
               .from('categories')
-              // [CẬP NHẬT] Lấy thêm 2 trường mới
-              .select(`id, name, menu_items (id, name, description, price, image_url, is_available, remaining_quantity, daily_stock_limit)`),
-            // [CẬP NHẬT] Lấy thêm 2 trường mới cho món hot
-            supabase.from('menu_items').select('*, is_available, remaining_quantity, daily_stock_limit').eq('is_hot', true).limit(10),
+              // [QUAN TRỌNG] Thêm bộ lọc is_hidden = false
+              .select(`id, name, menu_items!inner(id, name, description, price, image_url, is_available, remaining_quantity, daily_stock_limit)`)
+              .eq('menu_items.is_hidden', false),
+              
+            // [QUAN TRỌNG] Thêm bộ lọc is_hidden = false cho món hot
+            supabase
+              .from('menu_items')
+              .select('*, is_available, remaining_quantity, daily_stock_limit')
+              .eq('is_hot', true)
+              .eq('is_hidden', false) 
+              .limit(10),
+              
             supabase.from('cart_items').select(`*`).eq('table_id', tableId),
-        supabase
-          .from('order_tables')
-          .select('orders!inner(id, status)')
-          .eq('table_id', tableId)
-          .eq('orders.status', 'pending'),
-      ]);
+            supabase
+              .from('order_tables')
+              .select('orders!inner(id, status)')
+              .eq('table_id', tableId)
+              .eq('orders.status', 'pending'),
+          ]);
 
       // [CẬP NHẬT] Thêm categoryId vào từng món ăn để lọc
       if (menuResponse.data) {

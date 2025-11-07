@@ -1,8 +1,9 @@
 // screens/Admin/AdminOrdersScreen.tsx
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, ScrollView, Text, StyleSheet, TouchableOpacity, FlatList, Modal, Alert } from 'react-native';
+import { View, ScrollView, Text, StyleSheet, TouchableOpacity, FlatList, Modal, Alert, SafeAreaView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../../constants/colors';
 import { supabase } from '../../services/supabase';
 
@@ -38,7 +39,8 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: 'Đã hủy',
 };
 
-export default function AdminOrdersScreen() {
+export default function AdminOrdersScreen({ onClose }: { onClose?: () => void }) {
+  const insets = useSafeAreaInsets();
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [detailModalVisible, setDetailModalVisible] = useState(false);
@@ -56,7 +58,7 @@ export default function AdminOrdersScreen() {
         query = query.eq('status', selectedStatus);
       }
       
-      const { data, error } = await query.limit(50); // Giới hạn 50 đơn hàng gần nhất
+      const { data, error } = await query.limit(50);
       if (error) throw error;
       setOrders(data as Order[]);
     } catch (error: any) {
@@ -82,10 +84,23 @@ export default function AdminOrdersScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Quản lý Đơn hàng</Text>
+      <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
+        <View>
+          <Text style={styles.headerTitle}>Quản lý Đơn hàng</Text>
+          <Text style={styles.headerSubtitle}>Xem và lọc theo trạng thái</Text>
+        </View>
+        <View style={{ flexDirection: 'row', gap: 12 }}>
+          <TouchableOpacity onPress={loadOrders} style={styles.refreshButton}>
+            <Ionicons name="refresh" size={24} color="#111827" />
+          </TouchableOpacity>
+          {onClose && (
+            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+              <Ionicons name="close" size={24} color="#111827" />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {/* Filter Tabs */}
@@ -115,7 +130,7 @@ export default function AdminOrdersScreen() {
           <TouchableOpacity 
             style={styles.orderRow} 
             onPress={() => openOrderDetail(order)}
-            activeOpacity={0.6}
+            activeOpacity={0.7}
           >
             <View style={styles.orderLeft}>
               <Text style={styles.orderTable}>{getTableName(order)}</Text>
@@ -152,45 +167,21 @@ export default function AdminOrdersScreen() {
                   </TouchableOpacity>
                 </View>
                 <ScrollView style={styles.modalScroll}>
-                  {/* Order Info */}
-                  <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Thông tin đơn hàng</Text>
-                    <View style={styles.infoRow}>
-                      <Text style={styles.infoLabel}>Bàn:</Text>
-                      <Text style={styles.infoValue}>{getTableName(selectedOrder)}</Text>
-                    </View>
-                    <View style={styles.infoRow}>
-                      <Text style={styles.infoLabel}>Thời gian:</Text>
-                      <Text style={styles.infoValue}>{formatDate(selectedOrder.created_at)}</Text>
-                    </View>
-                    <View style={styles.infoRow}>
-                      <Text style={styles.infoLabel}>Trạng thái:</Text>
-                      <Text style={[styles.infoValue, { color: STATUS_COLORS[selectedOrder.status] }]}>
-                        {STATUS_LABELS[selectedOrder.status]}
-                      </Text>
-                    </View>
+                  <View style={styles.section}><Text style={styles.sectionTitle}>Thông tin</Text>
+                    <View style={styles.infoRow}><Text style={styles.infoLabel}>Bàn:</Text><Text style={styles.infoValue}>{getTableName(selectedOrder)}</Text></View>
+                    <View style={styles.infoRow}><Text style={styles.infoLabel}>Thời gian:</Text><Text style={styles.infoValue}>{formatDate(selectedOrder.created_at)}</Text></View>
+                    <View style={styles.infoRow}><Text style={styles.infoLabel}>Trạng thái:</Text><Text style={[styles.infoValue, { color: STATUS_COLORS[selectedOrder.status] }]}>{STATUS_LABELS[selectedOrder.status]}</Text></View>
                   </View>
-
-                  {/* Items */}
-                  <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>Sản phẩm ({getItemCount(selectedOrder)})</Text>
+                  <View style={styles.section}><Text style={styles.sectionTitle}>Sản phẩm ({getItemCount(selectedOrder)})</Text>
                     {selectedOrder.order_items.map((item, index) => (
                       <View key={index} style={styles.itemRow}>
-                        <View style={styles.itemInfo}>
-                          <Text style={styles.itemName}>Sản phẩm</Text>
-                          <Text style={styles.itemQty}>x{item.quantity}</Text>
-                        </View>
+                        <View style={styles.itemInfo}><Text style={styles.itemName}>Sản phẩm</Text><Text style={styles.itemQty}>x{item.quantity}</Text></View>
                         <Text style={styles.itemPrice}>{(item.unit_price * item.quantity).toLocaleString()}đ</Text>
                       </View>
                     ))}
                   </View>
-
-                  {/* Total */}
                   <View style={styles.section}>
-                    <View style={styles.totalRow}>
-                      <Text style={styles.totalLabel}>Tổng cộng:</Text>
-                      <Text style={styles.totalValue}>{(selectedOrder.total_price || 0).toLocaleString()}đ</Text>
-                    </View>
+                    <View style={styles.totalRow}><Text style={styles.totalLabel}>Tổng cộng:</Text><Text style={styles.totalValue}>{(selectedOrder.total_price || 0).toLocaleString()}đ</Text></View>
                   </View>
                 </ScrollView>
               </>
@@ -198,47 +189,73 @@ export default function AdminOrdersScreen() {
           </View>
         </View>
       </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F8F9FA' },
-  header: { backgroundColor: '#1E3A8A', paddingHorizontal: 16, paddingVertical: 16, alignItems: 'center', justifyContent: 'center' },
-  headerTitle: { fontSize: 20, fontWeight: '700', color: '#fff' },
-  filterSection: { backgroundColor: 'white', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
-  filterTab: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 6, backgroundColor: '#F3F4F6', marginRight: 8 },
+  header: {
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  headerTitle: { fontSize: 28, fontWeight: 'bold', color: '#1F2937' },
+  headerSubtitle: { fontSize: 16, color: '#6B7280', marginTop: 4 },
+  refreshButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  closeButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#FEE2E2',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  filterSection: { flexGrow: 0, backgroundColor: 'white', paddingHorizontal: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
+  filterTab: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: '#F3F4F6', marginRight: 10, minWidth: 70, justifyContent: 'center', alignItems: 'center' },
   filterTabActive: { backgroundColor: '#3B82F6' },
-  filterText: { fontSize: 13, color: '#6B7280', fontWeight: '500' },
+  filterText: { fontSize: 13, color: '#6B7280', fontWeight: '500', textAlign: 'center' },
   filterTextActive: { color: '#fff', fontWeight: '600' },
   listContent: { paddingHorizontal: 16, paddingVertical: 12 },
-  orderRow: { backgroundColor: 'white', borderRadius: 12, padding: 14, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 4 },
+  orderRow: { backgroundColor: 'white', borderRadius: 12, padding: 16, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8 },
   orderLeft: { flex: 1 },
   orderRight: { alignItems: 'flex-end' },
-  orderTable: { fontSize: 15, fontWeight: '600', color: '#1F2937' },
-  orderTime: { fontSize: 12, color: '#9CA3AF', marginTop: 4 },
-  orderItems: { fontSize: 12, color: '#6B7280', marginTop: 4 },
-  orderTotal: { fontSize: 15, fontWeight: '700', color: '#3B82F6', marginBottom: 6 },
+  orderTable: { fontSize: 16, fontWeight: '600', color: '#1F2937' },
+  orderTime: { fontSize: 13, color: '#9CA3AF', marginTop: 4 },
+  orderItems: { fontSize: 13, color: '#6B7280', marginTop: 4 },
+  orderTotal: { fontSize: 16, fontWeight: '700', color: '#3B82F6', marginBottom: 6 },
   orderStatus: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6 },
-  statusLabel: { fontSize: 11, color: '#fff', fontWeight: '600' },
-  emptyState: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 60 },
-  emptyStateText: { fontSize: 14, color: '#9CA3AF', marginTop: 12 },
+  statusLabel: { fontSize: 12, color: '#fff', fontWeight: '600' },
+  emptyState: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 60, marginTop: 50 },
+  emptyStateText: { fontSize: 16, color: '#9CA3AF', marginTop: 12 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'flex-end' },
   modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 24, maxHeight: '90%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
   modalTitle: { fontSize: 18, fontWeight: '700', color: '#1F2937' },
-  modalScroll: { paddingHorizontal: 16, paddingVertical: 16 },
+  modalScroll: { paddingHorizontal: 16, paddingTop: 16 },
   section: { marginBottom: 20 },
-  sectionTitle: { fontSize: 14, fontWeight: '600', color: '#1F2937', marginBottom: 12 },
+  sectionTitle: { fontSize: 16, fontWeight: '600', color: '#1F2937', marginBottom: 12 },
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
-  infoLabel: { fontSize: 12, color: '#9CA3AF' },
+  infoLabel: { fontSize: 14, color: '#6B7280' },
   infoValue: { fontSize: 14, fontWeight: '500', color: '#1F2937' },
   itemRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
   itemInfo: { flex: 1 },
   itemName: { fontSize: 14, fontWeight: '500', color: '#1F2937' },
   itemQty: { fontSize: 12, color: '#9CA3AF', marginTop: 4 },
   itemPrice: { fontSize: 14, fontWeight: '600', color: '#3B82F6' },
-  totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, backgroundColor: '#F3F4F6', paddingHorizontal: 12, borderRadius: 8 },
-  totalLabel: { fontSize: 14, fontWeight: '600', color: '#1F2937' },
-  totalValue: { fontSize: 16, fontWeight: '700', color: '#3B82F6' },
+  totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, backgroundColor: '#F3F4F6', paddingHorizontal: 12, borderRadius: 8, marginTop: 8 },
+  totalLabel: { fontSize: 16, fontWeight: '600', color: '#1F2937' },
+  totalValue: { fontSize: 18, fontWeight: '700', color: '#3B82F6' },
 });

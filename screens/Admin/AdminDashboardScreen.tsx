@@ -1,9 +1,16 @@
+// screens/Admin/AdminDashboardScreen.tsx
+
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, ScrollView, Text, TouchableOpacity, SafeAreaView, ActivityIndicator, Alert } from 'react-native';
+import { View, ScrollView, Text, TouchableOpacity, SafeAreaView, ActivityIndicator, Alert, StyleSheet, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { COLORS } from '../../constants/colors';
 import { supabase } from '../../services/supabase';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AdminMenuScreen from './AdminMenuScreen';
+import AdminOrdersScreen from './AdminOrdersScreen';
+import AdminUsersScreen from './AdminUsersScreen';
+import AdminReportsScreen from './AdminReportsScreen';
 
 interface DashboardData {
   kpis: { total_revenue: number; total_orders: number };
@@ -17,34 +24,34 @@ const StatCard: React.FC<{
   icon: React.ComponentProps<typeof Ionicons>['name'];
   color: string;
 }> = ({ label, value, icon, color }) => (
-  <View className="w-1/2 p-2">
-    <View className="bg-white rounded-xl p-4 items-center" style={{ elevation: 2 }}>
-      <Ionicons name={icon} size={28} color={color} />
-      <Text className="text-lg font-bold text-gray-800 mt-2">{value}</Text>
-      <Text className="text-xs text-gray-500 mt-1 text-center">{label}</Text>
+  <View style={styles.statCardWrapper}>
+    <View style={[styles.statCard, { borderLeftColor: color }]}>
+      <View style={[styles.statIconContainer, { backgroundColor: color + '15' }]}>
+        <Ionicons name={icon} size={22} color={color} />
+      </View>
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
     </View>
   </View>
 );
 
-const MenuButton: React.FC<{
+const FeatureButton: React.FC<{
   title: string;
   description: string;
   icon: React.ComponentProps<typeof Ionicons>['name'];
   color: string;
   onPress: () => void;
 }> = ({ title, description, icon, color, onPress }) => (
-  <TouchableOpacity onPress={onPress} activeOpacity={0.8}>
-    <View className="bg-white rounded-2xl p-4 mb-3" style={{ elevation: 2 }}>
-      <View className="flex-row items-center justify-between">
-        <View className="flex-row items-center flex-1">
-          <Ionicons name={icon} size={32} color={color} />
-          <View className="ml-3 flex-1">
-            <Text className="text-base font-bold text-gray-800">{title}</Text>
-            <Text className="text-xs text-gray-500 mt-1">{description}</Text>
-          </View>
-        </View>
-        <Ionicons name="chevron-forward" size={20} color="#D1D5DB" />
+  <TouchableOpacity onPress={onPress} activeOpacity={0.7} style={styles.featureButtonWrapper}>
+    <View style={styles.featureButton}>
+      <View style={[styles.featureIconContainer, { backgroundColor: color + '15' }]}>
+        <Ionicons name={icon} size={28} color={color} />
       </View>
+      <View style={styles.featureContent}>
+        <Text style={styles.featureTitle}>{title}</Text>
+        <Text style={styles.featureDescription}>{description}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={20} color="#D1D5DB" />
     </View>
   </TouchableOpacity>
 );
@@ -52,12 +59,15 @@ const MenuButton: React.FC<{
 type Props = { navigation: any };
 
 export default function AdminDashboardScreen({ navigation }: Props) {
+  const insets = useSafeAreaInsets();
   const { userProfile } = useAuth();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [activeModal, setActiveModal] = useState<'menu' | 'orders' | 'users' | 'reports' | null>(null);
 
-  const loadDashboardData = useCallback(async () => {
-    setLoading(true);
+  const loadDashboardData = useCallback(async (isRefreshing = false) => {
+    if (!isRefreshing) setLoading(true);
     try {
       const { data: overviewData, error: overviewError } = await supabase.rpc('get_dashboard_overview');
       if (overviewError) throw new Error('Không thể lấy dữ liệu tổng quan.');
@@ -78,7 +88,7 @@ export default function AdminDashboardScreen({ navigation }: Props) {
     } catch (error: any) {
       Alert.alert('Lỗi', error.message);
     } finally {
-      setLoading(false);
+      if (!isRefreshing) setLoading(false);
     }
   }, []);
 
@@ -86,60 +96,39 @@ export default function AdminDashboardScreen({ navigation }: Props) {
     loadDashboardData();
   }, [loadDashboardData]);
 
-  const menuItems = [
-    {
-      id: 'menu',
-      title: 'Quản lý Menu',
-      description: 'Thêm, sửa, xóa sản phẩm',
-      icon: 'restaurant' as const,
-      color: '#FF6B6B',
-      onPress: () => navigation.navigate('AdminMenu'),
-    },
-    {
-      id: 'orders',
-      title: 'Quản lý Đơn hàng',
-      description: 'Xem tất cả đơn hàng',
-      icon: 'list-circle' as const,
-      color: '#4ECDC4',
-      onPress: () => navigation.navigate('AdminOrders'),
-    },
-    {
-      id: 'users',
-      title: 'Quản lý Nhân viên',
-      description: 'Quản lý tài khoản nhân viên',
-      icon: 'people' as const,
-      color: '#FFD93D',
-      onPress: () => navigation.navigate('AdminUsers'),
-    },
-    {
-      id: 'reports',
-      title: 'Báo cáo Doanh thu',
-      description: 'Doanh thu theo tuần/tháng',
-      icon: 'stats-chart' as const,
-      color: '#6BCB77',
-      onPress: () => navigation.navigate('AdminReports'),
-    },
+  const features = [
+    { id: 'menu', title: 'Quản lý Menu', description: 'Thêm, sửa, xóa sản phẩm', icon: 'restaurant' as const, color: '#FF6B6B', onPress: () => { setActiveModal('menu'); setModalVisible(true); } },
+    { id: 'orders', title: 'Quản lý Đơn hàng', description: 'Xem tất cả đơn hàng', icon: 'list-circle' as const, color: '#4ECDC4', onPress: () => { setActiveModal('orders'); setModalVisible(true); } },
+    { id: 'users', title: 'Quản lý Nhân viên', description: 'Quản lý tài khoản nhân viên', icon: 'people' as const, color: '#FFD93D', onPress: () => { setActiveModal('users'); setModalVisible(true); } },
+    { id: 'reports', title: 'Báo cáo Doanh thu', description: 'Doanh thu theo tuần/tháng', icon: 'stats-chart' as const, color: '#6BCB77', onPress: () => { setActiveModal('reports'); setModalVisible(true); } },
   ];
 
   if (loading) {
     return (
-      <SafeAreaView className="flex-1 bg-white justify-center items-center">
+      <SafeAreaView style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={COLORS.primary} />
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
-        <View className="bg-blue-500 px-6 py-6">
-          <Text className="text-white text-sm font-medium opacity-80">Xin chào 👋</Text>
-          <Text className="text-white text-3xl font-bold mt-1">{userProfile?.full_name || 'Admin'}</Text>
+    <SafeAreaView style={styles.container}>
+      {/* Header */}
+      <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
+        <View>
+          <Text style={styles.headerGreeting}>Xin chào 👋</Text>
+          <Text style={styles.headerUser}>{userProfile?.full_name || 'Admin'}</Text>
         </View>
+        <TouchableOpacity onPress={() => loadDashboardData(true)} style={styles.refreshButton}>
+          <Ionicons name="refresh" size={24} color="#3B82F6" />
+        </TouchableOpacity>
+      </View>
 
-        <View className="px-4 py-6">
-          <Text className="text-gray-800 text-base font-bold mb-4">Tổng Quan Hôm Nay</Text>
-          <View className="flex-row flex-wrap justify-between">
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
+        {/* Stats Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Tổng Quan Hôm Nay</Text>
+          <View style={styles.statsGrid}>
             <StatCard label="Doanh Thu" value={`${((data?.kpis?.total_revenue || 0) / 1000000).toFixed(1)}M`} icon="trending-up" color="#10B981" />
             <StatCard label="Đơn Hàng" value={data?.kpis?.total_orders?.toString() || '0'} icon="receipt" color="#3B82F6" />
             <StatCard label="Nhân Viên" value={data?.totalUsers?.toString() || '0'} icon="people" color="#F59E0B" />
@@ -147,19 +136,128 @@ export default function AdminDashboardScreen({ navigation }: Props) {
           </View>
         </View>
 
-        <View className="px-4 py-4">
-          <View className="flex-row items-center justify-between mb-4">
-            <Text className="text-gray-800 text-base font-bold">Chức Năng Chính</Text>
-            <TouchableOpacity onPress={loadDashboardData} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}>
-              <Ionicons name="refresh" size={20} color={COLORS.primary} />
-            </TouchableOpacity>
+        {/* Features Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Chức Năng Chính</Text>
+          <View style={styles.featuresContainer}>
+            {features.map((feature) => (
+              <FeatureButton key={feature.id} {...feature} />
+            ))}
           </View>
-
-          {menuItems.map((item) => (
-            <MenuButton key={item.id} title={item.title} description={item.description} icon={item.icon} color={item.color} onPress={item.onPress} />
-          ))}
         </View>
       </ScrollView>
+
+      {/* Modal cho Menu */}
+      <Modal visible={modalVisible && activeModal === 'menu'} animationType="slide" onRequestClose={() => setModalVisible(false)}>
+        <AdminMenuScreen onClose={() => setModalVisible(false)} />
+      </Modal>
+
+      {/* Modal cho Orders */}
+      <Modal visible={modalVisible && activeModal === 'orders'} animationType="slide" onRequestClose={() => setModalVisible(false)}>
+        <AdminOrdersScreen onClose={() => setModalVisible(false)} />
+      </Modal>
+
+      {/* Modal cho Users */}
+      <Modal visible={modalVisible && activeModal === 'users'} animationType="slide" onRequestClose={() => setModalVisible(false)}>
+        <AdminUsersScreen onClose={() => setModalVisible(false)} />
+      </Modal>
+
+      {/* Modal cho Reports */}
+      <Modal visible={modalVisible && activeModal === 'reports'} animationType="slide" onRequestClose={() => setModalVisible(false)}>
+        <AdminReportsScreen onClose={() => setModalVisible(false)} />
+      </Modal>
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#FAFBFC' },
+  loadingContainer: { flex: 1, backgroundColor: '#FAFBFC', justifyContent: 'center', alignItems: 'center' },
+  header: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  headerGreeting: { color: '#9CA3AF', fontSize: 13, fontWeight: '500' },
+  headerUser: { color: '#1F2937', fontSize: 26, fontWeight: '700', marginTop: 4 },
+  refreshButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#EFF6FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  section: { paddingHorizontal: 16, paddingTop: 20 },
+  sectionTitle: { color: '#1F2937', fontSize: 16, fontWeight: '700', marginBottom: 12 },
+  
+  // Stats Grid
+  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', marginHorizontal: -4, justifyContent: 'space-between', gap: 10 },
+  statCardWrapper: {
+    width: '48%',
+    paddingHorizontal: 4,
+    marginBottom: 2,
+  },
+  statCard: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+  },
+  statIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  statValue: { fontSize: 16, fontWeight: '700', color: '#1F2937', marginBottom: 4 },
+  statLabel: { fontSize: 11, color: '#9CA3AF', fontWeight: '500' },
+
+  // Features Section
+  featuresContainer: { gap: 8 },
+  featureButtonWrapper: {
+    marginBottom: 6,
+  },
+  featureButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'white',
+    borderRadius: 12,
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 2,
+  },
+  featureIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  featureContent: {
+    flex: 1,
+  },
+  featureTitle: { fontSize: 14, fontWeight: '600', color: '#1F2937', marginBottom: 2 },
+  featureDescription: { fontSize: 12, color: '#9CA3AF', fontWeight: '400' },
+});
