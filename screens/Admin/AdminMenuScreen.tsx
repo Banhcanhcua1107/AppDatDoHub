@@ -15,12 +15,15 @@ import {
   TextInput,
   ScrollView,
   Pressable,
+  Image,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../services/supabase';
+import { getCloudinaryConfig } from '../../services/cloudinaryConfig';
 import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
+import * as ImagePicker from 'expo-image-picker';
 
 // --- Interfaces ---
 interface MenuItem {
@@ -32,6 +35,7 @@ interface MenuItem {
   is_available: boolean;
   is_hidden: boolean;
   cost: number;
+  image_url?: string;
 }
 
 interface Category {
@@ -41,7 +45,7 @@ interface Category {
 
 type ActiveTab = 'visible' | 'hidden';
 
-// --- Modal Component để Thêm/Sửa Món (Không thay đổi so với lần trước) ---
+// --- Modal Component để Thêm/Sửa Món với hỗ trợ Upload Ảnh ---
 const MenuItemModal = ({
   visible,
   onClose,
@@ -56,17 +60,108 @@ const MenuItemModal = ({
   categories: Category[];
 }) => {
   const [formData, setFormData] = useState<Partial<MenuItem>>({});
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     setFormData(item ? { ...item } : { name: '', price: 0, cost: 0, description: '', category_id: categories[0]?.id });
+    setSelectedImage(item?.image_url || null);
   }, [item, visible, categories]);
 
-  const handleSave = () => {
+  // Hàm upload ảnh lên Cloudinary (không cần preset)
+  const uploadImageToCloudinary = async (imageUri: string): Promise<string | null> => {
+    try {
+      setUploading(true);
+      
+      // Lấy Cloudinary config từ environment/Supabase Secrets
+      const config = getCloudinaryConfig();
+      
+      const formDataToSend = new FormData();
+      formDataToSend.append('file', {
+        uri: imageUri,
+        type: 'image/jpeg',
+        name: `menu_${Date.now()}.jpg`,
+      } as any);
+
+      // SỬA LỖI: Thêm upload_preset và bỏ các trường không cần thiết cho unsigned upload
+      formDataToSend.append('upload_preset', config.cloudinaryUploadPreset);
+
+      const response = await fetch(
+        `https://api.cloudinary.com/v1_1/${config.cloudinaryName}/image/upload`,
+        {
+          method: 'POST',
+          body: formDataToSend,
+          // Không cần header Content-Type, FormData tự xử lý
+        }
+      );
+
+      const data = await response.json();
+      
+      if (data.error) {
+        // Cung cấp thông báo lỗi chi tiết hơn
+        console.error('Cloudinary Error:', data.error);
+        throw new Error(data.error.message || 'Lỗi upload ảnh từ Cloudinary');
+      }
+
+      return data.secure_url; // Trả về URL ảnh từ Cloudinary
+    } catch (error: any) {
+      Alert.alert('Lỗi Upload', error.message || 'Không thể upload ảnh lên Cloudinary');
+      return null;
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // Hàm chọn ảnh từ thư viện
+  const pickImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+      });
+
+      if (!result.canceled) {
+        setSelectedImage(result.assets[0].uri);
+      }
+    } catch {
+      Alert.alert('Lỗi', 'Không thể chọn ảnh');
+    }
+  };
+
+  // Hàm chụp ảnh từ camera
+  const takePhoto = async () => {
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+      });
+
+      if (!result.canceled) {
+        setSelectedImage(result.assets[0].uri);
+      }
+    } catch {
+      Alert.alert('Lỗi', 'Không thể chụp ảnh');
+    }
+  };
+
+  const handleSave = async () => {
     if (!formData.name || !formData.price || !formData.category_id) {
       Alert.alert('Thiếu thông tin', 'Tên món, Giá bán và Danh mục là bắt buộc.');
       return;
     }
-    onSave(formData);
+
+    let imageUrl = formData.image_url;
+
+    // Nếu có ảnh được chọn và khác với ảnh cũ, upload lên Cloudinary
+    if (selectedImage && selectedImage !== formData.image_url) {
+      imageUrl = await uploadImageToCloudinary(selectedImage);
+      if (!imageUrl) return; // Dừng nếu upload thất bại
+    }
+
+    onSave({ ...formData, image_url: imageUrl });
   };
 
   const setFormValue = (key: keyof MenuItem, value: any) => {
@@ -81,6 +176,46 @@ const MenuItemModal = ({
         <Pressable style={styles.modalContainer}>
           <ScrollView>
             <Text style={styles.modalTitle}>{item?.id ? 'Chỉnh sửa món' : 'Thêm món mới'}</Text>
+            
+            {/* Image Upload Section */}
+            <Text style={styles.label}>Hình ảnh sản phẩm</Text>
+            <View style={styles.imageUploadContainer}>
+              {selectedImage ? (
+                <Image source={{ uri: selectedImage }} style={styles.previewImage} />
+              ) : (
+                <View style={styles.imagePlaceholder}>
+                  <Ionicons name="image-outline" size={40} color="#D1D5DB" />
+                  <Text style={styles.placeholderText}>Chưa chọn ảnh</Text>
+                </View>
+              )}
+            </View>
+            
+            <View style={styles.imageButtonsContainer}>
+              <TouchableOpacity 
+                style={[styles.imageButton, styles.imageButtonBorder]} 
+                onPress={pickImage}
+                disabled={uploading}
+              >
+                <Ionicons name="image-outline" size={18} color="#3B82F6" />
+                <Text style={styles.imageButtonText}>Chọn từ thư viện</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.imageButton, styles.imageButtonBorder]} 
+                onPress={takePhoto}
+                disabled={uploading}
+              >
+                <Ionicons name="camera-outline" size={18} color="#3B82F6" />
+                <Text style={styles.imageButtonText}>Chụp ảnh</Text>
+              </TouchableOpacity>
+            </View>
+
+            {uploading && (
+              <View style={styles.uploadingContainer}>
+                <ActivityIndicator size="small" color="#3B82F6" />
+                <Text style={styles.uploadingText}>Đang upload ảnh...</Text>
+              </View>
+            )}
+            
             <Text style={styles.label}>Tên món</Text>
             <TextInput style={styles.input} value={formData.name} onChangeText={val => setFormValue('name', val)} placeholder="Vd: Cà phê sữa"/>
             <Text style={styles.label}>Giá bán</Text>
@@ -97,7 +232,13 @@ const MenuItemModal = ({
             <TextInput style={[styles.input, styles.textArea]} value={formData.description} onChangeText={val => setFormValue('description', val)} placeholder="Vd: Thơm ngon đậm vị" multiline/>
             <View style={styles.modalActions}>
                 <TouchableOpacity style={[styles.button, styles.cancelButton]} onPress={onClose}><Text style={styles.cancelButtonText}>Hủy</Text></TouchableOpacity>
-                 <TouchableOpacity style={[styles.button, styles.saveButton]} onPress={handleSave}><Text style={styles.saveButtonText}>Lưu</Text></TouchableOpacity>
+                 <TouchableOpacity 
+                   style={[styles.button, styles.saveButton, uploading && { opacity: 0.6 }]} 
+                   onPress={handleSave}
+                   disabled={uploading}
+                 >
+                   <Text style={styles.saveButtonText}>Lưu</Text>
+                 </TouchableOpacity>
             </View>
           </ScrollView>
         </Pressable>
@@ -125,7 +266,14 @@ const AdminMenuScreen = ({ onClose }: { onClose?: () => void }) => {
       ]);
       if (menuRes.error) throw menuRes.error;
       if (catRes.error) throw catRes.error;
-      setMenuItems(menuRes.data as MenuItem[]);
+      // Sort để sản phẩm mới thêm ở đầu (is_active DESC, mới thêm sẽ có is_active = true)
+      const sortedData = (menuRes.data as MenuItem[]).sort((a, b) => {
+        if (a.is_available !== b.is_available) {
+          return (b.is_available ? 1 : 0) - (a.is_available ? 1 : 0);
+        }
+        return a.name.localeCompare(b.name);
+      });
+      setMenuItems(sortedData);
       setCategories(catRes.data as Category[]);
     } catch (err: any) {
       Alert.alert('Lỗi', 'Không thể tải dữ liệu: ' + err.message);
@@ -143,14 +291,19 @@ const AdminMenuScreen = ({ onClose }: { onClose?: () => void }) => {
   
   const handleSaveItem = async (data: Partial<MenuItem>) => {
     try {
-      // ... (logic lưu giữ nguyên)
-      const dataToSave = {
+      const dataToSave: any = {
         name: data.name,
         price: data.price,
         cost: data.cost,
         description: data.description,
         category_id: data.category_id,
       };
+
+      // Thêm image_url nếu có
+      if (data.image_url) {
+        dataToSave.image_url = data.image_url;
+      }
+
       let error;
       if (data.id) {
         const { error: updateError } = await supabase.from('menu_items').update(dataToSave).eq('id', data.id);
@@ -309,6 +462,75 @@ const styles = StyleSheet.create({
   cancelButtonText: { color: '#4B5563', fontWeight: 'bold' },
   saveButton: { backgroundColor: '#3B82F6' },
   saveButtonText: { color: 'white', fontWeight: 'bold' },
+
+  // Image Upload Styles
+  imageUploadContainer: { 
+    width: '100%', 
+    height: 180, 
+    backgroundColor: '#F9FAFB', 
+    borderRadius: 12, 
+    borderWidth: 2, 
+    borderColor: '#E5E7EB',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  previewImage: { 
+    width: '100%', 
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  imagePlaceholder: { 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    flex: 1,
+  },
+  placeholderText: { 
+    color: '#9CA3AF', 
+    fontSize: 14, 
+    marginTop: 8,
+    fontWeight: '500',
+  },
+  imageButtonsContainer: { 
+    flexDirection: 'row', 
+    gap: 10, 
+    marginBottom: 16,
+  },
+  imageButton: { 
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#EFF6FF',
+  },
+  imageButtonBorder: { 
+    borderWidth: 1,
+    borderColor: '#3B82F6',
+  },
+  imageButtonText: { 
+    color: '#3B82F6', 
+    fontWeight: '600',
+    fontSize: 13,
+    marginLeft: 6,
+  },
+  uploadingContainer: { 
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  uploadingText: { 
+    color: '#3B82F6', 
+    fontWeight: '500',
+    marginLeft: 8,
+    fontSize: 13,
+  },
 });
 
 export default AdminMenuScreen;
