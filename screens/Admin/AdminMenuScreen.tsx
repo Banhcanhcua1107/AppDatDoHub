@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   SafeAreaView,
   TouchableOpacity,
-  Alert,
   Switch,
   Modal,
   TextInput,
@@ -22,6 +21,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../services/supabase';
 import { getCloudinaryConfig } from '../../services/cloudinaryConfig';
 import { Ionicons } from '@expo/vector-icons';
+import ConfirmModal from '../../components/ConfirmModal';
+import Toast from 'react-native-toast-message';
 import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -100,12 +101,13 @@ const MenuItemModal = ({
       if (data.error) {
         // Cung cấp thông báo lỗi chi tiết hơn
         console.error('Cloudinary Error:', data.error);
+        Toast.show({ type: 'error', text1: 'Lỗi upload', text2: data.error.message || 'Lỗi upload ảnh từ Cloudinary' });
         throw new Error(data.error.message || 'Lỗi upload ảnh từ Cloudinary');
       }
 
       return data.secure_url; // Trả về URL ảnh từ Cloudinary
     } catch (error: any) {
-      Alert.alert('Lỗi Upload', error.message || 'Không thể upload ảnh lên Cloudinary');
+      Toast.show({ type: 'error', text1: 'Lỗi Upload', text2: error.message || 'Không thể upload ảnh lên Cloudinary' });
       return null;
     } finally {
       setUploading(false);
@@ -126,7 +128,7 @@ const MenuItemModal = ({
         setSelectedImage(result.assets[0].uri);
       }
     } catch {
-      Alert.alert('Lỗi', 'Không thể chọn ảnh');
+      Toast.show({ type: 'error', text1: 'Lỗi', text2: 'Không thể chọn ảnh' });
     }
   };
 
@@ -143,17 +145,17 @@ const MenuItemModal = ({
         setSelectedImage(result.assets[0].uri);
       }
     } catch {
-      Alert.alert('Lỗi', 'Không thể chụp ảnh');
+      Toast.show({ type: 'error', text1: 'Lỗi', text2: 'Không thể chụp ảnh' });
     }
   };
 
   const handleSave = async () => {
     if (!formData.name || !formData.price || !formData.category_id) {
-      Alert.alert('Thiếu thông tin', 'Tên món, Giá bán và Danh mục là bắt buộc.');
+      Toast.show({ type: 'error', text1: 'Thiếu thông tin', text2: 'Tên món, Giá bán và Danh mục là bắt buộc.' });
       return;
     }
 
-    let imageUrl = formData.image_url;
+  let imageUrl: string | null | undefined = formData.image_url;
 
     // Nếu có ảnh được chọn và khác với ảnh cũ, upload lên Cloudinary
     if (selectedImage && selectedImage !== formData.image_url) {
@@ -256,6 +258,10 @@ const AdminMenuScreen = ({ onClose }: { onClose?: () => void }) => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('visible');
   const [isModalVisible, setModalVisible] = useState(false);
   const [editingItem, setEditingItem] = useState<Partial<MenuItem> | null>(null);
+  const [confirmVisible, setConfirmVisible] = useState(false);
+  const [confirmTitle, setConfirmTitle] = useState('');
+  const [confirmMessage, setConfirmMessage] = useState('');
+  const confirmActionRef = React.useRef<(() => Promise<void>) | null>(null);
 
   const fetchData = useCallback(async (isInitialLoad = true) => {
     if (isInitialLoad) setLoading(true);
@@ -276,7 +282,7 @@ const AdminMenuScreen = ({ onClose }: { onClose?: () => void }) => {
       setMenuItems(sortedData);
       setCategories(catRes.data as Category[]);
     } catch (err: any) {
-      Alert.alert('Lỗi', 'Không thể tải dữ liệu: ' + err.message);
+      Toast.show({ type: 'error', text1: 'Lỗi', text2: 'Không thể tải dữ liệu: ' + err.message });
     } finally {
       if (isInitialLoad) setLoading(false);
     }
@@ -313,25 +319,37 @@ const AdminMenuScreen = ({ onClose }: { onClose?: () => void }) => {
         error = insertError;
       }
       if (error) throw error;
-      Alert.alert('Thành công', `Đã ${data.id ? 'cập nhật' : 'thêm'} món thành công.`);
+      Toast.show({ type: 'success', text1: 'Thành công', text2: `Đã ${data.id ? 'cập nhật' : 'thêm'} món thành công.` });
       setModalVisible(false);
       setEditingItem(null);
       await fetchData(false);
     } catch (err: any) {
-      Alert.alert('Lỗi', 'Không thể lưu món: ' + err.message);
+      Toast.show({ type: 'error', text1: 'Lỗi', text2: 'Không thể lưu món: ' + err.message });
     }
   };
 
   const handleToggleHiddenStatus = async (item: MenuItem) => {
-    // ... (logic ẩn/hiện giữ nguyên)
+    // Ask for confirmation when hiding an item; un-hiding is immediate
     const newHiddenStatus = !item.is_hidden;
     if (newHiddenStatus === true) {
-      const { data: hasActiveOrders, error: checkError } = await supabase.rpc('check_item_has_active_orders', { p_item_id: item.id });
-      if (checkError) { Alert.alert('Lỗi', 'Không thể kiểm tra trạng thái món.'); return; }
-      if (hasActiveOrders) { Alert.alert('Không thể ẩn', 'Món này vẫn còn trong các order đang hoạt động.'); return; }
+      // show confirm modal before hiding
+      setConfirmTitle('Xác nhận ẩn món');
+      setConfirmMessage(`Bạn có chắc chắn muốn ẩn món "${item.name}" không?`);
+      confirmActionRef.current = async () => {
+        const { data: hasActiveOrders, error: checkError } = await supabase.rpc('check_item_has_active_orders', { p_item_id: item.id });
+        if (checkError) { Toast.show({ type: 'error', text1: 'Lỗi', text2: 'Không thể kiểm tra trạng thái món.' }); return; }
+        if (hasActiveOrders) { Toast.show({ type: 'error', text1: 'Không thể ẩn', text2: 'Món này vẫn còn trong các order đang hoạt động.' }); return; }
+        const { error: updateError } = await supabase.from('menu_items').update({ is_hidden: newHiddenStatus }).eq('id', item.id);
+        if (updateError) { Toast.show({ type: 'error', text1: 'Lỗi', text2: 'Không thể cập nhật trạng thái ẩn của món.' }); } 
+        else { setMenuItems(currentItems => currentItems.map(i => (i.id === item.id ? { ...i, is_hidden: newHiddenStatus } : i))); }
+      };
+      setConfirmVisible(true);
+      return;
     }
+
+    // If un-hiding, proceed immediately
     const { error: updateError } = await supabase.from('menu_items').update({ is_hidden: newHiddenStatus }).eq('id', item.id);
-    if (updateError) { Alert.alert('Lỗi', 'Không thể cập nhật trạng thái ẩn của món.'); } 
+    if (updateError) { Toast.show({ type: 'error', text1: 'Lỗi', text2: 'Không thể cập nhật trạng thái ẩn của món.' }); } 
     else { setMenuItems(currentItems => currentItems.map(i => (i.id === item.id ? { ...i, is_hidden: newHiddenStatus } : i))); }
   };
 
@@ -413,6 +431,19 @@ const AdminMenuScreen = ({ onClose }: { onClose?: () => void }) => {
       <TouchableOpacity style={styles.fab} onPress={() => openModal(null)}><Ionicons name="add" size={32} color="white" /></TouchableOpacity>
 
       <MenuItemModal visible={isModalVisible} onClose={() => setModalVisible(false)} onSave={handleSaveItem} item={editingItem} categories={categories}/>
+      <ConfirmModal
+        isVisible={confirmVisible}
+        title={confirmTitle}
+        message={confirmMessage}
+        onClose={() => setConfirmVisible(false)}
+        onConfirm={async () => {
+          setConfirmVisible(false);
+          if (confirmActionRef.current) await confirmActionRef.current();
+        }}
+        confirmText="Xác nhận"
+        cancelText="Hủy"
+        variant="warning"
+      />
     </SafeAreaView>
   );
 };

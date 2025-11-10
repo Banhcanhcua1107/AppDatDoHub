@@ -1,7 +1,8 @@
 // screens/Admin/AdminDashboardScreen.tsx
 
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, ScrollView, Text, TouchableOpacity, SafeAreaView, ActivityIndicator, Alert, StyleSheet, Modal } from 'react-native';
+import { View, ScrollView, Text, TouchableOpacity, SafeAreaView, ActivityIndicator, StyleSheet, Modal } from 'react-native';
+import Toast from 'react-native-toast-message';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { COLORS } from '../../constants/colors';
@@ -88,7 +89,7 @@ export default function AdminDashboardScreen({ navigation }: Props) {
         totalMenuItems: menuCount || 0,
       });
     } catch (error: any) {
-      Alert.alert('Lỗi', error.message);
+      Toast.show({ type: 'error', text1: 'Lỗi', text2: error.message });
     } finally {
       if (!isRefreshing) setLoading(false);
     }

@@ -1,7 +1,9 @@
 // screens/Admin/AdminUsersScreen.tsx
 
-import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, Modal, TextInput, Alert, ScrollView, SafeAreaView, ActivityIndicator } from 'react-native';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, Modal, TextInput, ScrollView, SafeAreaView, ActivityIndicator } from 'react-native';
+import ConfirmModal from '../../components/ConfirmModal';
+import Toast from 'react-native-toast-message';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../../constants/colors';
@@ -35,8 +37,8 @@ export default function AdminUsersScreen({ onClose }: { onClose?: () => void }) 
   const [isLoading, setIsLoading] = useState(false);
   const [selectedRoleFilter, setSelectedRoleFilter] = useState<'all' | 'nhan_vien' | 'bep' | 'thu_ngan'>('all');
 
-  const [formData, setFormData] = useState({
-    id: '', full_name: '', email: '', password: '', role: 'nhan_vien' as const,
+  const [formData, setFormData] = useState<{ id: string; full_name: string; email: string; password: string; role: UserProfile['role'] }>({
+    id: '', full_name: '', email: '', password: '', role: 'nhan_vien',
   });
 
   const loadUsers = useCallback(async () => {
@@ -45,7 +47,7 @@ export default function AdminUsersScreen({ onClose }: { onClose?: () => void }) 
       if (error) throw error;
       setUsers(data as UserProfile[]);
     } catch (error: any) {
-      Alert.alert('Lỗi', `Không thể tải danh sách nhân viên: ${error.message}`);
+      Toast.show({ type: 'error', text1: 'Lỗi', text2: `Không thể tải danh sách nhân viên: ${error.message}` });
     }
   }, []);
 
@@ -74,49 +76,52 @@ export default function AdminUsersScreen({ onClose }: { onClose?: () => void }) 
   const handleSave = () => modalMode === 'add' ? handleCreateUser() : handleUpdateUser();
   
   const handleCreateUser = async () => {
-    if (!formData.email.trim() || !formData.password.trim() || !formData.full_name.trim()) { Alert.alert('Lỗi', 'Vui lòng điền đầy đủ email, mật khẩu và họ tên.'); return; }
+    if (!formData.email.trim() || !formData.password.trim() || !formData.full_name.trim()) { Toast.show({ type: 'error', text1: 'Lỗi', text2: 'Vui lòng điền đầy đủ email, mật khẩu và họ tên.' }); return; }
     setIsLoading(true);
     try {
       const { data, error } = await supabase.auth.signUp({ email: formData.email, password: formData.password, options: { data: { full_name: formData.full_name, role: formData.role } } });
       if (error) throw error;
       if (!data.user) throw new Error("Không thể tạo người dùng.");
-      Alert.alert('Thành công', `Đã tạo nhân viên "${formData.full_name}".`);
+      Toast.show({ type: 'success', text1: 'Thành công', text2: `Đã tạo nhân viên "${formData.full_name}".` });
       loadUsers();
       setModalVisible(false);
-    } catch (error: any) { Alert.alert('Lỗi', `Không thể tạo nhân viên: ${error?.message || 'Lỗi không xác định'}`); } 
+    } catch (error: any) { Toast.show({ type: 'error', text1: 'Lỗi', text2: `Không thể tạo nhân viên: ${error?.message || 'Lỗi không xác định'}` }); } 
     finally { setIsLoading(false); }
   };
   const handleUpdateUser = async () => {
-    if (!selectedUser || !formData.full_name.trim()) { Alert.alert('Lỗi', 'Vui lòng điền tên nhân viên'); return; }
+    if (!selectedUser || !formData.full_name.trim()) { Toast.show({ type: 'error', text1: 'Lỗi', text2: 'Vui lòng điền tên nhân viên' }); return; }
     setIsLoading(true);
     try {
       const { error } = await supabase.from('profiles').update({ full_name: formData.full_name, role: formData.role }).eq('id', selectedUser.id);
       if (error) throw error;
-      Alert.alert('Thành công', 'Cập nhật thông tin thành công');
+      Toast.show({ type: 'success', text1: 'Thành công', text2: 'Cập nhật thông tin thành công' });
       loadUsers();
       setModalVisible(false);
-    } catch (error: any) { Alert.alert('Lỗi', `Không thể cập nhật: ${error?.message || 'Lỗi không xác định'}`); } 
+    } catch (error: any) { Toast.show({ type: 'error', text1: 'Lỗi', text2: `Không thể cập nhật: ${error?.message || 'Lỗi không xác định'}` }); } 
     finally { setIsLoading(false); }
   };
+  // Confirm modal state for destructive actions
+  const [confirmVisible, setConfirmVisible] = useState(false);
+  const [confirmTitle, setConfirmTitle] = useState('');
+  const [confirmMessage, setConfirmMessage] = useState('');
+  const confirmActionRef = useRef<(() => Promise<void>) | null>(null);
+
   const handleDeleteUser = () => {
     if (!selectedUser) return;
-    Alert.alert( 'Xác nhận xóa', `Bạn có chắc chắn muốn xóa nhân viên "${selectedUser.full_name}"?`,
-      [ { text: 'Hủy', style: 'cancel' },
-        { text: 'Xóa', style: 'destructive',
-          onPress: async () => {
-            setIsLoading(true);
-            try {
-              const { error } = await supabase.functions.invoke('delete-user', { body: { user_id: selectedUser.id } });
-              if (error) throw error;
-              Alert.alert('Thành công', 'Đã xóa nhân viên.');
-              loadUsers();
-              setModalVisible(false);
-            } catch (error: any) { Alert.alert('Lỗi', `Không thể xóa: ${error?.message || 'Lỗi không xác định'}`); } 
-            finally { setIsLoading(false); }
-          },
-        },
-      ]
-    );
+    setConfirmTitle('Xác nhận xóa');
+    setConfirmMessage(`Bạn có chắc chắn muốn xóa nhân viên "${selectedUser.full_name}"?`);
+    confirmActionRef.current = async () => {
+      setIsLoading(true);
+      try {
+        const { error } = await supabase.functions.invoke('delete-user', { body: { user_id: selectedUser.id } });
+        if (error) throw error;
+        Toast.show({ type: 'success', text1: 'Thành công', text2: 'Đã xóa nhân viên.' });
+        loadUsers();
+        setModalVisible(false);
+      } catch (error: any) { Toast.show({ type: 'error', text1: 'Lỗi', text2: `Không thể xóa: ${error?.message || 'Lỗi không xác định'}` }); }
+      finally { setIsLoading(false); }
+    };
+    setConfirmVisible(true);
   };
 
   return (
@@ -147,7 +152,7 @@ export default function AdminUsersScreen({ onClose }: { onClose?: () => void }) 
         ListEmptyComponent={<View style={styles.emptyState}><Ionicons name="people-outline" size={48} color="#D1D5DB" /><Text style={styles.emptyStateText}>Không tìm thấy nhân viên</Text></View>}
       />
       
-      <Modal visible={modalVisible} animationType="slide" transparent={true} onRequestClose={() => setModalVisible(false)}>
+  <Modal visible={modalVisible} animationType="slide" transparent={true} onRequestClose={() => setModalVisible(false)}>
         <View style={styles.modalOverlay}><View style={styles.modalContent}>
             <View style={styles.modalHeader}><Text style={styles.modalTitle}>{modalMode === 'add' ? 'Thêm nhân viên mới' : 'Chỉnh sửa thông tin'}</Text><TouchableOpacity onPress={() => setModalVisible(false)}><Ionicons name="close-circle" size={28} color="#D1D5DB" /></TouchableOpacity></View>
             <ScrollView style={styles.modalScroll}>
@@ -168,6 +173,19 @@ export default function AdminUsersScreen({ onClose }: { onClose?: () => void }) 
             </ScrollView>
         </View></View>
       </Modal>
+      <ConfirmModal
+        isVisible={confirmVisible}
+        title={confirmTitle}
+        message={confirmMessage}
+        onClose={() => setConfirmVisible(false)}
+        onConfirm={async () => {
+          setConfirmVisible(false);
+          if (confirmActionRef.current) await confirmActionRef.current();
+        }}
+        confirmText="Xóa"
+        cancelText="Hủy"
+        variant="danger"
+      />
     </SafeAreaView>
   );
 }

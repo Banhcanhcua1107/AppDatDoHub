@@ -2,6 +2,7 @@ import './reanimated-logger-config';
 import 'react-native-gesture-handler';
 import 'react-native-url-polyfill/auto';
 import React, { useEffect, useState } from 'react';
+import { RootSiblingParent } from 'react-native-root-siblings';
 import { ActivityIndicator, View } from 'react-native';
 import * as Font from 'expo-font';
 import AppNavigator from './navigation/AppNavigator';
@@ -50,14 +51,16 @@ function AppContent() {
   return (
     // [SỬA LỖI] Bao bọc toàn bộ cây component bằng NotificationProvider
     // để bộ lắng nghe toàn cục có thể hoạt động ở bất kỳ đâu.
-    <NotificationProvider>
-      <AuthProvider>
-        <NetworkProvider>
-          <AppNavigator />
-          <Toast config={toastConfig} />
-        </NetworkProvider>
-      </AuthProvider>
-    </NotificationProvider>
+    <RootSiblingParent>
+      <NotificationProvider>
+        <AuthProvider>
+          <NetworkProvider>
+            <AppNavigator />
+            <Toast config={toastConfig} />
+          </NetworkProvider>
+        </AuthProvider>
+      </NotificationProvider>
+    </RootSiblingParent>
   );
 }
 
