@@ -1,0 +1,102 @@
+1. Use Case là gì?
+
+Use Case mô tả sự tương tác giữa người dùng và hệ thống ở trong một môi trường cụ thể, vì một mục đích cụ thể. Môi trường nằm trong một bối cảnh, phạm vi hoặc hệ thống phần mềm cụ thể. Mục đích cụ thể là diễn tả được yêu cầu theo góc nhìn từ phía người dùng. Bạn đọc tham khảo thêm: quy trình thông quan hàng hóa
+
+Sự tương tác giữa người dùng và hệ thống có 2 cách thức phổ biến:
+Cách thức mà người dùng tương tác với hệ thống.
+Cách thức mà hệ thống tương tác với các hệ thống khác.
+
+
+2. Các thành phần đặc tả Use Case
+Các thành phần đặc tả Use Case bao gồm: Actor (người sử dụng), Use Case (chức năng tương tác) & Relationship (các quan hệ trong Use Case).
+
+
+
+Các thành phần của Use Case bao gồm: Actor, Use Case & Relationship 
+
+a, Actor (Người sử dụng)
+Actor là thành phần chỉ người dùng hoặc một đối tượng nào đó bên ngoài tương tác với hệ thống. Để xác nhận đó có phải là Actor hay không thì cần xem xét dựa và những câu hỏi sau:
+
+Ai là người sử dụng chức năng chính của hệ thống (tác nhân chính)?
+Ai sẽ là admin của hệ thống – Người cài đặt, quản lý và bảo trì hệ thống (tác nhân phụ)?
+Ai sẽ cần hệ thống hỗ trợ để thực hiện các tác vụ hằng ngày?
+Hệ thống này có cần phải tương tác với các hệ thống nào khác không?
+Ai là người input dữ liệu vào hệ thống (trường hợp hệ thống lưu trữ dữ liệu)?
+Ai hay cái gì quan tâm đến giá trị mà hệ thống sẽ mang lại?
+b, Use Case (Chức năng tương tác)
+Use Case là các chức năng mà các Actor sẽ sử dụng hay thể hiện sự tương tác giữa người dùng và hệ thống. Để tìm ra được các Use Case, ta cần trả lời những câu hỏi sau:
+
+Actor cần những chức năng nào của hệ thống?
+Actor có hành động chính là gì?
+Actor có cần đọc, thêm mới, hủy bỏ, chỉnh sửa hay lưu trữ loại thông tin nào trong hệ thống không?
+Hệ thống có cần thông báo những thay đổi bất ngờ trong nội bộ cho Actor không?
+Công việc hàng ngày của Actor có thể được đơn giản hóa hoặc hữu hiệu hóa qua các chức năng của hệ thống?
+Use Case có thể được tạo ra bởi sự kiện nào khác không?
+Hệ thống cần những thông tin đầu vào/đầu ra nào? Những thông tin đó sẽ đi từ đâu đến đâu?
+Những khó khăn và thiếu hụt của hệ thống hiện tại nằm ở đâu?
+vận chuyển hàng không là gì
+
+c, Relationship (Các quan hệ trong Use Case) 
+Các quan hệ trong Use Case gồm 3 loại: Include, Extend & Generalization.
+Mối quan hệ Include trong Use Case là gì?
+
+Include là mối quan hệ bao gồm hoặc bắt buộc phải có giữa các Use Case với nhau. Hiểu đơn giản hơn: Để Use Case A xảy ra thì phải đạt được Use Case B.
+
+Ví dụ: Use Case A rút tiền xảy ra thì Use Case B xác thực tài khoản phải hoàn thành.
+
+Mối quan hệ Extend
+
+Extend biểu diễn mối quan hệ mở rộng, không bắt buộc, có thể có hoặc không giữa các Use Case với nhau. 
+
+Ví dụ: Use Case B quên mật khẩu có thể xảy ra hoặc không và nó có liên quan đến Use Case A đăng nhập hệ thống chứ không phải bất kỳ một Use Case nào khác.Bạn đọc tham khảo thêm: vận chuyển nhật việt giá rẻ
+
+
+
+Mối quan hệ extend thể hiện mối quan hệ không bắt buộc giữa các Use Case với nhau
+
+Mối quan hệ Generalization 
+
+Generalization là mối quan hệ cha con giữa các Use Case với nhau. Generalization còn thể hiện khả năng thể hiện mối quan hệ giữa các Actor với nhau.
+
+Ví dụ: Mối quan hệ cha – con giữa các Use Case:
+
+Đăng nhập (cha): Có thể thông qua số điện thoại (con) hoặc Email (con).
+Đặt hàng (cha): Có đặt hàng qua số điện thoại (con) hoặc website (con).
+Ví dụ: Mối quan hệ cha – con giữa các Actor:
+
+Khách hàng (cha): Gồm khách hàng cũ (con) và khách hàng mới (con).
+ 
+
+
+
+=> Đăng kí ngay: Webinar “Xây dựng lộ trình tự học lập trình hiệu quả”
+
+vận chuyển hàng không quốc tế
+
+3. Quy trình vẽ Use Case diagram
+Xây dựng được một sơ đồ Use Case hoàn chỉnh cần trải qua 3 giai đoạn: Giai đoạn mô hình hóa, giai đoạn cấu trúc & giai đoạn review.
+
+Giai đoạn mô hình hóa:
+
+Bước 1: Thực hiện thiết lập ngữ cảnh của hệ thống.
+Bước 2: Xác định các Actor.
+Bước 3: Xác định các Use Case.
+Bước 4: Định nghĩa các mối quan hệ giữa Actor và Use Case.
+Bước 5: Đánh giá các mối quan hệ đó để tìm cách chi tiết hóa.
+Giai đoạn cấu trúc:
+Bước 6: Đánh giá các Use Case cho quan hệ Include.
+Bước 7: Đánh giá các Use Case cho quan hệ Extend.
+Bước 8: Đánh giá các Use Case cho quan hệ Generalization .
+Giai đoạn review:
+Bước 9: Kiểm tra (verification): Đảm bảo hệ thống đúng với tài liệu đặc tả.
+Bước 10: Thẩm định (validation): Đảm bảo hệ thống sẽ được phát triển là thứ mà khách hàng cuối thực sự cần thiết.
+ 
+
+4. Vẽ sơ đồ Use Case cần lưu ý gì?
+Use Case diagram cần được thiết kế đơn giản, chi tiết và dễ hiểu nhất. Khi xây dựng Use Case, các bạn nên nắm được các lưu ý sau để có cách khắc phục tối ưu nhất.Bạn đọc tham khảo thêm: hình thức vận chuyển door to door
+
+Lưu ý 1: Không đặt tên Use Case quá dài. Tên của Use Case phải đặt ngắn gọn, rõ ràng, miêu tả đủ nghĩa đối tượng người dùng. 
+Lưu ý 2: Không lạm dụng từ “Manage” quá nhiều.Sử dụng từ “Manage” để miêu tả mối quan hệ giữa Actor và hệ thống là quá tối nghĩa, không nói rõ được mục đích để làm gì. Use Case cần truyền tải được mục đích sau cùng, chứa đựng góc nhìn của người dùng cuối cùng.
+Lưu ý 3: Không thiết kế quá nhiều Use Case. Tận dụng các Relationship để các Use Case liên kết với nhau. Sau đó sử dụng Boundary of System để phân nhóm, giới hạn cho các Use Case.
+Lưu ý 4: Không quá đi sâu vào chi tiết các chức năng CRUD.Không lạm dụng CRUD tránh gây nhàm chán, không thể hiện được nhiều thông tin cho người xem. Hướng giải quyết: Thêm một dòng note trước đoạn mô tả Use Case của tài liệu hoặc tạo riêng một Use Case có tên là manage X với X là 1 đối tượng bất kỳ.
+Lưu ý 5: Nên tạo tính thẩm mỹ cho Use Case. Use Case không thiết kế hợp lý, thiếu thẩm mỹ sẽ không thu hút được người dùng. Người xây dựng cần thiết kế các Use Case rõ ràng mạch lạc bằng cách: Tạo sơ đồ cùng kích cỡ, đánh dấu các Use Case ID, không chồng chéo các mối quan hệ, thêm màu sắc vào các Use Case... 

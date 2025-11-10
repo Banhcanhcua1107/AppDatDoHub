@@ -69,13 +69,15 @@ export default function AdminDashboardScreen({ navigation }: Props) {
   const loadDashboardData = useCallback(async (isRefreshing = false) => {
     if (!isRefreshing) setLoading(true);
     try {
+      // Lấy dữ liệu tổng quan
       const { data: overviewData, error: overviewError } = await supabase.rpc('get_dashboard_overview');
       if (overviewError) throw new Error('Không thể lấy dữ liệu tổng quan.');
 
-      const { count: userCount, error: userError } = await supabase
-        .from('profiles').select('*', { count: 'exact', head: true });
+      // SỬA LỖI: Gọi hàm RPC để đếm nhân viên thay vì query trực tiếp
+      const { data: userCount, error: userError } = await supabase.rpc('get_employee_count');
       if (userError) throw new Error('Không thể đếm số nhân viên.');
 
+      // Đếm số sản phẩm (cái này thường không cần RLS phức tạp nên có thể giữ nguyên)
       const { count: menuCount, error: menuError } = await supabase
         .from('menu_items').select('*', { count: 'exact', head: true });
       if (menuError) throw new Error('Không thể đếm số sản phẩm.');
