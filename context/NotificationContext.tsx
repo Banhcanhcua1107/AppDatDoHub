@@ -1,189 +1,147 @@
 // src/context/NotificationContext.tsx
 
-import React, { createContext, useContext, useEffect } from 'react';
+import React, { createContext, useContext, useEffect, useRef } from 'react';
 import { supabase } from '../services/supabase';
 import { playNotificationSound } from '../utils/soundManager';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-interface NotificationContextType {
-  lastNotificationTime?: number;
-}
-
-const NotificationContext = createContext<NotificationContextType>({});
+// Context không cần truyền giá trị ra ngoài, chỉ dùng để chạy bộ lắng nghe
+const NotificationContext = createContext({});
 
 export const useNotifications = () => {
   return useContext(NotificationContext);
 };
 
-// Provider này sẽ bao bọc toàn bộ ứng dụng của bạn
 export const NotificationProvider = ({ children }: { children: React.ReactNode }) => {
-  // [CẬP NHẬT] Sử dụng useRef thay vì useState để lưu thời gian mà không re-render
-  const lastNotificationTimeRef = React.useRef<number>(0);
-  // [MỚI] Sử dụng useRef để lưu user role (không re-render, persistent)
-  const userRoleRef = React.useRef<string>('');
+  const lastNotificationTimeRef = useRef<number>(0);
+  const userRoleRef = useRef<string>('');
 
   useEffect(() => {
-    console.log('[NotificationContext] Khởi tạo bộ lắng nghe thông báo toàn cầu...');
+    console.log('[NotificationContext] Bắt đầu quá trình thiết lập lắng nghe...');
     
-    // [FIX] Lấy role user hiện tại (async, chạy từng lần)
+    // Hàm lấy và lưu vai trò người dùng từ AsyncStorage
     const initializeUserRole = async () => {
       try {
         const profileJson = await AsyncStorage.getItem('user_profile');
         if (profileJson) {
           const profile = JSON.parse(profileJson);
           userRoleRef.current = profile.role;
-          console.log(`[NotificationContext] User role: ${userRoleRef.current}`);
+          console.log(`[NotificationContext] Vai trò người dùng đã được xác định: ${userRoleRef.current}`);
+        } else {
+          console.log('[NotificationContext] Không tìm thấy thông tin người dùng.');
         }
       } catch (e) {
-        console.error('[NotificationContext] Lỗi lấy user role:', e);
+        console.error('[NotificationContext] Lỗi khi lấy vai trò người dùng:', e);
       }
     };
-    
-    // [FIX] Chạy sync trước rồi mới setup channels
-    initializeUserRole();
 
+    // Hàm kích hoạt âm thanh, có cơ chế debounce để tránh spam
     const triggerNotificationSound = () => {
-      // Debounce: chỉ phát âm thanh nếu khoảng cách từ lần trước > 1.5 giây
       const now = Date.now();
-      const timeSinceLastNotification = now - lastNotificationTimeRef.current;
+      const timeSinceLast = now - lastNotificationTimeRef.current;
       
-      if (timeSinceLastNotification > 1500) {
-        console.log('[NotificationContext] 🔔 Phát âm thanh thông báo...', `(${timeSinceLastNotification}ms kể từ lần trước)`);
+      if (timeSinceLast > 1500) {
+        console.log('[NotificationContext] 🔔 Phát âm thanh thông báo...');
         playNotificationSound();
         lastNotificationTimeRef.current = now;
       } else {
-        console.log(`[NotificationContext] ⏸️ Bỏ qua âm thanh (chỉ ${timeSinceLastNotification}ms kể từ lần trước)`);
+        console.log(`[NotificationContext] ⏸️ Bỏ qua âm thanh (quá gần lần trước: ${timeSinceLast}ms)`);
       }
     };
 
-    // --- BỘ LẮNG NGHE CHO NHÂN VIÊN ---
-    // Lắng nghe các thông báo MỚI (INSERT) từ return_notifications
-    // [MỚI] Chỉ phát âm thanh nếu user là 'staff' (nhan_vien)
-    // Các notification này gửi từ bếp: item_ready, out_of_stock, cancellation_*, return_item (từ bếp yêu cầu trả)
-    const staffChannel = supabase
-      .channel('global-staff-notifications')
-      .on(
-        'postgres_changes',
-        { 
-          event: 'INSERT',
-          schema: 'public', 
-          table: 'return_notifications',
-        },
-        (payload) => {
-          // [FIX] Chỉ phát âm thanh nếu user là nhân viên (staff)
-          const notificationType = payload.new.notification_type;
-          if (userRoleRef.current === 'nhan_vien' || userRoleRef.current === 'staff') {
-            // Nhân viên chỉ nghe khi:
-            // - item_ready, out_of_stock, cancellation_approved, cancellation_rejected từ bếp
-            // - KHÔNG nghe return_item (return_item là nhân viên gửi cho bếp)
-            if (notificationType !== 'return_item') {
-              console.log('[NotificationContext] Nhân viên nhận thông báo từ bếp:', payload.new);
-              triggerNotificationSound();
-            } else {
-              console.log('[NotificationContext] ⏭️ Nhân viên bỏ qua (return_item là của bếp)');
+    // [SỬA LỖI] Hàm async để đảm bảo vai trò được lấy XONG RỒI MỚI thiết lập kênh
+    const setupChannels = async () => {
+      // Bước 1: Chờ cho đến khi vai trò người dùng được xác định
+      await initializeUserRole();
+
+      // Nếu không có vai trò, không thiết lập kênh nào cả
+      if (!userRoleRef.current) {
+        console.warn('[NotificationContext] Không có vai trò người dùng, không thể thiết lập kênh.');
+        return () => {}; // Trả về hàm dọn dẹp rỗng
+      }
+
+      console.log(`[NotificationContext] Thiết lập kênh cho vai trò: ${userRoleRef.current}`);
+
+      // --- KÊNH 1: LẮNG NGHE BẢNG "return_notifications" ---
+      // Bảng này chứa thông báo từ Bếp -> Nhân viên (món xong, hết món, duyệt/từ chối hủy)
+      // VÀ thông báo từ Nhân viên -> Bếp (yêu cầu trả món)
+      const returnNotificationsChannel = supabase
+        .channel('global-return-notifications')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'return_notifications' },
+          (payload) => {
+            const notificationType = payload.new.notification_type;
+            
+            // [QUAN TRỌNG] Logic cho NHÂN VIÊN
+            if (userRoleRef.current === 'nhan_vien' || userRoleRef.current === 'staff') {
+              // Nhân viên chỉ nghe thông báo từ bếp, không nghe thông báo do chính mình tạo ('return_item')
+              if (notificationType !== 'return_item') {
+                console.log('[NotificationContext] Nhân viên nhận thông báo từ bếp:', notificationType);
+                triggerNotificationSound();
+              }
             }
-          } else {
-            console.log(`[NotificationContext] ⏭️ Bỏ qua (user role: ${userRoleRef.current}, không phải staff)`);
+            
+            // [QUAN TRỌNG] Logic cho BẾP
+            if (userRoleRef.current === 'bep') {
+              // Bếp chỉ nghe thông báo 'return_item' (khi nhân viên yêu cầu trả món)
+              if (notificationType === 'return_item') {
+                 console.log('[NotificationContext] Bếp nhận yêu cầu trả món từ nhân viên.');
+                 triggerNotificationSound();
+              }
+            }
           }
-        }
-      )
-      .subscribe();
-
-    // --- BỘ LẮNG NGHE CHO BẾP ---
-    // Lắng nghe các yêu cầu hủy/trả món MỚI (INSERT) từ nhân viên
-    // [MỚI] Chỉ phát âm thanh nếu user là 'bep'
-    // Cũng lắng nghe return_notifications với notification_type='return_item' (nhân viên yêu cầu trả)
-    const kitchenChannel = supabase
-      .channel('global-kitchen-notifications')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'cancellation_requests'
-        },
-        (payload) => {
-          // [FIX] Chỉ phát âm thanh nếu user là bếp
-          if (userRoleRef.current === 'bep') {
-            console.log('[NotificationContext] Bếp nhận yêu cầu hủy/trả mới:', payload.new);
-            triggerNotificationSound();
-          } else {
-            console.log(`[NotificationContext] ⏭️ Bỏ qua (user role: ${userRoleRef.current}, không phải bep)`);
+        )
+        .subscribe();
+        
+      // --- KÊNH 2: LẮNG NGHE BẢNG "cancellation_requests" ---
+      // Bảng này chỉ chứa yêu cầu hủy/trả từ Nhân viên -> Bếp
+      const cancellationRequestsChannel = supabase
+        .channel('global-cancellation-requests')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'cancellation_requests' },
+          (payload) => {
+            // [QUAN TRỌNG] Chỉ BẾP mới nghe âm thanh từ kênh này
+            if (userRoleRef.current === 'bep') {
+              console.log('[NotificationContext] Bếp nhận yêu cầu hủy món mới.');
+              triggerNotificationSound();
+            }
           }
-        }
-      )
-      .subscribe();
-    
-    // [MỚI] Channel riêng cho return_item notification (nhân viên yêu cầu trả)
-    const returnItemChannel = supabase
-      .channel('global-return-item-notifications')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'return_notifications',
-          filter: "notification_type=eq.return_item"
-        },
-        (payload) => {
-          // [FIX] Chỉ phát âm thanh nếu user là bếp
-          if (userRoleRef.current === 'bep') {
-            console.log('[NotificationContext] Bếp nhận yêu cầu trả từ nhân viên:', payload.new);
-            triggerNotificationSound();
-          } else {
-            console.log(`[NotificationContext] ⏭️ Bỏ qua (user role: ${userRoleRef.current}, không phải bep)`);
+        )
+        .subscribe();
+      
+      // --- KÊNH 3: LẮNG NGHE BẢNG "menu_items" (Bếp báo hết món) ---
+      const menuItemsChannel = supabase
+        .channel('global-menu-items-changes')
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'menu_items', filter: 'is_available=eq.false' },
+          (payload) => {
+            // [SỬA LỖI] Chỉ NHÂN VIÊN mới nghe khi có món hết hàng
+            if (userRoleRef.current === 'nhan_vien' || userRoleRef.current === 'staff') {
+              console.log('[NotificationContext] Nhân viên nhận thông báo hết món.');
+              triggerNotificationSound();
+            }
           }
-        }
-      )
-      .subscribe();
+        )
+        .subscribe();
 
-    // --- BỘ LẮNG NGHE CHO NHÂN VIÊN: MENU_ITEMS (HẾT HÀNG) ---
-    // Lắng nghe khi bếp báo hết một món
-    const menuItemsChannel = supabase
-      .channel('global-menu-items-changes')
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'menu_items',
-          filter: 'is_available=eq.false'
-        },
-        (payload) => {
-          console.log('[NotificationContext] Báo hết hàng:', payload.new);
-          triggerNotificationSound();
-        }
-      )
-      .subscribe();
-
-    // --- BỘ LẮNG NGHE CHO BẾP: RETURN_SLIPS (NHÂN VIÊN TRẢ MÓN) ---
-    // Lắng nghe khi nhân viên tạo phiếu trả hàng (return_slip)
-    const returnSlipsChannel = supabase
-      .channel('global-return-slips')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'return_slips'
-        },
-        (payload) => {
-          console.log('[NotificationContext] Nhân viên tạo yêu cầu trả hàng:', payload.new);
-          triggerNotificationSound();
-        }
-      )
-      .subscribe();
-
-    // Dọn dẹp khi component unmount
-    return () => {
-      console.log('[NotificationContext] Dừng bộ lắng nghe thông báo...');
-      supabase.removeChannel(staffChannel);
-      supabase.removeChannel(kitchenChannel);
-      supabase.removeChannel(returnItemChannel);
-      supabase.removeChannel(menuItemsChannel);
-      supabase.removeChannel(returnSlipsChannel);
+      // Trả về hàm dọn dẹp để useEffect có thể gọi khi unmount
+      return () => {
+        console.log('[NotificationContext] Dừng các bộ lắng nghe thông báo...');
+        supabase.removeChannel(returnNotificationsChannel);
+        supabase.removeChannel(cancellationRequestsChannel);
+        supabase.removeChannel(menuItemsChannel);
+      };
     };
-  }, []); // Mảng rỗng vì không có dependencies
+
+    // Gọi hàm thiết lập và lưu lại hàm dọn dẹp của nó
+    const cleanupPromise = setupChannels();
+
+    // useEffect sẽ gọi hàm này khi component bị hủy
+    return () => {
+      cleanupPromise.then(cleanup => {
+        if (cleanup) {
+          cleanup();
+        }
+      });
+    };
+  }, []); // Mảng rỗng đảm bảo useEffect chỉ chạy một lần duy nhất
 
   return (
     <NotificationContext.Provider value={{}}>
