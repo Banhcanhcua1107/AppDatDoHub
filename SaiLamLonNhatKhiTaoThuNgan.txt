@@ -1,0 +1,26 @@
+Khi bạn đã sẵn sàng quản lý kho nguyên liệu một cách nghiêm ngặt trở lại, bạn chỉ cần chạy lại đoạn mã gốc của hàm `update_menu_item_availability` dưới đây. Thao tác này sẽ ngay lập tức kích hoạt lại hệ thống kiểm tra tồn kho nguyên liệu.
+
+```sql
+-- DÙNG ĐỂ KHÔI PHỤC KHI CẦN
+CREATE OR REPLACE FUNCTION "public"."update_menu_item_availability"("p_menu_item_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+    v_is_available_by_ingredients BOOLEAN;
+    v_is_available_by_daily_limit BOOLEAN;
+    v_menu_item RECORD;
+BEGIN
+    SELECT daily_stock_limit, remaining_quantity INTO v_menu_item FROM public.menu_items WHERE id = p_menu_item_id;
+    v_is_available_by_daily_limit := (v_menu_item.daily_stock_limit IS NULL) OR (v_menu_item.remaining_quantity > 0);
+    SELECT NOT EXISTS (
+        SELECT 1
+        FROM public.menu_item_ingredients mii
+        JOIN public.ingredients i ON mii.ingredient_id = i.id
+        WHERE mii.menu_item_id = p_menu_item_id
+          AND i.stock_quantity < mii.quantity_required
+    ) INTO v_is_available_by_ingredients;
+    UPDATE public.menu_items
+    SET is_available = (v_is_available_by_daily_limit AND v_is_available_by_ingredients)
+    WHERE id = p_menu_item_id;
+END;
+$$;

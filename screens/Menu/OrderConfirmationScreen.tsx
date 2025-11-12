@@ -137,10 +137,10 @@ const OrderListItem: React.FC<{
             <Icon name="add" size={18} color={(!isNew || isOutOfStock) ? '#ccc' : 'white'} />
           </TouchableOpacity>
         </View>
-        <TouchableOpacity 
-          onPress={onOpenMenu} 
-          disabled={isCompleted || isPaid || isReturnedItem || isOutOfStock} 
-          className="p-2" 
+        <TouchableOpacity
+          onPress={onOpenMenu}
+          disabled={isCompleted || isPaid || isReturnedItem || isOutOfStock}
+          className="p-2"
           style={{ opacity: (isCompleted || isPaid || isReturnedItem || isOutOfStock) ? 0.5 : 1 }}
         >
           <Icon name="ellipsis-horizontal" size={24} color="gray" />
@@ -158,43 +158,32 @@ const OrderListItem: React.FC<{
         <View className="flex-row justify-between items-start">
           <View className="flex-1 pr-4">
             <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
-            {(item.status === 'served' || item.status === 'completed') && !isReturnedItem && !isOutOfStock && (
-            <Icon name="checkmark-circle" size={20} color="#10B981" style={{ marginRight: 6 }} />
+            {(isCompleted) && !isReturnedItem && !isOutOfStock && (
+              <Icon name="checkmark-circle" size={20} color="#10B981" style={{ marginRight: 6 }} />
             )}
-            {item.status === 'in_progress' && !isOutOfStock && (
-            <Icon name="flame" size={20} color="#F97316" style={{ marginRight: 6 }} />
+            {isInProgress && !isOutOfStock && (
+              <Icon name="flame" size={20} color="#F97316" style={{ marginRight: 6 }} />
             )}
             <Text
-            className={`text-lg font-bold ${(isPaid || isReturnedItem || isOutOfStock || isCompleted) ? 'text-gray-500' : 'text-gray-800'} ${(isReturnedItem || isOutOfStock) ? 'line-through' : ''}`}
+              className={`text-lg font-bold ${(isPaid || isReturnedItem || isOutOfStock || isCompleted) ? 'text-gray-500' : 'text-gray-800'} ${(isReturnedItem || isOutOfStock) ? 'line-through' : ''}`}
             >
-            {item.name}
+              {item.name}
             </Text>
             </View>
             <Text className="text-sm text-gray-500 mt-1">{`Size: ${sizeText}, Đường: ${sugarText}`}</Text>
             <Text className="text-sm text-gray-500">{`Topping: ${toppingsText}`}</Text>
             {noteText && (
                 <View className="bg-yellow-50 p-2 rounded-md mt-2">
-                <Text className="text-sm text-yellow-800 italic">Ghi chú: {noteText}</Text>
+                  <Text className="text-sm text-yellow-800 italic">Ghi chú: {noteText}</Text>
                 </View>
             )}
             </View>
             <View className="items-end">
             {isNew && (
-                <View className="bg-green-100 px-2 py-1 rounded-full mb-1">
-                <Text className="text-green-800 text-xs font-bold">Mới</Text>
+                <View className="bg-blue-100 px-2 py-1 rounded-full mb-1">
+                  <Text className="text-blue-800 text-xs font-bold">Mới</Text>
                 </View>
             )}
-            {/* SỬA ĐỔI TẠI ĐÂY */}
-            {isCompleted && !isReturnedItem && !isOutOfStock && (
-                <View className="bg-green-100 px-2 py-1 rounded-full mb-1">
-                <Text className="text-green-800 text-xs font-bold">Hoàn thành</Text>
-                </View>
-            )}
-        {isInProgress && !isCompleted && !isOutOfStock && (
-            <View className="bg-orange-100 px-2 py-1 rounded-full mb-1">
-            <Text className="text-orange-800 text-xs font-bold">Đang làm</Text>
-            </View>
-        )}
             {isPaid && (
               <View className="bg-gray-200 px-2 py-1 rounded-full mb-1">
                 <Text className="text-gray-600 text-xs font-bold">Đã trả bill</Text>
@@ -223,9 +212,6 @@ const OrderListItem: React.FC<{
           >
             {item.quantity} x {item.unit_price.toLocaleString('vi-VN')}đ
           </Text>
-          {!isNew && !isPaid && !isReturnedItem && !isOutOfStock && (
-            <Icon name="flame" size={20} color="#F97316" />
-          )}
         </View>
       </TouchableOpacity>
       {isExpanded && <ExpandedView />}
@@ -326,14 +312,14 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
             .from('orders')
             .select(
               `
-                        id, 
-                        status, 
-                        order_items(
-                            id, quantity, unit_price, customizations, created_at, returned_quantity,
-                            status, menu_items(name, image_url, is_available)
-                        ), 
-                        order_tables(tables(id, name))
-                    `
+                id,
+                status,
+                order_items(
+                    id, quantity, unit_price, customizations, created_at, returned_quantity,
+                    status, menu_items(name, image_url, is_available)
+                ),
+                order_tables(tables(id, name))
+              `
             )
             .eq('id', orderIdToFetch)
             .single();
@@ -346,7 +332,7 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
             (orderDetails.order_items || []).forEach((item: any) => {
               const name = item.menu_items?.name || item.customizations?.name || 'Món đã xóa';
               const image_url = item.menu_items?.image_url || null;
-              const is_available = item.menu_items?.is_available ?? true; 
+              const is_available = item.menu_items?.is_available ?? true;
 
               if (item.returned_quantity > 0) {
                 returnedItemsSectionData.push({
@@ -390,10 +376,10 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
               }
             });
 
+            // [SỬA LỖI] Logic lấy tất cả các order đã thanh toán trong cùng 1 phiên
             if (orderDetails.status === 'pending') {
               const representativeTableId = freshTables[0]?.id || initialTableId;
               if (representativeTableId) {
-                // Tìm tất cả orders liên kết với bàn này
                 const { data: linkedOrders, error: linkError } = await supabase
                   .from('order_tables')
                   .select('order_id')
@@ -401,15 +387,13 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
 
                 if (!linkError && linkedOrders && linkedOrders.length > 0) {
                   const orderIds = linkedOrders.map(link => link.order_id);
-                  
-                  // [SỬA LỖI] Lấy TẤT CẢ các order 'paid' liên quan, KHÔNG GIỚI HẠN
+
+                  // Lấy TẤT CẢ các order 'paid' liên quan, KHÔNG GIỚI HẠN
                   const { data: allPaidOrders, error: paidError } = await supabase
                     .from('orders')
                     .select(
                       `
-                        id, 
-                        status,
-                        created_at,
+                        id, status, created_at,
                         order_items(
                           id, quantity, unit_price, customizations, created_at, returned_quantity,
                           status, menu_items(name, image_url, is_available)
@@ -418,15 +402,14 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
                     )
                     .in('id', orderIds)
                     .eq('status', 'paid')
-                    .order('created_at', { ascending: true }); // Sắp xếp từ cũ đến mới để hiển thị đúng thứ tự
-                    // .limit(1); // <<<<====== XÓA BỎ DÒNG NÀY
+                    .order('created_at', { ascending: true }); // Sắp xếp từ cũ đến mới
 
                   if (!paidError && allPaidOrders && allPaidOrders.length > 0) {
-                    allPaidOrders.forEach((order: any) => { // Đổi tên biến thành allPaidOrders
+                    allPaidOrders.forEach((order: any) => {
                       (order.order_items || []).forEach((item: any) => {
-                        const name = item.menu_items?.name || item.customizations?.name || 'Món đã xóa';
-                        const image_url = item.menu_items?.image_url || null;
-                        const is_available = item.menu_items?.is_available ?? true;
+                         const name = item.menu_items?.name || item.customizations?.name || 'Món đã xóa';
+                         const image_url = item.menu_items?.image_url || null;
+                         const is_available = item.menu_items?.is_available ?? true;
 
                         const remaining_quantity = item.quantity - item.returned_quantity;
                         if (remaining_quantity > 0) {
@@ -1118,23 +1101,11 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
       // BƯỚC 2: Cập nhật order cũ thành 'paid'
       await supabase
         .from('orders')
-        .update({ 
-          status: 'paid', 
-          total_price: finalBill,
-          payment_method: paymentMethod
-        })
+        .update({ status: 'paid', total_price: finalBill, payment_method: paymentMethod })
         .eq('id', orderId)
         .throwOnError();
 
-      // [SỬA LỖI] XÓA BỎ DÒNG SAU ĐÂY. KHÔNG ĐƯỢC XÓA LIÊN KẾT LỊCH SỬ.
-      /*
-      await supabase
-        .from('order_tables')
-        .delete()
-        .eq('order_id', orderId)
-        .throwOnError();
-      */
-      // [KẾT THÚC SỬA LỖI]
+      // [SỬA LỖI] KHÔNG xóa liên kết trong order_tables để giữ lại lịch sử.
 
       // BƯỚC 3: Tạo một order pending MỚI
       const { data: newOrder, error: createError } = await supabase
@@ -1149,28 +1120,15 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         order_id: newOrder.id,
         table_id: tableId,
       }));
-      await supabase
-        .from('order_tables')
-        .insert(orderTableInserts)
-        .throwOnError();
+      await supabase.from('order_tables').insert(orderTableInserts).throwOnError();
 
       // BƯỚC 5: Cập nhật State và UI
       setActiveOrderId(newOrder.id);
-      Toast.show({
-        type: 'success',
-        text1: 'Thanh toán thành công',
-        text2: `Đã thanh toán ${finalBill.toLocaleString('vi-VN')}đ. Phiên mới đã sẵn sàng.`
-      });
+      Toast.show({ type: 'success', text1: 'Thanh toán thành công', text2: `Phiên mới đã sẵn sàng.` });
 
-      // Tải lại toàn bộ dữ liệu để hiển thị đúng trạng thái mới
       await fetchAllData(false);
-
     } catch (error: any) {
-      Toast.show({
-        type: 'error',
-        text1: 'Lỗi khi giữ phiên',
-        text2: error.message
-      });
+      Toast.show({ type: 'error', text1: 'Lỗi khi giữ phiên', text2: error.message });
     } finally {
       setLoading(false);
     }

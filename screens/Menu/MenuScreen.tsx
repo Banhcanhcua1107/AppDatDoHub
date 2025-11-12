@@ -51,7 +51,6 @@ interface ExistingItem {
   unit_price: number;
   totalPrice: number;
 }
-// [CẬP NHẬT] Thêm categoryId để lọc dễ hơn
 interface MenuItemFromDB {
   id: string;
   name: string;
@@ -59,7 +58,7 @@ interface MenuItemFromDB {
   price: number;
   image_url: string | null;
   categoryId: string;
-  is_available: boolean; // Tùy chọn, để tương thích với ItemAvailabilityScreen
+  is_available: boolean;
   remaining_quantity: number | null;
   daily_stock_limit: number | null;
 }
@@ -98,7 +97,6 @@ export interface CartItemFromDB {
   };
 }
 
-// [MỚI] Component Filter Modal
 const FilterModal: React.FC<{
   visible: boolean;
   onClose: () => void;
@@ -107,7 +105,7 @@ const FilterModal: React.FC<{
   onToggleCategory: (id: string) => void;
   onClear: () => void;
 }> = ({ visible, onClose, categories, selectedIds, onToggleCategory, onClear }) => {
-  const filterableCategories = categories.filter((c) => c.id !== 'hot_items'); // Bỏ qua Món Hot
+  const filterableCategories = categories.filter((c) => c.id !== 'hot_items');
 
   return (
     <Modal transparent={true} visible={visible} animationType="fade" onRequestClose={onClose}>
@@ -179,14 +177,12 @@ const MenuItemGrid: React.FC<{ item: MenuItemFromDB; onSelect: () => void }> = (
 
   return (
     <View style={styles.gridItem}>
-      {/* [SỬA] Thay đổi nhỏ ở đây: thêm class `flex flex-col` để đảm bảo layout co giãn tốt */}
       <TouchableOpacity
         onPress={onSelect}
         disabled={!isAvailable}
         style={[styles.shadow, !isAvailable && styles.disabledGridItem]}
         className="bg-white rounded-2xl p-3 h-full flex flex-col justify-between"
       >
-        {/* Phần View này bọc tên, mô tả và số lượng */}
         <View>
           <Image
             source={{ uri: item.image_url || placeholderImage }}
@@ -205,7 +201,6 @@ const MenuItemGrid: React.FC<{ item: MenuItemFromDB; onSelect: () => void }> = (
           )}
         </View>
 
-        {/* Phần View này bọc giá và nút +, sẽ luôn nằm ở dưới cùng */}
         <View className="flex-row items-center justify-between mt-2">
           <Text className="text-lg font-semibold text-gray-900">
             {item.price.toLocaleString('vi-VN')}đ
@@ -250,61 +245,31 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
   const [isFilterModalVisible, setFilterModalVisible] = useState(false);
   const [selectedFilterCategoryIds, setSelectedFilterCategoryIds] = useState<string[]>([]);
 
-  // [MỚI] Hàm tự động cập nhật remaining_quantity = 0 cho các món hết hàng
-  const syncOutOfStockItems = useCallback(async () => {
-    try {
-      const { data: outOfStockItems, error } = await supabase
-        .from('menu_items')
-        .select('id, is_available, remaining_quantity')
-        .eq('is_available', false);
-      
-      if (error) throw error;
-      
-      if (outOfStockItems && outOfStockItems.length > 0) {
-        // Chỉ update những món có remaining_quantity !== 0
-        const itemsToUpdate = outOfStockItems.filter(item => item.remaining_quantity !== 0);
-        
-        if (itemsToUpdate.length > 0) {
-          const { error: updateError } = await supabase
-            .from('menu_items')
-            .update({ remaining_quantity: 0 })
-            .in('id', itemsToUpdate.map(item => item.id));
-          
-          if (updateError) throw updateError;
-        }
-      }
-    } catch (error: any) {
-      console.error('[syncOutOfStockItems] Lỗi:', error.message);
-    }
-  }, []);
+  // [ĐÃ XÓA] Hàm syncOutOfStockItems đã được xóa khỏi đây vì nó là nguyên nhân gây lỗi.
 
-  // [CẬP NHẬT] Callback được giữ nguyên logic, chỉ cần gọi trong useFocusEffect
   const fetchData = useCallback(async () => {
-        try {
-          const [menuResponse, hotItemsResponse, cartResponse, orderLinkResponse] = await Promise.all([
-            supabase
-              .from('categories')
-              // [QUAN TRỌNG] Thêm bộ lọc is_hidden = false
-              .select(`id, name, menu_items!inner(id, name, description, price, image_url, is_available, remaining_quantity, daily_stock_limit)`)
-              .eq('menu_items.is_hidden', false),
-              
-            // [QUAN TRỌNG] Thêm bộ lọc is_hidden = false cho món hot
-            supabase
-              .from('menu_items')
-              .select('*, is_available, remaining_quantity, daily_stock_limit')
-              .eq('is_hot', true)
-              .eq('is_hidden', false) 
-              .limit(10),
-              
-            supabase.from('cart_items').select(`*`).eq('table_id', tableId),
-            supabase
-              .from('order_tables')
-              .select('orders!inner(id, status)')
-              .eq('table_id', tableId)
-              .eq('orders.status', 'pending'),
-          ]);
+    try {
+      const [menuResponse, hotItemsResponse, cartResponse, orderLinkResponse] = await Promise.all([
+        supabase
+          .from('categories')
+          .select(`id, name, menu_items!inner(id, name, description, price, image_url, is_available, remaining_quantity, daily_stock_limit)`)
+          .eq('menu_items.is_hidden', false),
+          
+        supabase
+          .from('menu_items')
+          .select('*, is_available, remaining_quantity, daily_stock_limit')
+          .eq('is_hot', true)
+          .eq('is_hidden', false) 
+          .limit(10),
+          
+        supabase.from('cart_items').select(`*`).eq('table_id', tableId),
+        supabase
+          .from('order_tables')
+          .select('orders!inner(id, status)')
+          .eq('table_id', tableId)
+          .eq('orders.status', 'pending'),
+      ]);
 
-      // [CẬP NHẬT] Thêm categoryId vào từng món ăn để lọc
       if (menuResponse.data) {
         const formattedData = menuResponse.data.map((cat) => ({
           ...cat,
@@ -312,7 +277,7 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
           menu_items: cat.menu_items.map((item) => ({
             ...item,
             id: String(item.id),
-            categoryId: String(cat.id), // Thêm ID của danh mục cha
+            categoryId: String(cat.id),
           })),
         }));
         const hotCategory = { id: HOT_CATEGORY_ID, name: '🔥 Món Hot', menu_items: [] };
@@ -357,15 +322,13 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
       const initializeData = async () => {
         if (!isActive) return;
         setLoading(true);
-        await syncOutOfStockItems(); // [MỚI] Cập nhật remaining_quantity trước tiên
+        // [ĐÃ XÓA] Lời gọi hàm syncOutOfStockItems()
         await fetchData();
         if (isActive) setLoading(false);
       };
 
-      // Chạy lần đầu sau khi UI tải xong
       interactionTask = InteractionManager.runAfterInteractions(initializeData);
 
-      // Setup realtime subscription
       const channel = supabase
         .channel(`realtime-menu-${tableId}`)
         .on(
@@ -377,7 +340,6 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
         )
         .subscribe();
 
-      // Cleanup function
       return () => {
         isActive = false;
         if (interactionTask) {
@@ -385,24 +347,13 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
         }
         supabase.removeChannel(channel);
       };
-    }, [tableId, fetchData, syncOutOfStockItems])
+    }, [tableId, fetchData]) // [ĐÃ XÓA] Bỏ syncOutOfStockItems khỏi dependency
   );
 
   const handleSelectItem = async (item: MenuItemFromDB) => {
     if (!item.is_available) {
-      // [MỚI] Cập nhật remaining_quantity về 0 khi hết hàng
-      try {
-        await supabase
-          .from('menu_items')
-          .update({ remaining_quantity: 0 })
-          .eq('id', item.id)
-          .throwOnError();
-      } catch (error: any) {
-        console.error('Lỗi cập nhật số lượng:', error.message);
-      }
-      
       Toast.show({ type: 'info', text1: 'Thông báo', text2: `Món "${item.name}" đã hết hàng.` });
-      await fetchData(); // Tải lại dữ liệu để cập nhật UI
+      await fetchData();
       return;
     }
     setSelectedItem(item);
@@ -412,7 +363,6 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
   const handleAddToCart = async (itemWithOptions: CartItem) => {
     if (!isOnline) {
       Toast.show({ type: 'error', text1: 'Không có kết nối mạng', text2: 'Món ăn sẽ không được lưu.' });
-      // Ở đây sau này sẽ là logic lưu vào state tạm
       return;
     }
     try {
@@ -459,7 +409,6 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
       }
       await fetchData();
     } catch (error: any) {
-      // [ĐÃ SỬA] Sử dụng biến `error` để hiển thị thông báo chi tiết
       Alert.alert('Lỗi', `Không thể thêm món vào giỏ hàng: ${error.message}`);
     }
   };
@@ -469,8 +418,6 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
       Alert.alert('Thông báo', 'Vui lòng thêm món vào giỏ hàng!');
       return;
     }
-    // [SỬA LỖI] Nếu đã từng qua OrderConfirmation, dùng goBack để quay về
-    // Nếu chưa, dùng navigate để tạo màn hình mới
     if (fromOrderConfirmation) {
       navigation.goBack();
     } else {
@@ -494,7 +441,6 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
       }
       await fetchData();
     } catch (error: any) {
-      // [ĐÃ SỬA] Sử dụng biến `error` để hiển thị thông báo chi tiết
       Alert.alert('Lỗi', `Không thể cập nhật số lượng món: ${error.message}`);
     }
   };
@@ -504,7 +450,6 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
       await supabase.from('cart_items').delete().eq('id', cartItemId).throwOnError();
       await fetchData();
     } catch (error: any) {
-      // [ĐÃ SỬA] Sử dụng biến `error` để hiển thị thông báo chi tiết
       Alert.alert('Lỗi', `Không thể xóa món khỏi giỏ hàng: ${error.message}`);
     }
   };
@@ -514,7 +459,6 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
       await supabase.from('cart_items').delete().eq('table_id', tableId).throwOnError();
       await fetchData();
     } catch (error: any) {
-      // [ĐÃ SỬA] Sử dụng biến `error` để hiển thị thông báo chi tiết
       Alert.alert('Lỗi', `Không thể xóa giỏ hàng: ${error.message}`);
     }
   };
@@ -541,7 +485,6 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
     }
   };
 
-  // [MỚI] Các hàm xử lý bộ lọc
   const handleToggleFilterCategory = (categoryId: string) => {
     setSelectedFilterCategoryIds((prev) =>
       prev.includes(categoryId) ? prev.filter((id) => id !== categoryId) : [...prev, categoryId]
@@ -559,29 +502,24 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
   const totalCartQuantity = newItemsQuantity + existingItemsQuantity;
   const totalCartPrice = newItemsPrice + existingItemsPrice;
 
-  // [CẬP NHẬT] Logic hiển thị món ăn phức tạp hơn
   const itemsToDisplay = (() => {
     const isFiltering = selectedFilterCategoryIds.length > 0;
     const isSearching = searchQuery.trim().length > 0;
 
-    // Nếu không tìm kiếm và không lọc, dùng logic tab như cũ
     if (!isFiltering && !isSearching) {
       return activeCategoryId === HOT_CATEGORY_ID
         ? hotItems
         : menuData.find((cat) => cat.id === activeCategoryId)?.menu_items || [];
     }
 
-    // Nếu có tìm hoặc có lọc, bắt đầu với tất cả các món
     let potentialItems = menuData.flatMap((category) => category.menu_items);
 
-    // Bước 1: Áp dụng bộ lọc danh mục nếu có
     if (isFiltering) {
       potentialItems = potentialItems.filter((item) =>
         selectedFilterCategoryIds.includes(item.categoryId)
       );
     }
 
-    // Bước 2: Áp dụng tìm kiếm trên kết quả đã lọc (hoặc trên toàn bộ nếu không lọc)
     if (isSearching) {
       potentialItems = potentialItems.filter((item) => {
         const normalizedQuery = normalizeText(searchQuery);
@@ -619,7 +557,6 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
           <View className="w-8" />
         </View>
 
-        {/* [CẬP NHẬT] Thanh tìm kiếm có thêm nút lọc */}
         <View style={styles.searchRow}>
           <View style={styles.searchContainer}>
             <Icon name="search-outline" size={20} color="gray" style={styles.searchIcon} />
@@ -649,7 +586,6 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
         </View>
       </View>
 
-      {/* [CẬP NHẬT] Ẩn thanh danh mục khi đang tìm kiếm hoặc lọc */}
       {!searchQuery && !isFilterActive && (
         <View className="py-3 bg-white border-b-8 border-gray-50">
           <ScrollView
@@ -736,7 +672,6 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
         onRemoveItem={handleRemoveItem}
         onClearCart={handleClearCart}
       />
-      {/* [MỚI] Render Modal lọc */}
       <FilterModal
         visible={isFilterModalVisible}
         onClose={() => setFilterModalVisible(false)}
@@ -765,7 +700,6 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   gridItem: { width: '50%', padding: 8, height: 270 },
-  // [CẬP NHẬT] Style cho hàng tìm kiếm và nút lọc
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -804,7 +738,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: 'bold',
   },
-  // ----
   bottomBar: {
     position: 'absolute',
     bottom: 0,
@@ -846,8 +779,6 @@ const styles = StyleSheet.create({
   },
   confirmButtonText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
   disabledButton: { backgroundColor: '#9CA3AF' },
-
-  // [MỚI] Styles cho Filter Modal
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -912,11 +843,11 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
   outOfStockOverlay: {
-    ...StyleSheet.absoluteFillObject, // Phủ lên toàn bộ component cha
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(255, 255, 255, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 16, // Phải khớp với borderRadius của TouchableOpacity
+    borderRadius: 16,
   },
   outOfStockText: {
     color: '#DC2626',
@@ -927,10 +858,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
-    transform: [{ rotate: '-15deg' }], // Xoay chữ cho đẹp
+    transform: [{ rotate: '-15deg' }],
   },
-
-
 });
 
 export default MenuScreen;

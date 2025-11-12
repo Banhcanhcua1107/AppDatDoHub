@@ -78,6 +78,14 @@ const QuantityItem: React.FC<{
     setIsUpdating(false);
   };
 
+  // [MỚI] Xác nhận nhanh với số lượng hiện tại
+  const handleQuickConfirm = async () => {
+    setIsUpdating(true);
+    const currentLimit = item.daily_stock_limit ?? 0;
+    await onUpdate(item, 'daily_stock_limit', currentLimit);
+    setIsUpdating(false);
+  };
+
   return (
     <>
       <View style={styles.itemContainer}>
@@ -87,15 +95,24 @@ const QuantityItem: React.FC<{
             {`Còn lại: ${item.remaining_quantity ?? 'N/A'} / Giới hạn: ${item.daily_stock_limit ?? 'Không giới hạn'}`}
           </Text>
         </View>
-        <TouchableOpacity
-          style={styles.editButton}
-          onPress={() => {
-            setTempLimit(item.daily_stock_limit ?? 0);
-            setIsModalVisible(true);
-          }}
-        >
-          <Icon name="pencil" size={20} color="white" />
-        </TouchableOpacity>
+        <View style={styles.buttonGroup}>
+          <TouchableOpacity
+            style={styles.quickConfirmButton}
+            onPress={handleQuickConfirm}
+            disabled={isUpdating}
+          >
+            <Icon name="checkmark-done" size={20} color="white" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.editButton}
+            onPress={() => {
+              setTempLimit(item.daily_stock_limit ?? 0);
+              setIsModalVisible(true);
+            }}
+          >
+            <Icon name="pencil" size={20} color="white" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Modal để chỉnh sửa số lượng */}
@@ -213,6 +230,51 @@ const ItemQuantityScreen = () => {
     Toast.show({ type: 'success', text1: 'Thành công', text2: 'Dữ liệu đã được cập nhật' });
   };
 
+  const handleQuickConfirmAll = async () => {
+    Alert.alert(
+      'Xác nhận nhanh tất cả',
+      'Bạn có chắc muốn xác nhận lại số lượng cho tất cả món ăn?',
+      [
+        { text: 'Hủy', style: 'cancel' },
+        {
+          text: 'Xác nhận',
+          onPress: async () => {
+            setLoading(true);
+            const updates = items
+              .filter((item) => item.daily_stock_limit !== null)
+              .map((item) => ({
+                id: item.id,
+                remaining_quantity: item.daily_stock_limit,
+                is_available: true,
+              }));
+
+            for (const update of updates) {
+              const { error } = await supabase
+                .from('menu_items')
+                .update({
+                  remaining_quantity: update.remaining_quantity,
+                  is_available: update.is_available,
+                })
+                .eq('id', update.id);
+
+              if (error) {
+                console.error('Error updating item:', update.id, error);
+              }
+            }
+
+            await fetchData();
+            setLoading(false);
+            Toast.show({
+              type: 'success',
+              text1: 'Thành công',
+              text2: `Đã xác nhận ${updates.length} món ăn`,
+            });
+          },
+        },
+      ]
+    );
+  };
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -246,7 +308,7 @@ const ItemQuantityScreen = () => {
         <View style={{ width: 24 }} />
       </View>
 
-      {/* Thanh tìm kiếm + nút cập nhật */}
+      {/* Thanh tìm kiếm + nút xác nhận nhanh + nút cập nhật */}
       <View style={styles.headerRow}>
         <View style={styles.searchContainer}>
           <Icon name="search-outline" size={20} color="gray" style={styles.searchIcon} />
@@ -263,6 +325,9 @@ const ItemQuantityScreen = () => {
             </TouchableOpacity>
           )}
         </View>
+        <TouchableOpacity style={styles.quickConfirmAllButton} onPress={handleQuickConfirmAll}>
+          <Icon name="checkmark-done" size={24} color="white" />
+        </TouchableOpacity>
         <TouchableOpacity style={styles.refreshButton} onPress={handleRefresh}>
           <Icon name="refresh" size={24} color="white" />
         </TouchableOpacity>
@@ -337,6 +402,15 @@ const styles = StyleSheet.create({
     color: '#1F2937',
   },
   clearButton: { padding: 4 },
+  quickConfirmAllButton: {
+    marginLeft: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    backgroundColor: '#10B981',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   refreshButton: {
     marginLeft: 12,
     paddingHorizontal: 12,
@@ -361,6 +435,18 @@ const styles = StyleSheet.create({
   itemInfo: { flex: 1, marginRight: 12 },
   itemName: { fontSize: 16, fontWeight: '600', color: '#1F2937' },
   itemStatus: { fontSize: 13, color: '#6B7280', marginTop: 4 },
+  buttonGroup: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  quickConfirmButton: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#10B981',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   editButton: {
     width: 40,
     height: 40,
