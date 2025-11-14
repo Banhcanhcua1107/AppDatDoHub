@@ -1,5 +1,5 @@
 // --- START OF FILE OrderConfirmationScreen.tsx ---
-import React, { useState, useCallback, useEffect,  } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -52,6 +52,7 @@ interface DisplayItem {
   image_url: string | null;
   isReturnedItem?: boolean;
   is_available?: boolean;
+  isUnavailable?: boolean; // [MỚI] Món không khả dụng (đã báo hết -> báo còn)
 }
 
 const NoteInputModal: React.FC<{
@@ -105,7 +106,7 @@ const OrderListItem: React.FC<{
   onUpdateQuantity: (newQuantity: number) => void;
   onOpenMenu: () => void;
 }> = ({ item, isExpanded, onPress, onUpdateQuantity, onOpenMenu }) => {
-  const { customizations, isNew, isPaid, isReturnedItem, is_available, status } = item;
+  const { customizations, isNew, isPaid, isReturnedItem, is_available, status, isUnavailable } = item;
   const sizeText = customizations.size?.name || 'N/A';
   const sugarText = customizations.sugar?.name || 'N/A';
   const toppingsText =
@@ -123,25 +124,25 @@ const OrderListItem: React.FC<{
           <Text className="text-gray-600 mr-4">Số lượng:</Text>
           <TouchableOpacity
             onPress={() => onUpdateQuantity(item.quantity - 1)}
-            disabled={!isNew || isOutOfStock}
-            className={`w-8 h-8 items-center justify-center rounded-full ${(!isNew || isOutOfStock) ? 'bg-gray-100' : 'bg-gray-200'}`}
+            disabled={!isNew || isOutOfStock || isUnavailable}
+            className={`w-8 h-8 items-center justify-center rounded-full ${(!isNew || isOutOfStock || isUnavailable) ? 'bg-gray-100' : 'bg-gray-200'}`}
           >
-            <Icon name="remove" size={18} color={(!isNew || isOutOfStock) ? '#ccc' : '#333'} />
+            <Icon name="remove" size={18} color={(!isNew || isOutOfStock || isUnavailable) ? '#ccc' : '#333'} />
           </TouchableOpacity>
           <Text className="text-lg font-bold mx-4">{item.quantity}</Text>
           <TouchableOpacity
             onPress={() => onUpdateQuantity(item.quantity + 1)}
-            disabled={!isNew || isOutOfStock}
-            className={`w-8 h-8 items-center justify-center rounded-full ${(!isNew || isOutOfStock) ? 'bg-gray-100' : 'bg-blue-500'}`}
+            disabled={!isNew || isOutOfStock || isUnavailable}
+            className={`w-8 h-8 items-center justify-center rounded-full ${(!isNew || isOutOfStock || isUnavailable) ? 'bg-gray-100' : 'bg-blue-500'}`}
           >
-            <Icon name="add" size={18} color={(!isNew || isOutOfStock) ? '#ccc' : 'white'} />
+            <Icon name="add" size={18} color={(!isNew || isOutOfStock || isUnavailable) ? '#ccc' : 'white'} />
           </TouchableOpacity>
         </View>
         <TouchableOpacity
           onPress={onOpenMenu}
-          disabled={isCompleted || isPaid || isReturnedItem || isOutOfStock}
+          disabled={isCompleted || isPaid || isReturnedItem || isOutOfStock || isUnavailable}
           className="p-2"
-          style={{ opacity: (isCompleted || isPaid || isReturnedItem || isOutOfStock) ? 0.5 : 1 }}
+          style={{ opacity: (isCompleted || isPaid || isReturnedItem || isOutOfStock || isUnavailable) ? 0.5 : 1 }}
         >
           <Icon name="ellipsis-horizontal" size={24} color="gray" />
         </TouchableOpacity>
@@ -151,21 +152,21 @@ const OrderListItem: React.FC<{
 
   return (
     <View
-      style={[styles.shadow, (isPaid || isReturnedItem || isOutOfStock || isCompleted) && styles.paidItem]}
+      style={[styles.shadow, (isPaid || isReturnedItem || isOutOfStock || isCompleted || isUnavailable) && styles.paidItem]}
       className="bg-white rounded-2xl p-4 mb-4"
     >
-      <TouchableOpacity onPress={onPress} disabled={isPaid || isReturnedItem || isOutOfStock || isCompleted}>
+      <TouchableOpacity onPress={onPress} disabled={isPaid || isReturnedItem || isOutOfStock || isCompleted || isUnavailable}>
         <View className="flex-row justify-between items-start">
           <View className="flex-1 pr-4">
             <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
-            {(isCompleted) && !isReturnedItem && !isOutOfStock && (
+            {(isCompleted) && !isReturnedItem && !isOutOfStock && !isUnavailable && (
               <Icon name="checkmark-circle" size={20} color="#10B981" style={{ marginRight: 6 }} />
             )}
-            {isInProgress && !isOutOfStock && (
+            {isInProgress && !isOutOfStock && !isUnavailable && (
               <Icon name="flame" size={20} color="#F97316" style={{ marginRight: 6 }} />
             )}
             <Text
-              className={`text-lg font-bold ${(isPaid || isReturnedItem || isOutOfStock || isCompleted) ? 'text-gray-500' : 'text-gray-800'} ${(isReturnedItem || isOutOfStock) ? 'line-through' : ''}`}
+              className={`text-lg font-bold ${(isPaid || isReturnedItem || isOutOfStock || isCompleted || isUnavailable) ? 'text-gray-500' : 'text-gray-800'} ${(isReturnedItem || isOutOfStock || isUnavailable) ? 'line-through' : ''}`}
             >
               {item.name}
             </Text>
@@ -179,28 +180,33 @@ const OrderListItem: React.FC<{
             )}
             </View>
             <View className="items-end">
-            {isNew && (
+            {isNew && !isUnavailable && (
                 <View className="bg-blue-100 px-2 py-1 rounded-full mb-1">
                   <Text className="text-blue-800 text-xs font-bold">Mới</Text>
                 </View>
             )}
-            {isPaid && (
+            {isPaid && !isUnavailable && (
               <View className="bg-gray-200 px-2 py-1 rounded-full mb-1">
                 <Text className="text-gray-600 text-xs font-bold">Đã trả bill</Text>
               </View>
             )}
-            {isReturnedItem && (
+            {isReturnedItem && !isUnavailable && (
               <View className="bg-red-100 px-2 py-1 rounded-full mb-1">
                 <Text className="text-red-800 text-xs font-bold">Đã trả lại</Text>
               </View>
             )}
-            {isOutOfStock && !isPaid && !isReturnedItem && (
+            {isOutOfStock && !isPaid && !isReturnedItem && !isUnavailable && (
               <View className="bg-red-100 px-2 py-1 rounded-full mb-1">
                 <Text className="text-red-800 text-xs font-bold">Hết món</Text>
               </View>
             )}
+            {isUnavailable && (
+              <View className="bg-orange-100 px-2 py-1 rounded-full mb-1">
+                <Text className="text-orange-800 text-xs font-bold">Không khả dụng</Text>
+              </View>
+            )}
             <Text
-              className={`text-lg font-semibold ${(isPaid || isReturnedItem || isOutOfStock) ? 'text-gray-500 line-through' : 'text-gray-900'}`}
+              className={`text-lg font-semibold ${(isPaid || isReturnedItem || isOutOfStock || isUnavailable) ? 'text-gray-500 line-through' : 'text-gray-900'}`}
             >
               {item.totalPrice.toLocaleString('vi-VN')}đ
             </Text>
@@ -208,7 +214,7 @@ const OrderListItem: React.FC<{
         </View>
         <View className="border-t border-dashed border-gray-200 mt-3 pt-2 flex-row justify-between items-center">
           <Text
-            className={`text-base ${(isPaid || isReturnedItem || isOutOfStock) ? 'text-gray-500' : 'text-gray-600'}`}
+            className={`text-base ${(isPaid || isReturnedItem || isOutOfStock || isUnavailable) ? 'text-gray-500' : 'text-gray-600'}`}
           >
             {item.quantity} x {item.unit_price.toLocaleString('vi-VN')}đ
           </Text>
@@ -274,11 +280,18 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
     item: DisplayItem | null;
   }>({ visible: false, item: null });
   const [closeSessionModal, setCloseSessionModal] = useState(false);
+  
+  // [MỚI] Ref theo dõi món đã từng hết - sử dụng useRef để tránh re-render
+  const previouslyUnavailableItemsRef = useRef<Set<number>>(new Set());
 
   // ... (Toàn bộ các hàm khác như fetchAllData, handleUpdateQuantity, sendNewItemsToKitchen, v.v. giữ nguyên)
   // ... (Chúng không cần thay đổi vì lỗi nằm ở hàm thanh toán)
+  // [SỬA] Sử dụng ref để tránh re-render khi update activeOrderId
+  const isInitialMount = useRef(true);
+  
   const fetchAllData = useCallback(
     async (isInitialLoad = true) => {
+      console.log('[fetchAllData] START - isInitialLoad:', isInitialLoad, 'activeOrderId:', activeOrderId);
       if (isInitialLoad) setLoading(true);
       try {
         let orderIdToFetch = activeOrderId;
@@ -296,7 +309,11 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
               : orderLink.orders;
             if (foundOrder?.id) {
               orderIdToFetch = foundOrder.id;
-              if (!activeOrderId) setActiveOrderId(orderIdToFetch);
+              // [FIX] Chỉ set activeOrderId lần đầu để tránh re-render
+              if (!activeOrderId && isInitialMount.current) {
+                setActiveOrderId(orderIdToFetch);
+                isInitialMount.current = false;
+              }
             }
           }
         }
@@ -327,7 +344,15 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
           if (orderError) throw orderError;
           if (orderDetails) {
             freshTables = orderDetails.order_tables.map((ot: any) => ot.tables).filter(Boolean);
-            if (freshTables.length > 0) setCurrentTables(freshTables);
+            // [FIX] Chỉ update currentTables nếu thực sự khác (so sánh deep)
+            if (freshTables.length > 0) {
+              setCurrentTables(prev => {
+                // Kiểm tra xem có thay đổi không
+                const hasChanged = prev.length !== freshTables.length || 
+                  prev.some((t, i) => t.id !== freshTables[i]?.id);
+                return hasChanged ? freshTables : prev;
+              });
+            }
 
             (orderDetails.order_items || []).forEach((item: any) => {
               const name = item.menu_items?.name || item.customizations?.name || 'Món đã xóa';
@@ -466,17 +491,82 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
           }));
         }
         
-        const availableNewItems = newItems.filter(item => item.is_available !== false);
-        const outOfStockNewItems = newItems.filter(item => item.is_available === false);
+        // [MỚI] Cập nhật danh sách món đã từng hết
+        const currentlyUnavailableMenuItemIds = new Set<number>();
+        [...newItems, ...pendingItems, ...paidItemsData, ...returnedItemsSectionData].forEach(item => {
+          if (item.is_available === false && item.menuItemId) {
+            currentlyUnavailableMenuItemIds.add(item.menuItemId);
+          }
+        });
         
-        const availablePendingItems = pendingItems.filter(item => item.is_available !== false);
-        const outOfStockPendingItems = pendingItems.filter(item => item.is_available === false);
+        // [SỬA] Cập nhật ref thay vì state để tránh re-render vô hạn
+        currentlyUnavailableMenuItemIds.forEach(id => {
+          previouslyUnavailableItemsRef.current.add(id);
+        });
         
-        const availablePaidItems = paidItemsData.filter(item => item.is_available !== false);
-        const outOfStockPaidItems = paidItemsData.filter(item => item.is_available === false);
+        // [MỚI] Hàm kiểm tra món "không khả dụng" - món trước đó hết, giờ còn lại nhưng không được phục vụ
+        const isItemUnavailable = (item: DisplayItem): boolean => {
+          if (!item.menuItemId) return false;
+          // [SỬA] Sử dụng ref thay vì state
+          return previouslyUnavailableItemsRef.current.has(item.menuItemId) && item.is_available === true;
+        };
         
-        const availableReturnedItems = returnedItemsSectionData.filter(item => item.is_available !== false);
-        const outOfStockReturnedItems = returnedItemsSectionData.filter(item => item.is_available === false);
+        // Phân loại món thành các nhóm
+        const availableNewItems: DisplayItem[] = [];
+        const outOfStockNewItems: DisplayItem[] = [];
+        const unavailableNewItems: DisplayItem[] = [];
+        
+        newItems.forEach(item => {
+          if (item.is_available === false) {
+            outOfStockNewItems.push(item);
+          } else if (isItemUnavailable(item)) {
+            unavailableNewItems.push({ ...item, isUnavailable: true });
+          } else {
+            availableNewItems.push(item);
+          }
+        });
+        
+        const availablePendingItems: DisplayItem[] = [];
+        const outOfStockPendingItems: DisplayItem[] = [];
+        const unavailablePendingItems: DisplayItem[] = [];
+        
+        pendingItems.forEach(item => {
+          if (item.is_available === false) {
+            outOfStockPendingItems.push(item);
+          } else if (isItemUnavailable(item)) {
+            unavailablePendingItems.push({ ...item, isUnavailable: true });
+          } else {
+            availablePendingItems.push(item);
+          }
+        });
+        
+        const availablePaidItems: DisplayItem[] = [];
+        const outOfStockPaidItems: DisplayItem[] = [];
+        const unavailablePaidItems: DisplayItem[] = [];
+        
+        paidItemsData.forEach(item => {
+          if (item.is_available === false) {
+            outOfStockPaidItems.push(item);
+          } else if (isItemUnavailable(item)) {
+            unavailablePaidItems.push({ ...item, isUnavailable: true });
+          } else {
+            availablePaidItems.push(item);
+          }
+        });
+        
+        const availableReturnedItems: DisplayItem[] = [];
+        const outOfStockReturnedItems: DisplayItem[] = [];
+        const unavailableReturnedItems: DisplayItem[] = [];
+        
+        returnedItemsSectionData.forEach(item => {
+          if (item.is_available === false) {
+            outOfStockReturnedItems.push(item);
+          } else if (isItemUnavailable(item)) {
+            unavailableReturnedItems.push({ ...item, isUnavailable: true });
+          } else {
+            availableReturnedItems.push(item);
+          }
+        });
 
         const sections: OrderSection[] = [];
         if (availableNewItems.length > 0) sections.push({ title: 'Món mới chờ gửi bếp', data: availableNewItems });
@@ -506,13 +596,21 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
         if (availablePaidItems.length > 0)
           sections.push({ title: 'Món đã thanh toán', data: availablePaidItems });
         
+        // [MỚI] Section "Món không khả dụng"
+        if (unavailableNewItems.length > 0 || unavailablePendingItems.length > 0 || unavailableReturnedItems.length > 0 || unavailablePaidItems.length > 0) {
+          const unavailableItems = [...unavailableNewItems, ...unavailablePendingItems, ...unavailableReturnedItems, ...unavailablePaidItems];
+          sections.push({ title: 'Món không khả dụng', data: unavailableItems });
+        }
+        
         if (outOfStockNewItems.length > 0 || outOfStockPendingItems.length > 0 || outOfStockReturnedItems.length > 0 || outOfStockPaidItems.length > 0) {
           const outOfStockItems = [...outOfStockNewItems, ...outOfStockPendingItems, ...outOfStockReturnedItems, ...outOfStockPaidItems];
           sections.push({ title: 'Món đã hết', data: outOfStockItems });
         }
 
         setDisplayedSections(sections);
+        console.log('[fetchAllData] END - Sections count:', sections.length);
       } catch (error: any) {
+        console.error('[fetchAllData] ERROR:', error);
         if (error.code !== 'PGRST116')
           Alert.alert('Lỗi', `Không thể tải dữ liệu: ${error.message}`);
       } finally {
@@ -524,27 +622,32 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
 
   useFocusEffect(
     useCallback(() => {
+      console.log('[useFocusEffect] Screen focused, loading data...');
       fetchAllData(true);
 
+      // [FIX] Không setup realtime channel nếu không có ID
       const channelId = routeOrderId || initialTableId;
-
       if (!channelId) {
         console.warn("Không thể đăng ký Realtime vì không có orderId hoặc tableId.");
         return;
       }
+      
+      console.log('[useFocusEffect] Setting up realtime channels...');
+      console.log('[useFocusEffect] Channel ID:', channelId);
+      
+      // [FIX] Lắng nghe tất cả orders của table thay vì filter theo activeOrderId động
       const channel = supabase
         .channel(`orders_channel:${channelId}`)
         .on(
           'postgres_changes',
           { 
-          event: 'UPDATE', 
-          schema: 'public', 
-          table: 'orders',
-          filter: `id=eq.${activeOrderId}`
+            event: 'UPDATE', 
+            schema: 'public', 
+            table: 'orders'
           },
           (payload) => {
             console.log('[Realtime] Cập nhật orders:', payload);
-
+            // Chỉ fetch lại nếu update liên quan đến table hiện tại
             fetchAllData(false);
           }
         )
@@ -563,10 +666,12 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
         .subscribe();
       
       return () => {
+        console.log('[useFocusEffect] Cleaning up channels...');
         supabase.removeChannel(channel);
         supabase.removeChannel(menuItemsChannel);
       };
-    }, [fetchAllData, activeOrderId, initialTableId, routeOrderId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [routeOrderId, initialTableId])
   );
 
   const handleUpdateQuantity = async (item: DisplayItem, newQuantity: number) => {
@@ -794,13 +899,14 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
   }
 };
   const itemActions: ActionSheetItem[] = [];
-  if (editingItem && !editingItem.isPaid && !editingItem.isReturnedItem) {
+  if (editingItem && !editingItem.isPaid && !editingItem.isReturnedItem && !editingItem.isUnavailable) {
     const canEditNote = editingItem.isNew;
     const canRemoveItem = editingItem.isNew;
     const isItemCompleted = editingItem.status === 'served' || editingItem.status === 'completed';
     const itemIsOutOfStock = editingItem.is_available === false;
+    const itemIsUnavailable = editingItem.isUnavailable === true;
     
-    if (canEditNote && !isItemCompleted && !itemIsOutOfStock) {
+    if (canEditNote && !isItemCompleted && !itemIsOutOfStock && !itemIsUnavailable) {
       itemActions.push({
         id: 'note',
         text: 'Thêm/Sửa Ghi chú',
@@ -814,7 +920,7 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
       });
     }
     
-    if (canRemoveItem && !isItemCompleted && !itemIsOutOfStock) {
+    if (canRemoveItem && !isItemCompleted && !itemIsOutOfStock && !itemIsUnavailable) {
       itemActions.push({
         id: 'remove',
         text: 'Hủy món',
@@ -841,7 +947,8 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
   const billableItems = allItems.filter((item) => 
     !item.isPaid && 
     !item.isReturnedItem && 
-    item.is_available !== false
+    item.is_available !== false &&
+    !item.isUnavailable // [MỚI] Loại trừ món không khả dụng
   );
   const paidItems = allItems.filter((item) => item.isPaid);
   const hasNewItems = newItemsFromCart.length > 0;

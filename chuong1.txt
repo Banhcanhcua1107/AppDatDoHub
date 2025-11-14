@@ -1,0 +1,148 @@
+CHƯƠNG 1 - TỔNG QUAN VỀ WEBSITE
+1.1.  TỔNG QUAN VỀ ĐỀ TÀI
+1.1.1. Hiện trạng ngành F&B và nhu cầu chuyển đổi số tại Việt Nam
+Trong những năm gần đây, ngành dịch vụ ăn uống (F&B) tại Việt Nam phát triển mạnh mẽ cả về quy mô lẫn hình thức kinh doanh. Cà phê, đồ uống và ẩm thực nhanh đã trở thành một phần không thể thiếu trong đời sống người dân, đặc biệt tại các thành phố lớn. Bên cạnh các thương hiệu chuỗi nổi tiếng, nhiều quán ăn, nhà hàng và quán cà phê nhỏ cũng liên tục ra đời nhằm đáp ứng nhu cầu thưởng thức và trải nghiệm đa dạng của khách hàng.
+Sự thay đổi trong thói quen tiêu dùng đã thúc đẩy quá trình chuyển đổi số trong ngành F&B. Người tiêu dùng hiện nay có xu hướng tìm kiếm sự tiện lợi, nhanh chóng và minh bạch trong quá trình gọi món, thanh toán và nhận dịch vụ. Các nhà hàng không chỉ cần phục vụ món ăn ngon, mà còn phải đảm bảo quy trình vận hành chuyên nghiệp và trải nghiệm khách hàng mượt mà. Chính vì vậy, việc áp dụng các giải pháp công nghệ thông tin trong quản lý và phục vụ khách hàng trở thành xu hướng tất yếu.
+Tuy nhiên, thực tế cho thấy nhiều cơ sở kinh doanh F&B quy mô vừa và nhỏ vẫn còn duy trì mô hình quản lý thủ công, như ghi order bằng giấy, tính tiền bằng máy tính cầm tay, hoặc trao đổi thông tin giữa nhân viên và bếp qua lời nói. Cách làm này tuy đơn giản nhưng dễ dẫn đến sai sót, nhầm lẫn và thiếu sự đồng bộ giữa các bộ phận. Khi lượng khách hàng tăng cao, việc phục vụ chậm trễ hoặc ghi nhận sai đơn hàng thường xuyên xảy ra, ảnh hưởng đến trải nghiệm của khách và hiệu quả hoạt động của quán.
+Bên cạnh đó, việc phụ thuộc vào các nền tảng trung gian như ứng dụng giao đồ ăn hay kênh bán hàng bên thứ ba cũng khiến nhiều cửa hàng nhỏ gặp khó khăn. Dù giúp tiếp cận khách hàng nhanh hơn, nhưng những nền tảng này thường yêu cầu mức phí cao và không cho phép cửa hàng chủ động quản lý dữ liệu khách hàng hay triển khai chương trình chăm sóc riêng.
+Từ thực tế đó, nhu cầu về một giải pháp công nghệ độc lập, chi phí hợp lý và dễ sử dụng trở nên rõ ràng. Một hệ thống cho phép quản lý gọi món, bếp, thu ngân và thanh toán ngay tại bàn - đồng bộ theo thời gian thực - sẽ giúp các nhà hàng, quán ăn vừa và nhỏ tự động hóa quy trình phục vụ, giảm sai sót, nâng cao trải nghiệm khách hàng và tối ưu hiệu quả kinh doanh.
+1.1.2. Giới thiệu đề tài
+		Đề tài “Xây dựng ứng dụng gọi món và thanh toán tại bàn – AppDatDo” được lựa chọn nhằm phát triển một giải pháp công nghệ toàn diện hỗ trợ các nhà hàng/quán ăn quản lý hoạt động gọi món, phục vụ, bếp, và thanh toán trong cùng một hệ thống duy nhất.
+•	Ứng dụng được thiết kế đa vai trò gồm:
+o	Bếp: Nhận và cập nhật tình trạng món ăn theo thời gian thực qua hệ thống Kitchen Display System (KDS).
+o	Nhân viên phục vụ: Gọi món, chỉnh sửa đơn hàng, theo dõi tiến trình chế biến và gửi yêu cầu thanh toán.
+o	Thu ngân: Quản lý hóa đơn, xác nhận thanh toán, in biên lai và xem báo cáo doanh thu.
+o	Quản lý (Admin): Theo dõi toàn bộ hoạt động, thống kê lợi nhuận, quản lý người dùng và cấu hình hệ thống.
+		Ứng dụng được phát triển bằng React Native + Expo + TypeScript (Frontend) kết hợp Supabase (PostgreSQL + Realtime + Auth) ở Backend.
+Hệ thống cũng tích hợp các phương thức thanh toán điện tử như MoMo QR Code và VietQR, giúp khách hàng có thể thanh toán trực tiếp tại bàn mà không cần chờ thu ngân.
+1.2. ƯU ĐIỂM VÀ HẠN CHẾ CỦA CÁC GIẢI PHÁP HIỆN NAY
+1.2.1. Ưu điểm của các giải pháp hiện có
+		Hiện nay, trên thị trường có một số hướng tiếp cận phổ biến:
+•	Các nền tảng giao hàng bên thứ ba (GrabFood, ShopeeFood, Baemin):
+o	Tiếp cận nhanh với lượng người dùng lớn.
+o	Có sẵn hệ thống giao hàng và thanh toán.
+o	Dễ dàng triển khai mà không cần đội kỹ thuật riêng.
+•	Hệ thống của các chuỗi lớn (The Coffee House, Highlands Coffee, Phúc Long):
+o	Có website hoặc ứng dụng riêng, thiết kế mang dấu ấn thương hiệu.
+o	Quản lý đồng bộ giữa đặt món, thanh toán, và quản lý khách hàng.
+o	Tự chủ hoàn toàn trong việc thu thập dữ liệu và phát triển hệ sinh thái khách hàng thân thiết.
+•	Các nền tảng quản lý F&B nội địa (PosApp, CukCuk, KiotViet, Haravan):
+o	Cung cấp giải pháp quản lý bán hàng, hóa đơn, tồn kho, và báo cáo doanh thu.
+o	Hỗ trợ nhiều mô hình F&B khác nhau.
+o	Có thể tùy chỉnh giao diện và tính năng ở mức cơ bản.
+1.2.2. Hạn chế và vấn đề tồn tại
+		Tuy nhiên, các giải pháp hiện tại vẫn tồn tại nhiều bất cập đối với quán ăn, quán cà phê quy mô nhỏ và vừa, cụ thể:
+•	Chi phí triển khai cao: Phần mềm chuyên nghiệp hoặc nền tảng thương mại tính phí hàng tháng hoặc theo hoa hồng (20–30%/đơn hàng).
+•	Phụ thuộc vào bên thứ ba: Không kiểm soát được dữ liệu khách hàng và chính sách nền tảng.
+•	Thiếu tính linh hoạt: Không thể điều chỉnh giao diện hoặc quy trình phục vụ theo đặc thù từng quán.
+•	Thiếu tích hợp real-time: Dữ liệu giữa nhân viên – bếp – thu ngân không đồng bộ tức thời, gây sai lệch và chậm trễ.
+•	Không hỗ trợ thanh toán điện tử tại bàn: Khách hàng vẫn phải chờ nhân viên mang hóa đơn giấy hoặc chuyển tiền thủ công.
+		Những điểm yếu này cho thấy khoảng trống thị trường rõ ràng cho một giải pháp “ứng dụng gọi món và thanh toán tại bàn” — vừa gọn nhẹ, chi phí thấp, vừa đủ tính năng như hệ thống chuyên nghiệp.
+1.3.  MỤC TIÊU CỦA ĐỀ TÀI
+		Đề tài hướng đến việc xây dựng một ứng dụng di động gọi món và thanh toán tại bàn mang tên AppDatDo, cung cấp giải pháp toàn diện giúp các nhà hàng, quán ăn, quán cà phê quy mô vừa và nhỏ chuyển đổi số hiệu quả trong quy trình phục vụ khách hàng. Hệ thống được thiết kế nhằm tự động hóa các thao tác giữa nhân viên – bếp – thu ngân, giúp quy trình phục vụ trở nên nhanh chóng, chính xác và chuyên nghiệp hơn, đồng thời nâng cao trải nghiệm khách hàng khi dùng bữa tại quán.
+		Ứng dụng không chỉ hỗ trợ quản lý gọi món và thanh toán, mà còn tích hợp các tính năng giám sát hoạt động, thống kê doanh thu và quản lý người dùng, hướng đến mục tiêu xây dựng một hệ sinh thái quản lý F&B toàn diện trên thiết bị di động.
+1.3.1. Mục tiêu tổng quát
+•	Xây dựng ứng dụng di động đa vai trò (multi-role) bao gồm các nhóm người dùng: Nhân viên phục vụ, Bếp, Thu ngân và Quản lý.
+•	Cung cấp quy trình gọi món – chế biến – thanh toán – báo cáo đồng bộ theo thời gian thực.
+•	Giúp nhà hàng giảm sai sót trong xử lý đơn hàng, tăng tốc độ phục vụ và cải thiện hiệu quả vận hành.
+•	Ứng dụng các công nghệ hiện đại (React Native, TypeScript, Supabase) để đảm bảo hiệu suất, độ ổn định và khả năng mở rộng.
+•	Hỗ trợ các phương thức thanh toán điện tử như MoMo và VietQR, mang lại trải nghiệm tiện lợi cho khách hàng.
+1.3.2. Mục tiêu cụ thể
+•	Xây dựng giao diện người dùng (Front-end) hiện đại và tối ưu trải nghiệm
+o	Phát triển ứng dụng trên nền tảng React Native + Expo, cho phép triển khai đa nền tảng (Android/iOS).
+o	Thiết kế giao diện trực quan, thân thiện với người dùng nhờ sử dụng NativeWind (Tailwind CSS).
+o	Hỗ trợ hiển thị tốt trên các thiết bị di động, tối ưu tốc độ phản hồi và thao tác của nhân viên trong môi trường áp lực cao.
+o	Đảm bảo quy trình thao tác liền mạch giữa các vai trò – từ gọi món, xác nhận đơn, đến thanh toán và in hóa đơn.
+•	Phát triển hệ thống xử lý dữ liệu (Back-end) mạnh mẽ và thời gian thực
+o	Sử dụng Supabase làm nền tảng backend, tích hợp các dịch vụ:
+	Realtime Database – đồng bộ trạng thái đơn hàng giữa các vai trò.	
+	Authentication – xác thực và phân quyền người dùng (RBAC).
+	Storage – lưu trữ hình ảnh sản phẩm, biên lai, và dữ liệu khác.
+	Edge Functions – xử lý nghiệp vụ liên quan đến thanh toán và thông báo.
+o	Xây dựng các API RESTful phục vụ giao tiếp giữa client và server.
+o	Đảm bảo tính bảo mật, ổn định và mở rộng linh hoạt trong quá trình vận hành.
+•	Hoàn thiện các chức năng cốt lõi của ứng dụng
+o	Đối với Nhân viên phục vụ:
+	Chọn bàn, xem menu, tạo đơn hàng và gửi order đến bếp theo thời gian thực.
+	Nhận thông báo khi món đã hoàn thành và hỗ trợ thanh toán cho khách.
+o	Đối với Bộ phận Bếp:
+	Nhận order mới ngay khi nhân viên gửi.
+	Cập nhật trạng thái món (Đang chế biến / Hoàn thành).
+	Gửi thông báo cho nhân viên phục vụ khi món sẵn sàng.
+o	Đối với Thu ngân:
+	Nhận thông tin bàn cần thanh toán, hiển thị chi tiết đơn hàng.
+	Xử lý các hình thức thanh toán (Tiền mặt, MoMo, VietQR).
+	In biên lai và xác nhận hoàn tất giao dịch.
+o	Đối với Quản lý:
+	Giám sát hoạt động quán theo thời gian thực.
+	Quản lý người dùng, sản phẩm và báo cáo doanh thu.
+	Theo dõi hiệu suất làm việc và trạng thái vận hành tổng thể.
+•	Tích hợp hệ thống thông báo theo vai trò (Role-based Notification System)
+o	Xây dựng cơ chế thông báo thời gian thực giữa các vai trò trong hệ thống.
+o	Đảm bảo mỗi vai trò chỉ nhận được thông tin phù hợp (ví dụ: bếp không nhận thông báo của thu ngân).
+o	Tích hợp âm thanh, rung và hiển thị popup nhằm đảm bảo thông tin được truyền tải kịp thời.
+•	Tích hợp thanh toán điện tử an toàn và nhanh chóng
+o	Tích hợp MoMo API và VietQR cho phép thanh toán tại bàn bằng quét mã QR.
+o	Hệ thống tự động xác nhận giao dịch thành công thông qua Supabase Realtime Listener.
+o	Tự động cập nhật trạng thái hóa đơn và điều hướng đến trang in biên lai sau khi thanh toán.
+1.4.  PHẠM VI CÔNG NGHỆ
+		Để đảm bảo tính khả thi trong khuôn khổ đồ án, hệ thống được giới hạn trong phạm vi chức năng, công nghệ và đối tượng cụ thể như sau:
+1.4.1. Phạm vi chức năng
+		Ứng dụng AppDatDo bao gồm bốn nhóm vai trò chính: Nhân viên phục vụ, Bếp, Thu ngân và Quản lý.
+a. Phía nhân viên phục vụ
+•	Xem sơ đồ bàn và chọn bàn phục vụ.
+•	Gọi món, ghi order và gửi đến bếp.
+•	Cập nhật trạng thái phục vụ, gửi yêu cầu thanh toán.
+b. Phía bếp (Kitchen Display System – KDS)
+•	Nhận đơn hàng mới từ nhân viên theo thời gian thực.
+•	Cập nhật trạng thái món (Đang làm, Đã xong).
+•	Gửi thông báo ngược lại cho nhân viên phục vụ.
+c. Phía thu ngân
+•	Nhận thông tin bàn cần thanh toán.
+•	Xử lý hóa đơn, xác nhận thanh toán và in biên lai.
+•	Hỗ trợ nhiều phương thức thanh toán (Tiền mặt, MoMo, VietQR).
+•	Xem thống kê doanh thu và tình hình hoạt động của quán.
+d. Phía admin
+•	Xem thống kê doanh thu và tình hình hoạt động của quán.
+•	Quản lý người dùng và phân quyền theo vai trò.
+•	Quản lý menu, giá sản phẩm và cấu hình hệ thống.
+1.4.2. Phạm vi công nghệ
+•	Nền tảng phát triển
+o	Công nghệ sử dụng: React Native kết hợp Expo.
+o	Chức năng chính: Dùng để phát triển ứng dụng di động đa nền tảng (Android và iOS) chỉ với một mã nguồn duy nhất, giúp tiết kiệm thời gian triển khai và dễ dàng kiểm thử trên nhiều thiết bị.
+•	Ngôn ngữ lập trình
+o	Công nghệ sử dụng: TypeScript.
+o	Chức năng chính: Cung cấp khả năng kiểm tra kiểu dữ liệu tĩnh (type-checking) giúp hạn chế lỗi khi lập trình, tăng hiệu suất phát triển và đảm bảo tính ổn định cho ứng dụng.
+•	Hệ thống Backend
+o	Công nghệ sử dụng: Supabase (PostgreSQL + Realtime + Auth + Storage).
+o	Chức năng chính:
+	Quản lý cơ sở dữ liệu quan hệ (PostgreSQL).
+	Xác thực và phân quyền người dùng (Supabase Auth).
+	Đồng bộ dữ liệu thời gian thực giữa các vai trò (Realtime).
+	Lưu trữ hình ảnh và tệp tin (Storage).
+	Cung cấp API RESTful tự động để giao tiếp giữa Client và Server.
+•	Công cụ phát triển
+o	Công nghệ sử dụng: Visual Studio Code và GitHub.
+o	Chức năng chính:
+	Visual Studio Code: Môi trường soạn thảo mã nguồn nhẹ, hỗ trợ mở rộng và gỡ lỗi hiệu quả.
+	GitHub: Lưu trữ mã nguồn, theo dõi phiên bản và hỗ trợ làm việc nhóm, đảm bảo quy trình phát triển minh bạch và an toàn.
+•	Thanh toán điện tử
+o	Công nghệ sử dụng: MoMo API và VietQR.
+o	Chức năng chính:
+	Tích hợp quét mã QR để khách hàng thanh toán nhanh chóng và thuận tiện.
+	Xác nhận giao dịch tự động thông qua Supabase Realtime, cập nhật trạng thái hóa đơn ngay sau khi thanh toán thành công.
+•	Giao diện người dùng
+o	Công nghệ sử dụng: NativeWind (Tailwind CSS).
+o	Chức năng chính:
+	Tối ưu quá trình thiết kế giao diện bằng hệ thống lớp tiện ích (utility classes).
+	Giúp giao diện thống nhất, hiện đại, dễ tùy chỉnh và thân thiện với người dùng.
+	Hỗ trợ hiệu suất cao khi hiển thị trên nhiều kích thước màn hình di động khác nhau.
+•	Kiểm thử và triển khai
+o	Công nghệ sử dụng: Expo Go và Android Studio.
+o	Chức năng chính:
+	Expo Go: Giúp chạy và kiểm thử ứng dụng trực tiếp trên thiết bị thật mà không cần build phức tạp.
+	Android Studio: Dùng để giả lập thiết bị, kiểm thử sâu và tạo bản build APK phục vụ triển khai chính thức.
+1.4.3. Đối tượng sử dụng
+		Ứng dụng AppDatDoHub hướng đến hai nhóm người dùng chính:
+•	Nhân viên nhà hàng: Bao gồm nhân viên phục vụ, bếp, thu ngân – những người trực tiếp sử dụng hệ thống trong quá trình vận hành quán.
+•	Chủ quán/Quản lý: Người có quyền truy cập toàn bộ dữ liệu để giám sát hoạt động, thống kê doanh thu và cấu hình hệ thống.

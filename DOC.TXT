@@ -1,102 +1,154 @@
-1. Use Case là gì?
-
-Use Case mô tả sự tương tác giữa người dùng và hệ thống ở trong một môi trường cụ thể, vì một mục đích cụ thể. Môi trường nằm trong một bối cảnh, phạm vi hoặc hệ thống phần mềm cụ thể. Mục đích cụ thể là diễn tả được yêu cầu theo góc nhìn từ phía người dùng. Bạn đọc tham khảo thêm: quy trình thông quan hàng hóa
-
-Sự tương tác giữa người dùng và hệ thống có 2 cách thức phổ biến:
-Cách thức mà người dùng tương tác với hệ thống.
-Cách thức mà hệ thống tương tác với các hệ thống khác.
-
-
-2. Các thành phần đặc tả Use Case
-Các thành phần đặc tả Use Case bao gồm: Actor (người sử dụng), Use Case (chức năng tương tác) & Relationship (các quan hệ trong Use Case).
-
-
-
-Các thành phần của Use Case bao gồm: Actor, Use Case & Relationship 
-
-a, Actor (Người sử dụng)
-Actor là thành phần chỉ người dùng hoặc một đối tượng nào đó bên ngoài tương tác với hệ thống. Để xác nhận đó có phải là Actor hay không thì cần xem xét dựa và những câu hỏi sau:
-
-Ai là người sử dụng chức năng chính của hệ thống (tác nhân chính)?
-Ai sẽ là admin của hệ thống – Người cài đặt, quản lý và bảo trì hệ thống (tác nhân phụ)?
-Ai sẽ cần hệ thống hỗ trợ để thực hiện các tác vụ hằng ngày?
-Hệ thống này có cần phải tương tác với các hệ thống nào khác không?
-Ai là người input dữ liệu vào hệ thống (trường hợp hệ thống lưu trữ dữ liệu)?
-Ai hay cái gì quan tâm đến giá trị mà hệ thống sẽ mang lại?
-b, Use Case (Chức năng tương tác)
-Use Case là các chức năng mà các Actor sẽ sử dụng hay thể hiện sự tương tác giữa người dùng và hệ thống. Để tìm ra được các Use Case, ta cần trả lời những câu hỏi sau:
-
-Actor cần những chức năng nào của hệ thống?
-Actor có hành động chính là gì?
-Actor có cần đọc, thêm mới, hủy bỏ, chỉnh sửa hay lưu trữ loại thông tin nào trong hệ thống không?
-Hệ thống có cần thông báo những thay đổi bất ngờ trong nội bộ cho Actor không?
-Công việc hàng ngày của Actor có thể được đơn giản hóa hoặc hữu hiệu hóa qua các chức năng của hệ thống?
-Use Case có thể được tạo ra bởi sự kiện nào khác không?
-Hệ thống cần những thông tin đầu vào/đầu ra nào? Những thông tin đó sẽ đi từ đâu đến đâu?
-Những khó khăn và thiếu hụt của hệ thống hiện tại nằm ở đâu?
-vận chuyển hàng không là gì
-
-c, Relationship (Các quan hệ trong Use Case) 
-Các quan hệ trong Use Case gồm 3 loại: Include, Extend & Generalization.
-Mối quan hệ Include trong Use Case là gì?
-
-Include là mối quan hệ bao gồm hoặc bắt buộc phải có giữa các Use Case với nhau. Hiểu đơn giản hơn: Để Use Case A xảy ra thì phải đạt được Use Case B.
-
-Ví dụ: Use Case A rút tiền xảy ra thì Use Case B xác thực tài khoản phải hoàn thành.
-
-Mối quan hệ Extend
-
-Extend biểu diễn mối quan hệ mở rộng, không bắt buộc, có thể có hoặc không giữa các Use Case với nhau. 
-
-Ví dụ: Use Case B quên mật khẩu có thể xảy ra hoặc không và nó có liên quan đến Use Case A đăng nhập hệ thống chứ không phải bất kỳ một Use Case nào khác.Bạn đọc tham khảo thêm: vận chuyển nhật việt giá rẻ
-
-
-
-Mối quan hệ extend thể hiện mối quan hệ không bắt buộc giữa các Use Case với nhau
-
-Mối quan hệ Generalization 
-
-Generalization là mối quan hệ cha con giữa các Use Case với nhau. Generalization còn thể hiện khả năng thể hiện mối quan hệ giữa các Actor với nhau.
-
-Ví dụ: Mối quan hệ cha – con giữa các Use Case:
-
-Đăng nhập (cha): Có thể thông qua số điện thoại (con) hoặc Email (con).
-Đặt hàng (cha): Có đặt hàng qua số điện thoại (con) hoặc website (con).
-Ví dụ: Mối quan hệ cha – con giữa các Actor:
-
-Khách hàng (cha): Gồm khách hàng cũ (con) và khách hàng mới (con).
- 
-
-
-
-=> Đăng kí ngay: Webinar “Xây dựng lộ trình tự học lập trình hiệu quả”
-
-vận chuyển hàng không quốc tế
-
-3. Quy trình vẽ Use Case diagram
-Xây dựng được một sơ đồ Use Case hoàn chỉnh cần trải qua 3 giai đoạn: Giai đoạn mô hình hóa, giai đoạn cấu trúc & giai đoạn review.
-
-Giai đoạn mô hình hóa:
-
-Bước 1: Thực hiện thiết lập ngữ cảnh của hệ thống.
-Bước 2: Xác định các Actor.
-Bước 3: Xác định các Use Case.
-Bước 4: Định nghĩa các mối quan hệ giữa Actor và Use Case.
-Bước 5: Đánh giá các mối quan hệ đó để tìm cách chi tiết hóa.
-Giai đoạn cấu trúc:
-Bước 6: Đánh giá các Use Case cho quan hệ Include.
-Bước 7: Đánh giá các Use Case cho quan hệ Extend.
-Bước 8: Đánh giá các Use Case cho quan hệ Generalization .
-Giai đoạn review:
-Bước 9: Kiểm tra (verification): Đảm bảo hệ thống đúng với tài liệu đặc tả.
-Bước 10: Thẩm định (validation): Đảm bảo hệ thống sẽ được phát triển là thứ mà khách hàng cuối thực sự cần thiết.
- 
-
-4. Vẽ sơ đồ Use Case cần lưu ý gì?
-Use Case diagram cần được thiết kế đơn giản, chi tiết và dễ hiểu nhất. Khi xây dựng Use Case, các bạn nên nắm được các lưu ý sau để có cách khắc phục tối ưu nhất.Bạn đọc tham khảo thêm: hình thức vận chuyển door to door
-
-Lưu ý 1: Không đặt tên Use Case quá dài. Tên của Use Case phải đặt ngắn gọn, rõ ràng, miêu tả đủ nghĩa đối tượng người dùng. 
-Lưu ý 2: Không lạm dụng từ “Manage” quá nhiều.Sử dụng từ “Manage” để miêu tả mối quan hệ giữa Actor và hệ thống là quá tối nghĩa, không nói rõ được mục đích để làm gì. Use Case cần truyền tải được mục đích sau cùng, chứa đựng góc nhìn của người dùng cuối cùng.
-Lưu ý 3: Không thiết kế quá nhiều Use Case. Tận dụng các Relationship để các Use Case liên kết với nhau. Sau đó sử dụng Boundary of System để phân nhóm, giới hạn cho các Use Case.
-Lưu ý 4: Không quá đi sâu vào chi tiết các chức năng CRUD.Không lạm dụng CRUD tránh gây nhàm chán, không thể hiện được nhiều thông tin cho người xem. Hướng giải quyết: Thêm một dòng note trước đoạn mô tả Use Case của tài liệu hoặc tạo riêng một Use Case có tên là manage X với X là 1 đối tượng bất kỳ.
-Lưu ý 5: Nên tạo tính thẩm mỹ cho Use Case. Use Case không thiết kế hợp lý, thiếu thẩm mỹ sẽ không thu hút được người dùng. Người xây dựng cần thiết kế các Use Case rõ ràng mạch lạc bằng cách: Tạo sơ đồ cùng kích cỡ, đánh dấu các Use Case ID, không chồng chéo các mối quan hệ, thêm màu sắc vào các Use Case... 
+CHƯƠNG 2 - CƠ SỞ LÝ THUYẾT VÀ CÔNG NGHỆ SỬ DỤNG
+2.1. TỔNG QUAN VỀ WEBSITE THƯƠNG MẠI ĐIỆN TỬ
+	Website thương mại điện tử (e-commerce) là nền tảng trực tuyến cho phép khách hàng thực hiện các giao dịch mua bán sản phẩm hoặc dịch vụ qua Internet. Đối với cửa hàng cà phê, website không chỉ là kênh bán hàng mà còn là công cụ quảng bá thương hiệu, xây dựng lòng tin khách hàng, và mở rộng thị trường trong bối cảnh văn hóa cà phê Việt Nam phát triển mạnh mẽ [1], [2]. Website cung cấp các chức năng chính như:
+•	Hiển thị sản phẩm: Danh sách cà phê, đồ uống, và phụ kiện với thông tin chi tiết (giá, mô tả, hình ảnh).
+•	Tìm kiếm và lọc: Cho phép khách hàng tìm sản phẩm theo danh mục, giá, hoặc từ khóa.
+•	Giỏ hàng và thanh toán: Hỗ trợ thêm/xóa sản phẩm, tính tổng giá, và thanh toán trực tuyến.
+•	Quản trị: Giao diện cho quản trị viên để thêm/sửa/xóa sản phẩm, quản lý đơn hàng, và theo dõi khách hàng.
+	Website được thiết kế theo mô hình ứng dụng trang đơn (Single Page Application - SPA), mang lại trải nghiệm mượt mà, nhanh chóng, và tương tự ứng dụng di động [3]. SPA tải toàn bộ tài nguyên ban đầu, sau đó sử dụng JavaScript để cập nhật giao diện mà không cần tải lại trang, cải thiện tốc độ và trải nghiệm người dùng, đặc biệt trong các website thương mại điện tử có lưu lượng truy cập cao [4].
+2.2. MÔ HÌNH KIẾN TRÚC WEBSITE
+	Website thương mại điện tử được xây dựng dựa trên mô hình client-server, bao gồm ba thành phần chính: Front-end, Back-end, và Database. Các thành phần này phối hợp để cung cấp một hệ thống hoàn chỉnh, đáp ứng nhu cầu của cả khách hàng và quản trị viên.
+2.2.1. Front-end (Giao diện người dùng)
+	Front-end là phần tương tác trực tiếp với khách hàng, hiển thị các trang như trang chủ, danh sách sản phẩm, chi tiết sản phẩm, giỏ hàng, thanh toán, và đăng nhập/đăng ký. Front-end được xây dựng bằng ReactJS, một thư viện JavaScript mã nguồn mở cho phép tạo giao diện động dựa trên các component tái sử dụng [3]. Ví dụ:
+•	Component ProductCard hiển thị thông tin sản phẩm (hình ảnh, tên, giá) trong danh sách sản phẩm.
+•	Component Navbar cung cấp thanh điều hướng với các liên kết đến trang chủ, danh mục, và giỏ hàng.
+•	Component Cart hiển thị danh sách sản phẩm trong giỏ hàng và tính tổng giá.
+	Vite được sử dụng làm công cụ xây dựng, cung cấp tốc độ build nhanh và hỗ trợ Hot Module Replacement (HMR), cho phép cập nhật giao diện tức thời trong quá trình phát triển [4]. Tailwind CSS, một framework CSS theo triết lý utility-first, được tích hợp để tạo kiểu giao diện responsive. Ví dụ:
+•	Sử dụng lớp grid grid-cols-3 để hiển thị danh sách sản phẩm dạng lưới.
+•	Sử dụng lớp flex cho thanh điều hướng, đảm bảo hiển thị linh hoạt trên desktop và mobile.
+•	Sử dụng lớp hover:bg-blue-500 cho các nút tương tác như “Thêm vào giỏ hàng”.
+	Thư viện react-router-dom quản lý điều hướng giữa các trang mà không cần tải lại, ví dụ: chuyển từ /products sang /cart [3]. Front-end gửi các yêu cầu HTTP đến Back-end qua API RESTful và hiển thị dữ liệu nhận được dưới dạng JSON.
+2.2.2. Back-end (Hệ thống máy chủ)
+	Back-end xử lý logic nghiệp vụ, xác thực người dùng, và quản lý dữ liệu. Hệ thống sử dụng NodeJS, một môi trường thực thi JavaScript bất đồng bộ, kết hợp với Express.js, một framework nhẹ để tạo API RESTful [9]. Các API chính bao gồm:
+•	GET /api/products: Lấy danh sách sản phẩm.
+•	POST /api/cart: Thêm sản phẩm vào giỏ hàng.
+•	POST /api/orders: Tạo đơn hàng mới.
+•	GET /api/users/me: Lấy thông tin người dùng đã đăng nhập.
+	JSON Web Token (JWT) được sử dụng để xác thực người dùng. Khi đăng nhập, Back-end tạo token và gửi về Front-end, lưu trong localStorage. Token này được gửi kèm trong header của các yêu cầu API để xác minh danh tính [9]. Cloudinary được tích hợp để quản lý hình ảnh sản phẩm, hỗ trợ upload, tối ưu hóa (nén, thay đổi kích thước), và phân phối hình ảnh qua URL [9]. Ví dụ: Hình ảnh sản phẩm được upload qua API /api/products/upload và hiển thị trên Front-end với kích thước tối ưu.
+2.2.3. Database (Cơ sở dữ liệu)
+	Cơ sở dữ liệu lưu trữ thông tin về sản phẩm, khách hàng, đơn hàng, và danh mục. MySQL, một hệ quản trị cơ sở dữ liệu quan hệ, được chọn vì tính ổn định và khả năng xử lý dữ liệu có cấu trúc [8]. Các bảng chính bao gồm:
+•	products: Lưu thông tin sản phẩm (cột: id, name, price, description, image_url, category_id).
+•	users: Lưu thông tin khách hàng và quản trị viên (cột: id, email, password (mã hóa), role).
+•	orders: Lưu thông tin đơn hàng (cột: id, user_id, total_price, status, created_at).
+•	categories: Lưu danh mục sản phẩm (cột: id, name).
+	Các bảng được liên kết qua khóa ngoại, ví dụ: products.category_id liên kết với categories.id. MySQL Workbench hỗ trợ thiết kế schema, viết truy vấn SQL, và quản lý dữ liệu, đảm bảo tính toàn vẹn và hiệu suất [9].
+2.2.4. Triển khai trên cloud
+	Để hoàn thiện mô hình kiến trúc website, ngoài ba thành phần Front-end, Back-end, Database, dự án còn sử dụng chiến lược triển khai (deployment) riêng cho từng phần nhằm đảm bảo hiệu suất, khả năng mở rộng và dễ dàng bảo trì.
+	Front-end được đẩy lên kho GitHub, quản lý mã nguồn công khai, đồng thời tự động triển khai (deploy) lên nền tảng Vercel. Vercel cung cấp cơ chế Continuous Deployment (CD), mỗi khi có commit mới trên nhánh chính của GitHub, Vercel tự động build, tối ưu file bundle và phát hành website. Quá trình này giúp giảm thiểu lỗi thủ công và đảm bảo website luôn cập nhật phiên bản mới nhất [7].
+	Back-end được triển khai thông qua Railway, một nền tảng Platform-as-a-Service hỗ trợ NodeJS/Express. Railway tự động build project từ GitHub repository và cung cấp endpoint dưới dạng HTTPS, dễ dàng tích hợp với Front-end qua RESTful API. Railway cũng hỗ trợ log monitoring và redeploy chỉ với một cú click, tiện lợi cho việc phát triển và khắc phục sự cố[9].
+	Lợi ích của mô hình triển khai phân tán này:
+•	Tối ưu hiệu suất: Front-end được Vercel phân phối qua hệ thống CDN toàn cầu, rút ngắn thời gian tải trang cho người dùng ở nhiều khu vực.
+•	Dễ bảo trì & CI/CD: Cả Front-end và Back-end đều được tự động build-deploy thông qua GitHub Action (hoặc built-in hook của Vercel/Railway), giảm rủi ro sai sót do triển khai thủ công.
+•	Tách rời server: Backend và Frontend hoạt động độc lập, tăng khả năng mở rộng, dễ dàng scale riêng từng dịch vụ khi nhu cầu tăng cao.
+	Việc sử dụng GitHub để quản lý mã nguồn cũng mang lại lợi thế minh bạch, dễ cộng tác. Các nghiên cứu cho thấy việc hiển thị commit, pull request, và fork trên GitHub giúp quản lý lịch sử dự án rõ ràng, tăng chất lượng cộng tác[6].
+2.3. QUY TRÌNH HOẠT ĐỘNG CỦA WEBSITE
+	Quy trình hoạt động của website bắt đầu khi khách hàng truy cập trình duyệt và tương tác với giao diện. Dưới đây là luồng hoạt động chi tiết:
+•	Yêu cầu từ client: Khách hàng nhấp vào danh sách sản phẩm trên trang /products. Front-end gửi yêu cầu GET /api/products đến Back-end.
+•	Xử lý trên server: Back-end nhận yêu cầu, truy vấn bảng products trong MySQL, và trả về danh sách sản phẩm dưới dạng JSON, ví dụ: [{id: 1, name: "Cà phê đen", price: 30000, image_url: "cloudinary.com/..."}].
+•	Hiển thị trên giao diện: Front-end nhận JSON, sử dụng component ProductCard để hiển thị danh sách sản phẩm trong layout dạng lưới.
+•	Thêm vào giỏ hàng: Khi khách hàng nhấp “Thêm vào giỏ hàng”, Front-end gửi yêu cầu POST /api/cart với dữ liệu {product_id: 1, quantity: 1}. Back-end cập nhật giỏ hàng và trả về thông báo thành công.
+•	Hiển thị thông báo: React Toastify hiển thị thông báo “Đã thêm vào giỏ hàng” ở góc trên bên phải [3].
+	Xác thực và thanh toán: Khi khách hàng thanh toán, Front-end gửi token JWT trong header của yêu cầu POST /api/orders. Back-end xác minh token, tạo đơn hàng, và lưu vào bảng orders.
+	Hình ảnh sản phẩm được tải từ Cloudinary với kích thước tối ưu, giảm thời gian tải trang. Quy trình này đảm bảo trải nghiệm mượt mà và an toàn cho người dùng [7].
+2.4. CÁC CÔNG NGHỆ SỬ DỤNG
+	Các công nghệ được lựa chọn dựa trên hiệu suất, tính phổ biến, và khả năng tích hợp, phù hợp với yêu cầu của một website thương mại điện tử.
+2.4.1. ReactJS và Vite
+	ReactJS là thư viện JavaScript mã nguồn mở, được phát triển bởi Facebook, dùng để xây dựng giao diện động dựa trên các component tái sử dụng [3]. Trong đồ án, ReactJS tạo các component như ProductCard, Navbar, Cart, và Checkout. Virtual DOM của React tối ưu hóa hiệu performance bằng cách chỉ cập nhật các phần giao diện thay đổi [3]. Vite là công cụ xây dựng hiện đại, hỗ trợ khởi tạo dự án React nhanh chóng, với HMR và tối ưu hóa file bundle [4]
+	Ưu điểm:
+•	Component tái sử dụng, giảm thời gian phát triển.
+•	Virtual DOM cải thiện tốc độ render giao diện.
+•	Vite cung cấp tốc độ build nhanh và trải nghiệm phát triển mượt mà.
+	Khuyết điểm:
+•	SPA cần tối ưu SEO (có thể dùng Next.js để cải thiện).
+•	Yêu cầu thư viện bổ sung như react-router-dom.
+	Lý do chọn: ReactJS lý tưởng cho SPA với giao diện động, Vite tăng tốc độ phát triển [3], [4].
+2.4.2. Nodejs và Express.js
+	NodeJS là môi trường thực thi JavaScript phía server, sử dụng mô hình bất đồng bộ để xử lý nhiều yêu cầu đồng thời [7]. Express.js là framework nhẹ, hỗ trợ tạo API RESTful. Back-end cung cấp các API như /api/products, /api/cart, /api/orders, tích hợp MySQL và Cloudinary [7].
+	Ưu điểm:
+•	Hiệu suất cao, phù hợp cho ứng dụng có lưu lượng lớn.
+•	Sử dụng JavaScript thống nhất cho cả Front-end và Back-end.
+•	Hệ sinh thái NPM phong phú.
+	Khuyết điểm:
+•	Không phù hợp cho tác vụ nặng về CPU.
+•	Cần bảo mật API để tránh tấn công như XSS hoặc SQL injection.
+	Lý do chọn: NodeJS và Express.js cho phép xây dựng API nhanh, dễ mở rộng, đồng bộ với ReactJS [7], [5].
+2.4.3. MYSQL Và MYSQL Workbench
+	MySQL là hệ quản trị cơ sở dữ liệu quan hệ, lưu trữ dữ liệu có cấu trúc như sản phẩm, đơn hàng, và khách hàng [8]. MySQL Workbench hỗ trợ thiết kế schema, viết truy vấn SQL, và quản lý dữ liệu. Ví dụ: Truy vấn SELECT * FROM products WHERE category_id = 1 lấy danh sách sản phẩm thuộc danh mục cà phê [7].
+	Ưu điểm:
+•	Hiệu suất cao, miễn phí, đáng tin cậy.
+•	Tích hợp tốt với NodeJS qua thư viện mysql2.
+•	MySQL Workbench cung cấp giao diện trực quan.
+	Khuyết điểm:
+•	Không phù hợp cho dữ liệu phi cấu trúc.
+•	Cần tối ưu truy vấn cho dữ liệu lớn.
+	Lý do chọn: MySQL phù hợp cho website e-commerce, dễ quản lý qua MySQL Workbench [8], [7].
+2.4.4. Tailwind CSS
+	Tailwind CSS là framework CSS theo triết lý utility-first, cung cấp các lớp tiện ích để tạo kiểu nhanh chóng [3]. Ví dụ: Lớp grid grid-cols-3 gap-4 tạo danh sách sản phẩm dạng lưới, flex justify-between tạo thanh điều hướng.
+	Ưu điểm:
+•	Tùy biến cao, hỗ trợ responsive.
+•	Giảm thời gian viết CSS, tối ưu file CSS.
+•	Tích hợp tốt với React qua extension VS Code.
+	Khuyết điểm:
+•	Mã JSX dài do nhiều lớp tiện ích.
+•	Cần thời gian học để sử dụng hiệu quả.
+	Lý do chọn: Tailwind CSS giúp thiết kế giao diện hiện đại, tăng tốc phát triển [4].
+2.4.5. Cloudinary
+	Cloudinary là nền tảng quản lý hình ảnh trên đám mây, hỗ trợ upload, tối ưu hóa, và phân phối hình ảnh [7]. Hình ảnh sản phẩm được upload qua API và hiển thị trên Front-end với kích thước tối ưu.
+	Ưu điểm:
+•	Tối ưu hóa hình ảnh tự động (nén, thay đổi kích thước).
+•	Dễ tích hợp với NodeJS và ReactJS.
+•	Lưu trữ an toàn trên đám mây.
+	Khuyết điểm:
+•	Phụ thuộc vào dịch vụ bên thứ ba.
+•	Có thể phát sinh chi phí với lưu lượng lớn.
+	Lý do chọn: Cloudinary cải thiện tốc độ tải trang, phù hợp cho website e-commerce [7].
+2.4.6. Visual Studio Code
+	Visual Studio Code (VS Code) là trình soạn thảo mã nguồn, hỗ trợ phát triển với các extension như ESLint, Prettier, và Tailwind CSS IntelliSense [3]. VS Code tích hợp Git và debug API, tăng năng suất lập trình.
+	Ưu điểm:
+•	Nhẹ, tùy chỉnh cao, hỗ trợ nhiều ngôn ngữ.
+•	Extension phong phú, tích hợp Git và terminal.
+•	Hỗ trợ mạnh mẽ cho React và NodeJS.
+	Khuyết điểm:
+•	Cần cấu hình extension phù hợp.
+•	Hiệu suất giảm với dự án lớn.
+	Lý do chọn: VS Code phổ biến, tăng năng suất cho dự án React và NodeJS [4].
+2.4.7. JSON Web Token (JWT)
+	JWT là chuẩn xác thực, sử dụng token để xác minh danh tính và phân quyền [7]. Token được tạo khi đăng nhập, lưu trong localStorage, và gửi trong header của yêu cầu API.
+	Ưu điểm:
+•	Bảo mật, stateless, không cần lưu session.
+•	Dễ tích hợp với API RESTful.
+•	Hỗ trợ phân quyền (admin, user).
+	Khuyết điểm:
+•	Không thể hủy token trước khi hết hạn.
+•	Cần bảo mật khóa bí mật.
+	Lý do chọn: JWT phù hợp cho SPA và API RESTful, đảm bảo an toàn [7].
+2.4.8. React Toastify
+	React Toastify hiển thị thông báo như “Đã thêm vào giỏ hàng” hoặc “Lỗi đăng nhập” [3]. Thư viện được tích hợp trong App.jsx, với tùy chỉnh vị trí, màu sắc, và thời gian hiển thị.
+	Ưu điểm:
+•	Dễ sử dụng, cải thiện trải nghiệm người dùng.
+•	Tùy chỉnh linh hoạt, hỗ trợ nhiều kiểu thông báo.
+•	Tích hợp tốt với ReactJS.
+	Khuyết điểm:
+•	Tăng kích thước bundle.
+•	Cần quản lý thông báo để tránh làm phiền.
+	Lý do chọn: React Toastify cung cấp phản hồi tức thời, nâng cao trải nghiệm [4].
+2.4.9. Vercel
+	Vercel là nền tảng đám mây chuyên dùng để triển khai ứng dụng Front-end, đặc biệt tối ưu cho các project sử dụng React, Next.js, hoặc Vite [7] . Trong dự án, Vercel được sử dụng để triển khai Front-end từ GitHub repository với cơ chế CI/CD tự động. Khi có thay đổi mã nguồn, Vercel tự động build và cập nhật website qua hệ thống CDN.
+Ưu điểm:
+•	Hỗ trợ build tự động từ GitHub, giảm rủi ro lỗi do deploy thủ công.
+•	Phân phối nội dung qua CDN toàn cầu, tối ưu tốc độ tải trang.
+•	Giao diện quản lý trực quan, hỗ trợ rollback phiên bản nhanh chóng.
+Khuyết điểm:
+•	Phụ thuộc vào kết nối GitHub và có giới hạn tài nguyên với bản miễn phí.
+•	Thiếu khả năng tùy chỉnh nâng cao như các dịch vụ IaaS (Infrastructure-as-a-Service).
+	Lý do chọn: Vercel phù hợp để triển khai ReactJS + Vite với cấu hình tối giản, tối ưu trải nghiệm người dùng qua tốc độ tải nhanh và dễ mở rộng [7].
+2.4.10. Railway
+	Railway là nền tảng Platform-as-a-Service (PaaS) hỗ trợ triển khai ứng dụng Back-end một cách tự động từ GitHub. Dự án sử dụng Railway để triển khai hệ thống NodeJS/Express kèm kết nối MySQL thông qua biến môi trường [7].
+	Ưu điểm:
+•	Hỗ trợ triển khai NodeJS nhanh chóng, không cần cấu hình máy chủ thủ công.
+•	Quản lý log, biến môi trường, và trigger build tự động thông qua GitHub integration.
+•	Có hỗ trợ HTTPS mặc định và cơ chế scale linh hoạt.
+	Khuyết điểm:
+•	Hạn chế tài nguyên ở gói miễn phí (RAM, lưu trữ).
+•	Khả năng tùy biến thấp so với các dịch vụ như Heroku hoặc AWS.
+	Lý do chọn: Railway phù hợp với NodeJS dựa trên REST API, cung cấp cách triển khai nhanh, đơn giản và tích hợp tốt với quy trình CI/CD hiện có [7].

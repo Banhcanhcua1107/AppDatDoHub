@@ -1,0 +1,4783 @@
+
+
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+
+CREATE EXTENSION IF NOT EXISTS "pg_cron" WITH SCHEMA "pg_catalog";
+
+
+
+
+
+
+COMMENT ON SCHEMA "public" IS 'standard public schema';
+
+
+
+CREATE EXTENSION IF NOT EXISTS "pg_graphql" WITH SCHEMA "graphql";
+
+
+
+
+
+
+CREATE EXTENSION IF NOT EXISTS "pg_stat_statements" WITH SCHEMA "extensions";
+
+
+
+
+
+
+CREATE EXTENSION IF NOT EXISTS "pgcrypto" WITH SCHEMA "extensions";
+
+
+
+
+
+
+CREATE EXTENSION IF NOT EXISTS "supabase_vault" WITH SCHEMA "vault";
+
+
+
+
+
+
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA "extensions";
+
+
+
+
+
+
+CREATE TYPE "public"."cancellation_status" AS ENUM (
+    'pending',
+    'approved',
+    'rejected'
+);
+
+
+ALTER TYPE "public"."cancellation_status" OWNER TO "postgres";
+
+
+CREATE TYPE "public"."order_item_status" AS ENUM (
+    'waiting',
+    'in_progress',
+    'completed',
+    'served'
+);
+
+
+ALTER TYPE "public"."order_item_status" OWNER TO "postgres";
+
+
+CREATE TYPE "public"."order_status_enum" AS ENUM (
+    'pending',
+    'paid',
+    'closed',
+    'cancelled',
+    'completed'
+);
+
+
+ALTER TYPE "public"."order_status_enum" OWNER TO "postgres";
+
+
+CREATE TYPE "public"."payment_method_enum" AS ENUM (
+    'cash',
+    'momo',
+    'transfer'
+);
+
+
+ALTER TYPE "public"."payment_method_enum" OWNER TO "postgres";
+
+
+CREATE TYPE "public"."return_slip_status" AS ENUM (
+    'approved',
+    'rejected',
+    'pending'
+);
+
+
+ALTER TYPE "public"."return_slip_status" OWNER TO "postgres";
+
+
+CREATE TYPE "public"."table_status" AS ENUM (
+    'Trống',
+    'Đang phục vụ',
+    'Đặt trước',
+    'Gộp'
+);
+
+
+ALTER TYPE "public"."table_status" OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."approve_cancellation_request"("p_request_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql"
+    AS $$
+declare
+  v_request record;
+  v_order_id uuid;
+  v_new_slip_id int;
+  item_to_return jsonb;
+  v_order_item_id int;
+  v_quantity int;
+  v_unit_price numeric;
+begin
+  -- Lấy thông tin của yêu cầu
+  select * into v_request from public.cancellation_requests where id = p_request_id and status = 'pending';
+
+  -- Nếu không tìm thấy yêu cầu hoặc yêu cầu đã được xử lý, dừng lại
+  if v_request is null then
+    return;
+  end if;
+
+  -- Cập nhật trạng thái yêu cầu thành 'approved'
+  update public.cancellation_requests set status = 'approved', reviewed_at = now() where id = p_request_id;
+
+  -- Lấy order_id
+  v_order_id := v_request.order_id;
+
+  -- 1. Tạo phiếu trả hàng
+  insert into public.return_slips (order_id, reason)
+  values (v_order_id, v_request.reason)
+  returning id into v_new_slip_id;
+
+  -- 2. Lặp qua danh sách các món trong yêu cầu
+  for item_to_return in select * from jsonb_array_elements(v_request.requested_items)
+  loop
+    v_order_item_id := (item_to_return->>'order_item_id')::int;
+    v_quantity := (item_to_return->>'quantity')::int;
+    
+    -- Lấy giá từ bảng order_items để đảm bảo chính xác
+    select (customizations->>'unit_price')::numeric into v_unit_price from public.order_items where id = v_order_item_id;
+
+    -- Thêm vào chi tiết phiếu trả
+    insert into public.return_slip_items (return_slip_id, order_item_id, quantity, unit_price)
+    values (v_new_slip_id, v_order_item_id, v_quantity, v_unit_price);
+
+    -- Cập nhật số lượng trả
+    perform update_returned_quantity(v_order_item_id, v_quantity);
+  end loop;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."approve_cancellation_request"("p_request_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."calculate_ingredients_needed"("p_menu_item_id" "uuid", "p_quantity" integer DEFAULT 1) RETURNS TABLE("ingredient_name" "text", "unit" "text", "amount_needed" numeric, "stock_available" numeric, "is_enough" boolean, "alert" "text")
+    LANGUAGE "sql"
+    AS $$
+SELECT
+    ing.name,
+    ing.unit,
+    (mii.quantity_required * p_quantity)::NUMERIC AS amount_needed,
+    ing.stock_quantity,
+    ing.stock_quantity >= (mii.quantity_required * p_quantity) AS is_enough,
+    CASE
+        WHEN ing.stock_quantity < (mii.quantity_required * p_quantity) THEN
+            '❌ Không đủ - Còn ' || ing.stock_quantity || ' ' || ing.unit
+        WHEN ing.stock_quantity <= (mii.quantity_required * p_quantity * 2) THEN
+            '⚠️ Sắp hết - Cần nhập'
+        ELSE
+            '✅ Đủ'
+    END AS alert
+FROM "public"."menu_item_ingredients" mii
+JOIN "public"."ingredients" ing ON mii.ingredient_id = ing.id
+WHERE mii.menu_item_id = p_menu_item_id;
+$$;
+
+
+ALTER FUNCTION "public"."calculate_ingredients_needed"("p_menu_item_id" "uuid", "p_quantity" integer) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."cancel_order_and_reset_tables"("p_order_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+    table_ids_to_reset BIGINT[];
+BEGIN
+    -- Lấy danh sách ID của tất cả các bàn liên quan đến order này
+    SELECT array_agg(table_id) INTO table_ids_to_reset
+    FROM public.order_tables
+    WHERE order_id = p_order_id;
+
+    -- Cập nhật trạng thái của order thành 'cancelled'
+    UPDATE public.orders SET status = 'cancelled' WHERE id = p_order_id;
+
+    -- Nếu có bàn liên quan, cập nhật trạng thái của chúng thành 'Trống'
+    IF array_length(table_ids_to_reset, 1) > 0 THEN
+        UPDATE public.tables SET status = 'Trống' WHERE id = ANY(table_ids_to_reset);
+    END IF;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."cancel_order_and_reset_tables"("p_order_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."cancel_order_items"("p_order_item_ids" integer[]) RETURNS "void"
+    LANGUAGE "plpgsql"
+    AS $$
+declare
+  v_order_id uuid;
+  v_new_slip_id int;
+  item_record record;
+begin
+  -- Lấy order_id từ một trong các món (giả định tất cả thuộc cùng một order)
+  select order_id into v_order_id from public.order_items where id = p_order_item_ids[1];
+
+  -- Nếu không tìm thấy order, dừng lại
+  if v_order_id is null then
+    return;
+  end if;
+
+  -- 1. Tạo một phiếu trả hàng mới
+  insert into public.return_slips (order_id, reason)
+  values (v_order_id, 'Hủy trực tiếp (dưới 5 phút, chưa chế biến)')
+  returning id into v_new_slip_id;
+
+  -- 2. Lặp qua từng item ID được truyền vào
+  for item_record in (select id, quantity, customizations->>'unit_price' as unit_price from public.order_items where id = any(p_order_item_ids))
+  loop
+    -- Thêm các món này vào chi tiết phiếu trả
+    insert into public.return_slip_items (return_slip_id, order_item_id, quantity, unit_price)
+    values (v_new_slip_id, item_record.id, item_record.quantity, (item_record.unit_price)::numeric);
+
+    -- Cập nhật số lượng đã trả trong order_items
+    -- Sử dụng hàm `update_returned_quantity` đã có hoặc cập nhật trực tiếp
+    -- Giả sử đã có hàm này:
+    perform update_returned_quantity(item_record.id, item_record.quantity);
+  end loop;
+
+end;
+$$;
+
+
+ALTER FUNCTION "public"."cancel_order_items"("p_order_item_ids" integer[]) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."cancel_provisional_bill"("p_order_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+BEGIN
+  -- Set is_provisional = false
+  UPDATE orders 
+  SET is_provisional = false
+  WHERE id = p_order_id;
+  
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Order not found: %', p_order_id;
+  END IF;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."cancel_provisional_bill"("p_order_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."check_item_has_active_orders"("p_item_id" "uuid") RETURNS boolean
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM "public"."order_items" oi
+    JOIN "public"."orders" o ON oi."order_id" = o."id"
+    WHERE oi."menu_item_id" = p_item_id
+    AND o."status" IN ('pending', 'paid', 'completed')
+    AND oi."status" IN ('waiting', 'in_progress', 'completed')
+  );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."check_item_has_active_orders"("p_item_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."complete_purchase_order"("p_po_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+    po_item RECORD;
+    v_purchase_order public.purchase_orders;
+BEGIN
+    -- Lấy thông tin phiếu nhập, bao gồm cả total_cost
+    SELECT * INTO v_purchase_order FROM public.purchase_orders
+    WHERE id = p_po_id AND status = 'pending';
+
+    IF v_purchase_order IS NULL THEN
+        RAISE EXCEPTION 'Phiếu nhập không tồn tại hoặc đã được xử lý.';
+    END IF;
+
+    -- Cập nhật trạng thái phiếu nhập
+    UPDATE public.purchase_orders
+    SET status = 'completed', completed_at = NOW()
+    WHERE id = p_po_id;
+
+    -- Lặp qua các món trong phiếu để cộng vào kho
+    FOR po_item IN
+        SELECT ingredient_id, quantity
+        FROM public.purchase_order_items
+        WHERE purchase_order_id = p_po_id
+    LOOP
+        -- Cập nhật tồn kho
+        UPDATE public.ingredients
+        SET stock_quantity = stock_quantity + po_item.quantity
+        WHERE id = po_item.ingredient_id;
+
+        -- Ghi lịch sử nhập kho
+        INSERT INTO public.stock_history (ingredient_id, quantity_change, notes)
+        VALUES (po_item.ingredient_id, po_item.quantity, 'Nhập kho từ phiếu ' || v_purchase_order.po_code);
+    END LOOP;
+
+    -- TỰ ĐỘNG TẠO PHIẾU CHI
+    IF v_purchase_order.total_cost > 0 THEN
+        INSERT INTO public.expenses (description, amount, category, payment_method)
+        VALUES (
+            'Chi tiền nhập hàng cho phiếu ' || v_purchase_order.po_code,
+            v_purchase_order.total_cost,
+            'Nhập nguyên liệu',
+            'transfer' -- Hoặc 'cash' tùy theo logic của bạn
+        );
+    END IF;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."complete_purchase_order"("p_po_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."create_item_ready_notification"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+    v_table_name TEXT;
+BEGIN
+    -- Chỉ chạy khi trạng thái món chuyển thành 'completed'
+    IF OLD.status <> 'completed' AND NEW.status = 'completed' THEN
+        -- Lấy tên bàn
+        SELECT string_agg(t.name, ', ') INTO v_table_name
+        FROM public.order_tables ot
+        JOIN public.tables t ON ot.table_id = t.id
+        WHERE ot.order_id = NEW.order_id;
+
+        -- Tạo thông báo "Sẵn sàng phục vụ"
+        INSERT INTO public.return_notifications (order_id, table_name, item_name, notification_type, status)
+        VALUES (NEW.order_id, v_table_name, NEW.customizations->>'name', 'item_ready', 'pending');
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."create_item_ready_notification"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."create_notification_after_kitchen_approval"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+    v_table_name TEXT;
+    v_item_names TEXT[];
+BEGIN
+    IF NEW.type = 'approved_cancellation' THEN
+        SELECT string_agg(t.name, ', ') INTO v_table_name
+        FROM public.order_tables ot
+        JOIN public.tables t ON ot.table_id = t.id
+        WHERE ot.order_id = NEW.order_id;
+        
+        SELECT array_agg(oi.customizations->>'name') INTO v_item_names
+        FROM public.return_slip_items rsi
+        JOIN public.order_items oi ON rsi.order_item_id = oi.id
+        WHERE rsi.return_slip_id = NEW.id;
+
+        IF array_length(v_item_names, 1) > 0 THEN
+            INSERT INTO public.return_notifications (order_id, table_name, item_names, notification_type)
+            VALUES (NEW.order_id, v_table_name, v_item_names, 'return_item');
+        END IF;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."create_notification_after_kitchen_approval"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."create_random_orders"("num_orders" integer DEFAULT 20, "days_ago" integer DEFAULT 7) RETURNS "void"
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+    -- Khai báo các biến sẽ dùng trong vòng lặp
+    i integer;
+    j integer;
+    new_order_id uuid;
+    random_menu_item_record RECORD;
+    random_table_id bigint;
+    random_quantity integer;
+    num_items_in_order integer;
+    order_total_price numeric;
+    random_timestamp timestamptz; -- SỬA LỖI GÕ NHẦM Ở ĐÂY
+    random_status public.order_status_enum;
+    days_interval_string text;
+BEGIN
+    -- Vòng lặp chính: lặp qua số lượng đơn hàng cần tạo
+    FOR i IN 1..num_orders LOOP
+        -- Reset tổng tiền cho mỗi đơn hàng mới
+        order_total_price := 0;
+
+        -- 1. Tạo một đơn hàng mới trong bảng `orders`
+        days_interval_string := days_ago || ' days';
+        random_timestamp := NOW() - (random() * days_interval_string::interval);
+        
+        random_status := (ARRAY['paid', 'closed', 'completed'])[floor(random() * 3) + 1];
+
+        INSERT INTO public.orders (status, created_at, updated_at, total_price)
+        VALUES (random_status, random_timestamp, random_timestamp, 0)
+        RETURNING id INTO new_order_id;
+
+        -- 2. Quyết định ngẫu nhiên xem đơn hàng này có bao nhiêu loại món
+        num_items_in_order := floor(random() * 4) + 1;
+
+        -- Vòng lặp con: thêm các món ăn vào đơn hàng vừa tạo
+        FOR j IN 1..num_items_in_order LOOP
+            SELECT id, price, name INTO random_menu_item_record
+            FROM public.menu_items ORDER BY random() LIMIT 1;
+
+            random_quantity := floor(random() * 3) + 1;
+
+            INSERT INTO public.order_items (order_id, menu_item_id, quantity, unit_price, customizations, status)
+            VALUES (
+                new_order_id,
+                random_menu_item_record.id,
+                random_quantity,
+                random_menu_item_record.price,
+                jsonb_build_object('name', random_menu_item_record.name, 'unit_price', random_menu_item_record.price),
+                random_status
+            );
+            
+            order_total_price := order_total_price + (random_menu_item_record.price * random_quantity);
+        END LOOP;
+
+        -- 3. Cập nhật lại tổng tiền chính xác cho đơn hàng
+        UPDATE public.orders
+        SET total_price = order_total_price
+        WHERE id = new_order_id;
+
+        -- 4. Gán đơn hàng này cho một bàn ngẫu nhiên
+        SELECT id INTO random_table_id FROM public.tables ORDER BY random() LIMIT 1;
+        IF random_table_id IS NOT NULL THEN
+            INSERT INTO public.order_tables (order_id, table_id)
+            VALUES (new_order_id, random_table_id);
+        END IF;
+
+    END LOOP;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."create_random_orders"("num_orders" integer, "days_ago" integer) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."decrement_menu_item_quantity"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+    v_daily_limit INT;
+    v_current_remaining INT;
+    v_new_remaining INT;
+BEGIN
+    -- 1. Lấy thông tin giới hạn và số lượng còn lại của món ăn
+    SELECT daily_stock_limit, remaining_quantity
+    INTO v_daily_limit, v_current_remaining
+    FROM public.menu_items
+    WHERE id = NEW.menu_item_id;
+
+    -- 2. Chỉ thực thi nếu món này có giới hạn số lượng hàng ngày
+    IF v_daily_limit IS NOT NULL THEN
+        -- [SỬA LỖI QUAN TRỌNG]
+        -- Dùng COALESCE để coi giá trị NULL là số lượng giới hạn ban đầu.
+        -- Điều này đảm bảo v_current_remaining luôn là một con số.
+        v_current_remaining := COALESCE(v_current_remaining, v_daily_limit);
+
+        -- 3. Tính toán số lượng còn lại mới
+        v_new_remaining := v_current_remaining - NEW.quantity;
+
+        -- 4. Cập nhật lại bảng menu_items
+        -- Đặt is_available = false NẾU số lượng mới <= 0
+        UPDATE public.menu_items
+        SET
+            remaining_quantity = v_new_remaining,
+            is_available = (v_new_remaining > 0)
+        WHERE id = NEW.menu_item_id;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."decrement_menu_item_quantity"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."deduct_ingredients_on_order"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+    recipe_item RECORD;
+    v_user_id UUID; -- [KHAI BÁO] Biến để lưu user_id
+BEGIN
+    -- [SỬA LỖI] Lấy user_id từ bảng orders bằng cách dùng NEW.order_id
+    SELECT user_id INTO v_user_id FROM public.orders WHERE id = NEW.order_id;
+
+    -- Lặp qua tất cả nguyên liệu của món ăn vừa được đặt
+    FOR recipe_item IN
+        SELECT
+            mii.ingredient_id,
+            mii.quantity_required
+        FROM "public"."menu_item_ingredients" mii
+        WHERE mii.menu_item_id = NEW.menu_item_id
+    LOOP
+        -- Trừ nguyên liệu (số lượng món × số lượng nguyên liệu per 1 món)
+        UPDATE "public"."ingredients"
+        SET stock_quantity = stock_quantity - (recipe_item.quantity_required * NEW.quantity)
+        WHERE id = recipe_item.ingredient_id;
+        
+        -- Ghi vào lịch sử
+        INSERT INTO "public"."stock_history" (ingredient_id, quantity_change, user_id, notes)
+        VALUES (
+            recipe_item.ingredient_id,
+            -(recipe_item.quantity_required * NEW.quantity),
+            v_user_id, -- [SỬA LỖI] Sử dụng biến v_user_id đã lấy được
+            'Bán ' || NEW.quantity || ' ' || (SELECT name FROM "public"."menu_items" WHERE id = NEW.menu_item_id)
+        )
+        ON CONFLICT DO NOTHING;
+    END LOOP;
+
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."deduct_ingredients_on_order"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."delete_old_unverified_users"() RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+BEGIN
+  DELETE FROM auth.users
+  WHERE
+    -- Chỉ xóa những user chưa xác thực email
+    email_confirmed_at IS NULL AND
+    -- Và đã được tạo hơn 5 phút trước
+    created_at < (now() - interval '5 minutes');
+END;
+$$;
+
+
+ALTER FUNCTION "public"."delete_old_unverified_users"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."force_close_all_active_sessions"() RETURNS "text"
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+    closed_order_count INT;
+    reset_table_count INT;
+BEGIN
+    -- BƯỚC 1: Đóng tất cả các order có trạng thái 'pending' hoặc 'paid'
+    WITH updated_orders AS (
+        UPDATE public.orders
+        SET status = 'closed'
+        WHERE status IN ('pending', 'paid')
+        RETURNING 1
+    )
+    SELECT count(*) INTO closed_order_count FROM updated_orders;
+
+    -- BƯỚC 2: Reset tất cả các bàn không ở trạng thái 'Trống'
+    WITH updated_tables AS (
+        UPDATE public.tables
+        SET status = 'Trống'
+        WHERE status != 'Trống'
+        RETURNING 1
+    )
+    SELECT count(*) INTO reset_table_count FROM updated_tables;
+
+    -- BƯỚC 3: Trả về thông báo tổng hợp
+    RETURN 'Đã đóng ' || closed_order_count || ' order và reset ' || reset_table_count || ' bàn.';
+END;
+$$;
+
+
+ALTER FUNCTION "public"."force_close_all_active_sessions"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."force_close_all_orders"() RETURNS "text"
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+    updated_count INTEGER; -- Biến để đếm số order đã được cập nhật
+BEGIN
+    -- Sử dụng CTE (Common Table Expression) để cập nhật và đếm số dòng bị ảnh hưởng
+    WITH updated_rows AS (
+        UPDATE public.orders
+        SET status = 'closed'
+        WHERE status IN ('pending', 'paid')
+        RETURNING 1 -- Trả về 1 cho mỗi dòng được cập nhật
+    )
+    -- Đếm số dòng đã được trả về từ CTE
+    SELECT count(*) INTO updated_count FROM updated_rows;
+
+    -- Trả về chuỗi thông báo kết quả
+    RETURN 'Đã đóng thành công ' || updated_count || ' order.';
+END;
+$$;
+
+
+ALTER FUNCTION "public"."force_close_all_orders"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."force_close_all_tables"() RETURNS "text"
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+    updated_count integer;
+BEGIN
+    WITH updated_rows AS (
+        UPDATE public.tables
+        SET status = 'Trống'
+        WHERE status != 'Trống'
+        RETURNING 1
+    )
+    SELECT count(*) INTO updated_count FROM updated_rows;
+
+    RETURN 'Đã đóng thành công ' || updated_count || ' bàn.';
+END;
+$$;
+
+
+ALTER FUNCTION "public"."force_close_all_tables"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."force_complete_all_kitchen_items"() RETURNS "text"
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+    updated_count integer;
+BEGIN
+    WITH updated_rows AS (
+        UPDATE public.order_items
+        SET status = 'completed'
+        WHERE status IN ('waiting', 'in_progress')
+        RETURNING 1
+    )
+    SELECT count(*) INTO updated_count FROM updated_rows;
+
+    RETURN 'Đã hoàn thành ' || updated_count || ' món trong bếp.';
+END;
+$$;
+
+
+ALTER FUNCTION "public"."force_complete_all_kitchen_items"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."force_end_of_day_cleanup"() RETURNS "text"
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+    updated_item_count integer := 0;
+    updated_order_count integer := 0;
+BEGIN
+    -- BƯỚC 1: Dọn dẹp Bếp một cách triệt để.
+    -- Cập nhật TẤT CẢ các món có trạng thái KHÁC 'served' thành 'served'.
+    -- Bất kể trạng thái cũ là gì, nó sẽ bị dọn dẹp.
+    WITH kitchen_cleanup AS (
+        UPDATE public.order_items
+        SET status = 'served'
+        WHERE status != 'served' -- Điều kiện mạnh mẽ và bao quát hơn
+        RETURNING 1
+    )
+    SELECT count(*) INTO updated_item_count FROM kitchen_cleanup;
+
+    -- BƯỚC 2: Đóng các order đang mở để dọn dẹp màn hình Order của Thu ngân.
+    WITH order_cleanup AS (
+        UPDATE public.orders
+        SET status = 'closed'
+        WHERE status IN ('pending', 'paid')
+        RETURNING 1
+    )
+    SELECT count(*) INTO updated_order_count FROM order_cleanup;
+
+    RETURN 'Đã dọn dẹp ' || updated_item_count || ' món khỏi bếp và đóng ' || updated_order_count || ' order.';
+END;
+$$;
+
+
+ALTER FUNCTION "public"."force_end_of_day_cleanup"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."force_reset_operations"() RETURNS "text"
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+    result_tables text;
+    result_items text;
+BEGIN
+    -- Gọi hàm đóng bàn
+    SELECT public.force_close_all_tables() INTO result_tables;
+    -- Gọi hàm hoàn thành món
+    SELECT public.force_complete_all_kitchen_items() INTO result_items;
+
+    -- Trả về kết quả tổng hợp
+    RETURN result_tables || E'\n' || result_items;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."force_reset_operations"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."get_cash_flow_report"("p_start_date" "date" DEFAULT CURRENT_DATE, "p_end_date" "date" DEFAULT CURRENT_DATE) RETURNS json
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  v_cash_on_hand DECIMAL;
+  v_bank_deposit DECIMAL;
+  v_total_fund DECIMAL;
+  v_daily_revenue DECIMAL;
+BEGIN
+  -- Tính tiền mặt = 70% doanh thu
+  SELECT COALESCE(SUM(quantity * unit_price), 0) * 0.7
+  INTO v_daily_revenue
+  FROM order_items oi
+  JOIN orders o ON oi.order_id = o.id
+  WHERE DATE(o.created_at) BETWEEN p_start_date AND p_end_date
+    AND o.status IN ('paid', 'completed', 'closed');
+
+  v_cash_on_hand := v_daily_revenue;
+  v_bank_deposit := 5000000; -- Giả sử có 5M ở ngân hàng
+  v_total_fund := v_cash_on_hand + v_bank_deposit;
+
+  RETURN JSON_BUILD_OBJECT(
+    'cash_on_hand', v_cash_on_hand,
+    'bank_deposit', v_bank_deposit,
+    'total_fund', v_total_fund
+  );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_cash_flow_report"("p_start_date" "date", "p_end_date" "date") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."get_cash_fund_data"("p_start_date" timestamp with time zone, "p_end_date" timestamp with time zone) RETURNS json
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  v_cash_on_hand DECIMAL;
+  v_bank_deposit DECIMAL;
+  v_total_fund DECIMAL;
+BEGIN
+  -- Tính tổng tiền mặt thu được trong khoảng thời gian
+  SELECT COALESCE(SUM(o.total_price), 0)
+  INTO v_cash_on_hand
+  FROM public.orders o
+  WHERE 
+    o.created_at BETWEEN p_start_date AND p_end_date
+    AND o.status IN ('paid', 'completed', 'closed')
+    AND o.payment_method = 'cash';
+
+  -- Tính tổng tiền gửi (Momo, Chuyển khoản) trong khoảng thời gian
+  SELECT COALESCE(SUM(o.total_price), 0)
+  INTO v_bank_deposit
+  FROM public.orders o
+  WHERE 
+    o.created_at BETWEEN p_start_date AND p_end_date
+    AND o.status IN ('paid', 'completed', 'closed')
+    AND o.payment_method IN ('momo', 'transfer');
+
+  -- Tổng quỹ là tổng 2 khoản trên
+  v_total_fund := v_cash_on_hand + v_bank_deposit;
+
+  RETURN JSON_BUILD_OBJECT(
+    'cashOnHand', v_cash_on_hand,
+    'bankDeposit', v_bank_deposit,
+    'totalFund', v_total_fund
+  );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_cash_fund_data"("p_start_date" timestamp with time zone, "p_end_date" timestamp with time zone) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."get_cash_fund_report"("p_start_date" "date" DEFAULT CURRENT_DATE, "p_end_date" "date" DEFAULT CURRENT_DATE) RETURNS json
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  v_cash_revenue DECIMAL;
+  v_digital_revenue DECIMAL;
+  v_cash_expenses DECIMAL;
+  v_net_cash_flow DECIMAL;
+BEGIN
+  -- 1. Tính tổng doanh thu bằng tiền mặt
+  SELECT COALESCE(SUM(total_price), 0)
+  INTO v_cash_revenue
+  FROM public.orders
+  WHERE 
+    (created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN p_start_date AND p_end_date
+    AND status IN ('paid', 'completed', 'closed')
+    AND payment_method = 'cash';
+
+  -- 2. Tính tổng doanh thu qua kênh điện tử (Momo, chuyển khoản)
+  SELECT COALESCE(SUM(total_price), 0)
+  INTO v_digital_revenue
+  FROM public.orders
+  WHERE 
+    (created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN p_start_date AND p_end_date
+    AND status IN ('paid', 'completed', 'closed')
+    AND payment_method IN ('momo', 'transfer');
+    
+  -- 3. Tính tổng chi phí bằng tiền mặt
+  SELECT COALESCE(SUM(amount), 0)
+  INTO v_cash_expenses
+  FROM public.expenses
+  WHERE 
+    expense_date BETWEEN p_start_date AND p_end_date
+    AND payment_method = 'cash';
+
+  -- 4. Tính dòng tiền mặt ròng (tiền mặt thực tế trong ngăn kéo thay đổi)
+  v_net_cash_flow := v_cash_revenue - v_cash_expenses;
+
+  -- 5. Trả về kết quả dưới dạng JSON
+  RETURN JSON_BUILD_OBJECT(
+    'cashRevenue', v_cash_revenue,
+    'digitalRevenue', v_digital_revenue,
+    'cashExpenses', v_cash_expenses,
+    'netCashFlow', v_net_cash_flow
+  );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_cash_fund_report"("p_start_date" "date", "p_end_date" "date") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."get_cashier_dashboard_data"() RETURNS json
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+    v_kpis JSON;
+    v_profit_chart_data JSON;
+    v_daily_revenue_chart_data JSON;
+    v_top_items JSON;
+    v_inventory_alerts JSON;
+    v_profit_json JSON;
+BEGIN
+    -- 1. Lấy các chỉ số KPI chính trong ngày
+    -- === SỬA LỖI Ở ĐÂY ===
+    -- Làm cho các subquery hoàn toàn độc lập bằng cách dùng bí danh (alias) khác
+    SELECT json_build_object(
+        'revenue', (
+            SELECT COALESCE(SUM(oi_sub.quantity * oi_sub.unit_price), 0)
+            FROM public.order_items AS oi_sub
+            JOIN public.orders AS o_sub ON oi_sub.order_id = o_sub.id
+            WHERE o_sub.status IN ('paid', 'closed', 'completed') AND DATE(o_sub.created_at) = CURRENT_DATE
+        ),
+        'estimatedRevenue', (
+            SELECT COALESCE(SUM(oi_sub.quantity * oi_sub.unit_price), 0)
+            FROM public.order_items AS oi_sub
+            JOIN public.orders AS o_sub ON oi_sub.order_id = o_sub.id
+            WHERE o_sub.status != 'cancelled' AND DATE(o_sub.created_at) = CURRENT_DATE
+        ),
+        'orders', (
+            SELECT COUNT(*) FROM public.orders
+            WHERE status != 'cancelled' AND DATE(created_at) = CURRENT_DATE
+        )
+    )
+    INTO v_kpis;
+    -- === KẾT THÚC SỬA LỖI ===
+
+    -- 2. Lấy dữ liệu cho biểu đồ Doanh thu - Chi phí - Lợi nhuận (Đã sửa ở lần trước)
+    SELECT public.get_profit_report(CURRENT_DATE, CURRENT_DATE) INTO v_profit_json;
+    SELECT json_build_object(
+        'labels', ARRAY['Doanh thu', 'Chi phí', 'Lợi nhuận'],
+        'data', ARRAY[
+            (v_profit_json->>'total_revenue')::numeric,
+            (v_profit_json->>'total_cogs')::numeric + (v_profit_json->>'operating_cost')::numeric,
+            (v_profit_json->>'net_profit')::numeric
+        ]
+    ) INTO v_profit_chart_data;
+
+    -- 3. Lấy dữ liệu doanh thu 7 ngày gần nhất (Không đổi)
+    SELECT json_agg(t)
+    INTO v_daily_revenue_chart_data
+    FROM (
+        SELECT
+            TO_CHAR(day, 'DD/MM') AS label,
+            COALESCE(SUM(oi.quantity * oi.unit_price), 0) AS revenue
+        FROM generate_series(CURRENT_DATE - interval '6 days', CURRENT_DATE, '1 day') AS day
+        LEFT JOIN public.orders o ON DATE(o.created_at) = day AND o.status IN ('paid', 'closed', 'completed')
+        LEFT JOIN public.order_items oi ON oi.order_id = o.id
+        GROUP BY day
+        ORDER BY day
+    ) t;
+
+    -- 4. Lấy Top 5 mặt hàng bán chạy (Không đổi)
+    SELECT COALESCE(json_agg(t), '[]'::json)
+    INTO v_top_items
+    FROM (
+        SELECT mi.name, SUM(oi.quantity) as quantity
+        FROM public.order_items oi
+        JOIN public.menu_items mi ON oi.menu_item_id = mi.id
+        JOIN public.orders o ON oi.order_id = o.id
+        WHERE o.status IN ('paid', 'closed', 'completed') AND DATE(o.created_at) = CURRENT_DATE
+        GROUP BY mi.name
+        ORDER BY quantity DESC
+        LIMIT 5
+    ) t;
+
+    -- 5. Lấy cảnh báo từ kho (Không đổi)
+    SELECT json_build_object(
+        'outOfStockCount', COUNT(*),
+        'items', (SELECT COALESCE(json_agg(sub.name), '[]'::json) FROM (SELECT name FROM public.menu_items WHERE is_available = false LIMIT 3) as sub)
+    )
+    INTO v_inventory_alerts
+    FROM public.menu_items
+    WHERE is_available = false;
+
+    -- 6. Tổng hợp và trả về (Không đổi)
+    RETURN json_build_object(
+        'kpis', v_kpis,
+        'profitChart', v_profit_chart_data,
+        'dailyRevenueChart', v_daily_revenue_chart_data,
+        'topItems', v_top_items,
+        'inventoryAlerts', v_inventory_alerts
+    );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_cashier_dashboard_data"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."get_daily_cash_reconciliation"("p_target_date" "date") RETURNS json
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  v_opening_balance DECIMAL;    -- Tồn đầu ngày (tiền mặt)
+  v_cash_inflow DECIMAL;        -- Thu bằng tiền mặt
+  v_digital_inflow DECIMAL;     -- Thu qua chuyển khoản/momo
+  v_cash_outflow DECIMAL;       -- Chi bằng tiền mặt
+  v_closing_balance DECIMAL;    -- Tồn cuối ngày (tiền mặt)
+BEGIN
+  -- 1. Số dư đầu ngày: Giả định cố định là 2,000,000 tiền mặt
+  v_opening_balance := 2000000;
+
+  -- 2. TỔNG THU TIỀN MẶT trong ngày
+  SELECT COALESCE(SUM(total_price), 0)
+  INTO v_cash_inflow
+  FROM public.orders
+  WHERE 
+    (created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = p_target_date
+    AND status IN ('paid', 'completed', 'closed')
+    AND LOWER(TRIM(COALESCE(payment_method, ''))) = 'cash';
+
+  -- 3. TỔNG THU KỸ THUẬT SỐ (Gộp MoMo, Chuyển khoản...)
+  -- Lấy tất cả các giao dịch đã thanh toán mà KHÔNG PHẢI là tiền mặt.
+  SELECT COALESCE(SUM(total_price), 0)
+  INTO v_digital_inflow
+  FROM public.orders
+  WHERE 
+    (created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = p_target_date
+    AND status IN ('paid', 'completed', 'closed')
+    AND LOWER(TRIM(COALESCE(payment_method, ''))) <> 'cash';
+
+  -- 4. TỔNG CHI TIỀN MẶT trong ngày
+  SELECT COALESCE(SUM(amount), 0)
+  INTO v_cash_outflow
+  FROM public.expenses
+  WHERE expense_date = p_target_date
+    AND LOWER(TRIM(COALESCE(payment_method, ''))) = 'cash';
+
+  -- 5. Tồn quỹ tiền mặt cuối ngày = Đầu ngày + Thu tiền mặt - Chi tiền mặt
+  v_closing_balance := v_opening_balance + v_cash_inflow - v_cash_outflow;
+
+  -- 6. Trả về kết quả
+  RETURN JSON_BUILD_OBJECT(
+    'openingBalance', v_opening_balance,
+    'cashInflow', v_cash_inflow,
+    'digitalInflow', v_digital_inflow,
+    'totalOutflow', v_cash_outflow,
+    'closingBalance', v_closing_balance
+  );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_daily_cash_reconciliation"("p_target_date" "date") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."get_daily_summary_report"("p_target_date" "date") RETURNS json
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+    -- ... các biến khai báo không đổi ...
+    v_total_revenue DECIMAL;
+    v_total_cogs DECIMAL;
+    v_net_profit DECIMAL;
+    v_opening_balance DECIMAL;
+    v_cash_inflow DECIMAL;
+    v_digital_inflow DECIMAL;
+    v_cash_outflow DECIMAL;
+    v_closing_balance DECIMAL;
+BEGIN
+    -- === PHẦN 1: TÍNH TOÁN LỢI NHUẬN (Không đổi) ===
+    SELECT COALESCE(SUM(total_price), 0)
+    INTO v_total_revenue
+    FROM public.orders
+    WHERE (created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = p_target_date
+      AND status IN ('paid', 'completed', 'closed');
+
+    SELECT COALESCE(SUM(oi.quantity * mi.cost), 0)
+    INTO v_total_cogs
+    FROM public.order_items oi
+    JOIN public.menu_items mi ON oi.menu_item_id = mi.id
+    JOIN public.orders o ON oi.order_id = o.id
+    WHERE (o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = p_target_date
+      AND o.status IN ('paid', 'completed', 'closed');
+
+    v_net_profit := v_total_revenue - v_total_cogs;
+
+
+    -- === PHẦN 2: TÍNH TOÁN DÒNG TIỀN MẶT ===
+    v_opening_balance := 2000000;
+
+    -- 2b. Thu bằng tiền mặt (Giữ nguyên, giờ sẽ hoạt động đúng)
+    SELECT COALESCE(SUM(total_price), 0)
+    INTO v_cash_inflow
+    FROM public.orders
+    WHERE (created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = p_target_date
+      AND status IN ('paid', 'completed', 'closed')
+      AND LOWER(TRIM(COALESCE(payment_method, ''))) = 'cash';
+      
+    -- ✅ SỬA LỖI TẠI ĐÂY: Tính toán digital_inflow một cách độc lập
+    -- Thay vì trừ đi, chúng ta sẽ truy vấn trực tiếp các phương thức thanh toán không phải tiền mặt.
+    SELECT COALESCE(SUM(total_price), 0)
+    INTO v_digital_inflow
+    FROM public.orders
+    WHERE (created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = p_target_date
+      AND status IN ('paid', 'completed', 'closed')
+      AND LOWER(TRIM(COALESCE(payment_method, ''))) IN ('momo', 'transfer'); -- Hoặc <> 'cash'
+
+    -- 2d. Chi bằng tiền mặt (Giữ nguyên)
+    SELECT COALESCE(SUM(amount), 0)
+    INTO v_cash_outflow
+    FROM public.expenses
+    WHERE expense_date = p_target_date
+      AND LOWER(TRIM(COALESCE(payment_method, ''))) = 'cash';
+
+    -- 2e. Số dư tiền mặt cuối ngày (Giữ nguyên)
+    v_closing_balance := v_opening_balance + v_cash_inflow - v_cash_outflow;
+
+
+    -- === PHẦN 3: TRẢ VỀ KẾT QUẢ TỔNG HỢP (Không đổi) ===
+    RETURN JSON_BUILD_OBJECT(
+        'totalRevenue', v_total_revenue,
+        'totalCogs', v_total_cogs,
+        'operatingExpenses', 0, 
+        'netProfit', v_net_profit,
+        'openingBalance', v_opening_balance,
+        'cashInflow', v_cash_inflow,
+        'digitalInflow', v_digital_inflow,
+        'cashOutflow', v_cash_outflow,
+        'closingBalance', v_closing_balance
+    );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_daily_summary_report"("p_target_date" "date") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."get_dashboard_data"() RETURNS json
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+    v_stats JSON;
+    v_top_items JSON;
+    v_activities JSON;
+BEGIN
+
+    -- Lấy các chỉ số thống kê
+    SELECT JSON_BUILD_OBJECT(
+        'todayRevenue', COALESCE(SUM(CASE
+            WHEN o.status IN ('paid', 'closed') THEN COALESCE((
+                SELECT SUM(quantity * unit_price)
+                FROM order_items
+                WHERE order_id = o.id
+            ), 0)
+            ELSE 0
+        END), 0),
+        'todayOrders', COUNT(DISTINCT o.id),
+        'todayCustomers', COUNT(DISTINCT ot.table_id),
+        'paidOrdersCount', COUNT(DISTINCT CASE WHEN o.status IN ('paid', 'closed') THEN o.id END)
+    ) INTO v_stats
+    FROM orders o
+    LEFT JOIN order_tables ot ON o.id = ot.order_id
+    WHERE DATE(o.created_at) = CURRENT_DATE;
+
+    -- Lấy các món bán chạy nhất
+    SELECT JSON_AGG(ROW_TO_JSON(t)) INTO v_top_items
+    FROM (
+        SELECT
+            m.id,
+            m.name,
+            SUM(oi.quantity)::INTEGER as quantity,
+            SUM(oi.quantity * oi.unit_price)::NUMERIC as revenue
+        FROM order_items oi
+        JOIN menu_items m ON oi.menu_item_id = m.id
+        JOIN orders o ON oi.order_id = o.id
+        WHERE DATE(o.created_at) = CURRENT_DATE AND o.status IN ('paid', 'closed')
+        GROUP BY m.id, m.name
+        ORDER BY quantity DESC
+        LIMIT 10
+    ) t;
+
+    -- Lấy các hoạt động gần đây kèm TÊN BÀN
+    SELECT JSON_AGG(ROW_TO_JSON(t)) INTO v_activities
+    FROM (
+        SELECT
+            o.id,
+            -- Lấy tên bàn từ bảng tables, nếu không có thì là 'Mang về'
+            COALESCE(string_agg(t.name, ', '), 'Mang về') as name,
+            o.status,
+            o.created_at,
+            COALESCE((
+                SELECT SUM(quantity * unit_price)
+                FROM order_items
+                WHERE order_id = o.id
+            ), 0) as amount
+        FROM orders o
+        LEFT JOIN order_tables ot ON o.id = ot.order_id
+        LEFT JOIN tables t ON ot.table_id = t.id
+        WHERE DATE(o.created_at) = CURRENT_DATE
+        GROUP BY o.id, o.status, o.created_at -- Group by order để tổng hợp tên bàn
+        ORDER BY o.created_at DESC
+        LIMIT 15
+    ) t;
+
+    -- Trả về tất cả dữ liệu
+    RETURN JSON_BUILD_OBJECT(
+        'stats', v_stats,
+        'topItems', COALESCE(v_top_items, '[]'::JSON),
+        'activities', COALESCE(v_activities, '[]'::JSON)
+    );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_dashboard_data"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."get_dashboard_overview"() RETURNS json
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+    v_kpis json;
+    v_order_stats json;
+    v_finance_chart json;
+    v_daily_revenue_chart json;
+    v_top_items_by_revenue json;
+    v_top_items_by_quantity json;
+    
+    -- [MỚI] Khai báo các biến chi phí chi tiết
+    v_today_revenue NUMERIC;
+    v_today_cogs NUMERIC; -- Giá vốn hàng bán
+    v_today_operating_expenses NUMERIC; -- Chi phí vận hành (từ bảng expenses)
+    v_total_expenses NUMERIC; -- Tổng chi phí
+    v_today_profit NUMERIC;
+BEGIN
+    -- Lấy tất cả order trong ngày để tính toán
+    WITH today_paid_orders AS (
+        SELECT id
+        FROM orders
+        WHERE DATE(created_at AT TIME ZONE 'Asia/Ho_Chi_Minh') = CURRENT_DATE
+          AND status IN ('paid', 'closed')
+    )
+    -- [CẢI TIẾN] Tính toán Doanh thu và Giá vốn (COGS) trong cùng một truy vấn
+    SELECT
+        COALESCE(SUM(oi.quantity * oi.unit_price), 0),
+        COALESCE(SUM(oi.quantity * mi.cost), 0) -- Tính tổng giá vốn dựa trên món đã bán
+    INTO 
+        v_today_revenue,
+        v_today_cogs
+    FROM order_items oi
+    JOIN menu_items mi ON oi.menu_item_id = mi.id
+    WHERE oi.order_id IN (SELECT id FROM today_paid_orders);
+
+    -- 1. KPI và Thống kê đơn hàng (Sử dụng logic tương tự như cũ)
+    -- ... (Phần này có thể giữ nguyên hoặc tối ưu lại nếu cần, logic không thay đổi nhiều)
+    WITH today_orders AS (
+        SELECT o.id, o.status, COALESCE((SELECT SUM(oi.quantity * oi.unit_price) FROM order_items oi WHERE oi.order_id = o.id), 0) as total_amount
+        FROM orders o WHERE DATE(o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh') = CURRENT_DATE
+    )
+    SELECT
+        json_build_object('total_revenue', v_today_revenue, 'total_orders', COUNT(id)),
+        json_build_object(
+            'paid', json_build_object('count', COUNT(id) FILTER (WHERE status IN ('paid', 'closed')), 'amount', COALESCE(SUM(total_amount) FILTER (WHERE status IN ('paid', 'closed')), 0)),
+            'serving', json_build_object('count', COUNT(id) FILTER (WHERE status = 'pending'), 'amount', COALESCE(SUM(total_amount) FILTER (WHERE status = 'pending'), 0)),
+            'cancelled', json_build_object('count', COUNT(id) FILTER (WHERE status = 'cancelled'), 'amount', COALESCE(SUM(total_amount) FILTER (WHERE status = 'cancelled'), 0))
+        )
+    INTO v_kpis, v_order_stats FROM today_orders;
+
+
+    -- 2. [CẢI TIẾN] Dữ liệu Biểu đồ tài chính
+    -- Lấy chi phí vận hành lặt vặt từ bảng expenses
+    SELECT COALESCE(SUM(amount), 0)
+    INTO v_today_operating_expenses
+    FROM expenses
+    WHERE expense_date = CURRENT_DATE;
+    
+    -- Tổng chi phí = Giá vốn hàng bán + Chi phí vận hành
+    v_total_expenses := v_today_cogs + v_today_operating_expenses;
+    
+    -- Lợi nhuận = Doanh thu - Tổng chi phí
+    v_today_profit := v_today_revenue - v_total_expenses;
+    
+    v_finance_chart := json_build_object(
+        'labels', json_build_array('Doanh thu', 'Chi phí', 'Lợi nhuận'),
+        'data', json_build_array(v_today_revenue, v_total_expenses, GREATEST(v_today_profit, 0))
+    );
+
+    -- Các phần còn lại của hàm (biểu đồ doanh thu 7 ngày, top sản phẩm) giữ nguyên...
+    -- 3. Biểu đồ doanh thu 7 ngày qua
+    SELECT json_agg(t) INTO v_daily_revenue_chart FROM ( SELECT TO_CHAR(d.day, 'DD/MM') as label, COALESCE(SUM(oi.quantity * oi.unit_price), 0) as revenue FROM generate_series(CURRENT_DATE - INTERVAL '6 days', CURRENT_DATE, '1 day') as d(day) LEFT JOIN orders o ON DATE(o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh') = d.day AND o.status IN ('paid', 'closed') LEFT JOIN order_items oi ON oi.order_id = o.id GROUP BY d.day ORDER BY d.day ) t;
+    -- 4. & 5. Top mặt hàng 7 ngày
+    WITH weekly_items AS ( SELECT mi.name, SUM(oi.quantity) as total_quantity, SUM(oi.quantity * oi.unit_price) as total_revenue FROM order_items oi JOIN orders o ON oi.order_id = o.id JOIN menu_items mi ON oi.menu_item_id = mi.id WHERE DATE(o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh') >= CURRENT_DATE - INTERVAL '6 days' AND o.status IN ('paid', 'closed') GROUP BY mi.name ) SELECT (SELECT json_agg(t) FROM (SELECT name, total_revenue as value FROM weekly_items ORDER BY total_revenue DESC LIMIT 7) t), (SELECT json_agg(t) FROM (SELECT name, total_quantity as value FROM weekly_items ORDER BY total_quantity DESC LIMIT 7) t) INTO v_top_items_by_revenue, v_top_items_by_quantity;
+
+
+    -- Trả về tất cả dữ liệu
+    RETURN json_build_object(
+        'kpis', v_kpis,
+        'order_stats', v_order_stats,
+        'finance_chart', v_finance_chart,
+        'daily_revenue_chart', COALESCE(v_daily_revenue_chart, '[]'::json),
+        'top_items_by_revenue', COALESCE(v_top_items_by_revenue, '[]'::json),
+        'top_items_by_quantity', COALESCE(v_top_items_by_quantity, '[]'::json)
+    );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_dashboard_overview"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."get_employee_count"() RETURNS integer
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+BEGIN
+  RETURN (
+    SELECT COUNT(*)
+    FROM public.profiles
+    WHERE role <> 'admin'
+  );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_employee_count"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."get_financial_summary_report"("p_start_date" "date", "p_end_date" "date") RETURNS json
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  v_opening_balance DECIMAL;
+  v_inflow_period DECIMAL; -- Tổng thu trong kỳ
+  v_outflow_period DECIMAL; -- Tổng chi trong kỳ
+  v_closing_balance DECIMAL;
+  v_revenue_before_start DECIMAL;
+  v_cogs_before_start DECIMAL;
+  v_expenses_before_start DECIMAL;
+  v_cogs_in_period DECIMAL;
+  v_expenses_in_period DECIMAL;
+BEGIN
+  -- TÍNH SỐ DƯ ĐẦU KỲ
+  SELECT COALESCE(SUM(oi.quantity * oi.unit_price), 0) INTO v_revenue_before_start
+  FROM public.order_items oi JOIN public.orders o ON oi.order_id = o.id
+  WHERE (o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date < p_start_date AND o.status IN ('paid', 'completed', 'closed');
+  
+  SELECT COALESCE(SUM(oi.quantity * mi.cost), 0) INTO v_cogs_before_start
+  FROM public.order_items oi JOIN public.menu_items mi ON oi.menu_item_id = mi.id JOIN public.orders o ON oi.order_id = o.id
+  WHERE (o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date < p_start_date AND o.status IN ('paid', 'completed', 'closed');
+  
+  SELECT COALESCE(SUM(amount), 0) INTO v_expenses_before_start FROM public.expenses WHERE expense_date < p_start_date;
+  
+  v_opening_balance := v_revenue_before_start - (v_cogs_before_start + v_expenses_before_start);
+
+  -- TÍNH GIAO DỊCH TRONG KỲ
+  SELECT COALESCE(SUM(oi.quantity * oi.unit_price), 0) INTO v_inflow_period
+  FROM public.order_items oi JOIN public.orders o ON oi.order_id = o.id
+  WHERE (o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN p_start_date AND p_end_date AND o.status IN ('paid', 'completed', 'closed');
+
+  SELECT COALESCE(SUM(oi.quantity * mi.cost), 0) INTO v_cogs_in_period
+  FROM public.order_items oi JOIN public.menu_items mi ON oi.menu_item_id = mi.id JOIN public.orders o ON oi.order_id = o.id
+  WHERE (o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN p_start_date AND p_end_date AND o.status IN ('paid', 'completed', 'closed');
+  
+  SELECT COALESCE(SUM(amount), 0) INTO v_expenses_in_period FROM public.expenses WHERE expense_date BETWEEN p_start_date AND p_end_date;
+  
+  v_outflow_period := v_cogs_in_period + v_expenses_in_period;
+
+  -- TÍNH SỐ DƯ CUỐI KỲ
+  v_closing_balance := v_opening_balance + v_inflow_period - v_outflow_period;
+
+  RETURN JSON_BUILD_OBJECT(
+    'openingBalance', v_opening_balance,
+    'inflow', v_inflow_period,
+    'outflow', v_outflow_period,
+    'closingBalance', v_closing_balance
+  );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_financial_summary_report"("p_start_date" "date", "p_end_date" "date") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."get_full_dashboard_data"() RETURNS json
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+    v_sales_report JSON;
+    v_profit_report JSON;
+    v_inventory_report JSON;
+    v_activities JSON;
+BEGIN
+    -- Lấy dữ liệu từ các hàm báo cáo đã có
+    SELECT public.get_sales_report(CURRENT_DATE, CURRENT_DATE) INTO v_sales_report;
+    SELECT public.get_profit_report(CURRENT_DATE, CURRENT_DATE) INTO v_profit_report;
+    SELECT public.get_inventory_report() INTO v_inventory_report;
+
+    -- Lấy hoạt động gần đây (tái sử dụng logic từ hàm cũ)
+    SELECT JSON_AGG(ROW_TO_JSON(t)) INTO v_activities
+    FROM (
+        SELECT
+            o.id,
+            COALESCE(string_agg(t.name, ', '), 'Mang về') as name,
+            o.status,
+            o.created_at,
+            COALESCE((
+                SELECT SUM(quantity * unit_price)
+                FROM order_items
+                WHERE order_id = o.id
+            ), 0) as amount
+        FROM orders o
+        LEFT JOIN order_tables ot ON o.id = ot.order_id
+        LEFT JOIN tables t ON ot.table_id = t.id
+        WHERE DATE(o.created_at) = CURRENT_DATE
+        GROUP BY o.id, o.status, o.created_at
+        ORDER BY o.created_at DESC
+        LIMIT 5 -- Chỉ lấy 5 hoạt động gần nhất cho dashboard
+    ) t;
+
+    -- Xây dựng đối tượng JSON cuối cùng để trả về
+    RETURN JSON_BUILD_OBJECT(
+        'sales', v_sales_report,
+        'profit', v_profit_report,
+        'inventory', v_inventory_report,
+        'activities', COALESCE(v_activities, '[]'::JSON)
+    );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_full_dashboard_data"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."get_inventory_report"() RETURNS json
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  v_total_items INT;
+  v_out_of_stock INT;
+  v_low_stock INT;
+  v_low_stock_details JSON;
+BEGIN
+  -- Tính tổng số sản phẩm có sẵn
+  SELECT COUNT(*)
+  INTO v_total_items
+  FROM menu_items
+  WHERE is_available = true;
+
+  -- Tính số sản phẩm hết hàng
+  SELECT COUNT(*)
+  INTO v_out_of_stock
+  FROM menu_items
+  WHERE is_available = false;
+
+  -- Tính số sản phẩm sắp hết (giả sử có cột quantity)
+  -- Nếu không có cột quantity, đặt v_low_stock = 0
+  v_low_stock := 0;
+
+  -- Chi tiết sản phẩm sắp hết
+  SELECT JSON_AGG(row_to_json(t))
+  INTO v_low_stock_details
+  FROM (
+    SELECT
+      id::TEXT as item_id,
+      name as item_name,
+      0 as current_stock,
+      5 as min_stock
+    FROM menu_items
+    WHERE is_available = false
+    LIMIT 5
+  ) t;
+
+  RETURN JSON_BUILD_OBJECT(
+    'total_items', v_total_items,
+    'out_of_stock', v_out_of_stock,
+    'low_stock', v_low_stock,
+    'low_stock_details', COALESCE(v_low_stock_details, '[]'::JSON)
+  );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_inventory_report"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."get_live_dashboard_snapshot"() RETURNS json
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+    v_kpis JSON;
+    v_out_of_stock_items JSON;
+    v_recent_activities JSON;
+BEGIN
+    -- 1. Lấy các chỉ số KPI chính trong ngày
+    SELECT json_build_object(
+        'todayRevenue', COALESCE(SUM(oi.quantity * oi.unit_price), 0),
+        'servingTables', (SELECT COUNT(*) FROM public.tables WHERE status = 'Đang phục vụ'),
+        'pendingItems', (SELECT COUNT(*) FROM public.order_items WHERE status = 'waiting')
+    )
+    INTO v_kpis
+    FROM public.order_items oi
+    JOIN public.orders o ON oi.order_id = o.id
+    WHERE o.status IN ('paid', 'closed') AND DATE(o.created_at) = CURRENT_DATE;
+
+    -- 2. Lấy danh sách các món vừa hết hàng (cảnh báo quan trọng)
+    SELECT COALESCE(json_agg(json_build_object('id', id, 'name', name)), '[]'::json)
+    INTO v_out_of_stock_items
+    FROM public.menu_items
+    WHERE is_available = false
+    LIMIT 5; -- Lấy 5 món để tránh làm rối UI
+
+    -- 3. Lấy 3 hoạt động gần nhất (thanh toán mới)
+    SELECT COALESCE(json_agg(t), '[]'::json)
+    INTO v_recent_activities
+    FROM (
+        SELECT
+            o.id,
+            o.total_price AS amount,
+            o.created_at,
+            COALESCE(string_agg(tbl.name, ', '), 'Mang về') AS table_name
+        FROM public.orders o
+        LEFT JOIN public.order_tables ot ON o.id = ot.order_id
+        LEFT JOIN public.tables tbl ON ot.table_id = tbl.id
+        WHERE o.status IN ('paid', 'closed') AND DATE(o.created_at) = CURRENT_DATE
+        GROUP BY o.id, o.total_price, o.created_at
+        ORDER BY o.created_at DESC
+        LIMIT 3
+    ) t;
+
+    -- 4. Tổng hợp và trả về kết quả
+    RETURN json_build_object(
+        'kpis', v_kpis,
+        'outOfStockItems', v_out_of_stock_items,
+        'activities', v_recent_activities
+    );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_live_dashboard_snapshot"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."get_my_role"() RETURNS "text"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+BEGIN
+  RETURN (
+    SELECT role
+    FROM public.profiles
+    WHERE id = auth.uid()
+    LIMIT 1
+  );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_my_role"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."get_profit_by_product"("p_start_date" "date", "p_end_date" "date") RETURNS json
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+    RETURN (
+        SELECT json_agg(t ORDER BY gross_profit DESC)
+        FROM (
+            SELECT
+                mi.name,
+                SUM(oi.quantity) AS total_quantity,
+                SUM(oi.quantity * oi.unit_price) AS total_revenue,
+                SUM(oi.quantity * mi.cost) AS total_cogs,
+                (SUM(oi.quantity * oi.unit_price) - SUM(oi.quantity * mi.cost)) AS gross_profit
+            FROM public.order_items oi
+            JOIN public.orders o ON oi.order_id = o.id
+            JOIN public.menu_items mi ON oi.menu_item_id = mi.id
+            WHERE 
+                (o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN p_start_date AND p_end_date
+                AND o.status IN ('paid', 'completed', 'closed')
+                AND mi.cost IS NOT NULL AND mi.cost > 0
+            GROUP BY mi.name
+        ) t
+    );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_profit_by_product"("p_start_date" "date", "p_end_date" "date") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."get_profit_report"("p_start_date" "date", "p_end_date" "date") RETURNS json
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  v_total_revenue DECIMAL;
+  v_total_cogs DECIMAL;
+  v_operating_expenses DECIMAL;
+  v_net_profit DECIMAL;
+  v_profit_margin DECIMAL;
+BEGIN
+  -- 1. Tính tổng doanh thu
+  SELECT COALESCE(SUM(oi.quantity * oi.unit_price), 0)
+  INTO v_total_revenue
+  FROM public.order_items oi
+  JOIN public.orders o ON oi.order_id = o.id
+  WHERE (o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN p_start_date AND p_end_date
+    AND o.status IN ('paid', 'completed', 'closed');
+
+  -- 2. Tính tổng giá vốn hàng bán (COGS)
+  SELECT COALESCE(SUM(oi.quantity * mi.cost), 0)
+  INTO v_total_cogs
+  FROM public.order_items oi
+  JOIN public.menu_items mi ON oi.menu_item_id = mi.id
+  JOIN public.orders o ON oi.order_id = o.id
+  WHERE (o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN p_start_date AND p_end_date
+    AND o.status IN ('paid', 'completed', 'closed');
+
+  -- 3. Tính tổng chi phí vận hành
+  SELECT COALESCE(SUM(amount), 0)
+  INTO v_operating_expenses
+  FROM public.expenses
+  WHERE expense_date BETWEEN p_start_date AND p_end_date;
+
+  -- 4. Tính lợi nhuận ròng
+  v_net_profit := v_total_revenue - (v_total_cogs + v_operating_expenses);
+
+  -- 5. Tính tỷ suất lợi nhuận
+  v_profit_margin := CASE 
+    WHEN v_total_revenue > 0 THEN (v_net_profit / v_total_revenue) * 100
+    ELSE 0
+  END;
+
+  RETURN JSON_BUILD_OBJECT(
+    'totalRevenue', v_total_revenue,
+    'totalCogs', v_total_cogs,
+    'operatingExpenses', v_operating_expenses,
+    'netProfit', v_net_profit,
+    'profitMargin', v_profit_margin
+  );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_profit_report"("p_start_date" "date", "p_end_date" "date") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."get_profit_trend"("p_start_date" "date", "p_end_date" "date") RETURNS json
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+    RETURN (
+        SELECT json_agg(t ORDER BY report_date)
+        FROM (
+            SELECT
+                d.report_date::date,
+                COALESCE(daily_revenue, 0) - (COALESCE(daily_cogs, 0) + COALESCE(daily_expenses, 0)) AS net_profit
+            FROM 
+                generate_series(p_start_date, p_end_date, '1 day'::interval) AS d(report_date)
+            LEFT JOIN (
+                SELECT
+                    (o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date AS day,
+                    SUM(oi.quantity * oi.unit_price) AS daily_revenue,
+                    SUM(oi.quantity * mi.cost) AS daily_cogs
+                FROM public.order_items oi
+                JOIN public.orders o ON oi.order_id = o.id
+                JOIN public.menu_items mi ON oi.menu_item_id = mi.id
+                WHERE o.status IN ('paid', 'completed', 'closed')
+                GROUP BY day
+            ) AS sales ON d.report_date = sales.day
+            LEFT JOIN (
+                SELECT
+                    expense_date AS day,
+                    SUM(amount) AS daily_expenses
+                FROM public.expenses
+                GROUP BY expense_date
+            ) AS expenses ON d.report_date = expenses.day
+        ) t
+    );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_profit_trend"("p_start_date" "date", "p_end_date" "date") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."get_purchase_report"("p_start_date" "date" DEFAULT CURRENT_DATE, "p_end_date" "date" DEFAULT CURRENT_DATE) RETURNS json
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  v_total_cost DECIMAL;
+  v_suppliers JSON;
+BEGIN
+  -- Tính tổng chi mua hàng (tính 30% từ giá vốn)
+  SELECT COALESCE(SUM(quantity * unit_price) * 0.3, 0)
+  INTO v_total_cost
+  FROM order_items oi
+  JOIN orders o ON oi.order_id = o.id
+  WHERE DATE(o.created_at) BETWEEN p_start_date AND p_end_date
+    AND o.status IN ('paid', 'completed', 'closed');
+
+  -- Danh sách nhà cung cấp (giả lập - có thể cần thêm bảng suppliers)
+  SELECT JSON_AGG(row_to_json(t))
+  INTO v_suppliers
+  FROM (
+    SELECT
+      ROW_NUMBER() OVER () as id,
+      'Nhà cung cấp ' || ROW_NUMBER() OVER () as name,
+      (v_total_cost / 2)::INT as cost
+    LIMIT 2
+  ) t;
+
+  RETURN JSON_BUILD_OBJECT(
+    'total_cost', v_total_cost,
+    'cost_count', 2,
+    'suppliers', COALESCE(v_suppliers, '[]'::JSON)
+  );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_purchase_report"("p_start_date" "date", "p_end_date" "date") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."get_receivables_report"("p_start_date" "date" DEFAULT CURRENT_DATE, "p_end_date" "date" DEFAULT CURRENT_DATE) RETURNS json
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  v_customer_debt DECIMAL;
+  v_supplier_debt DECIMAL;
+  v_total_debt DECIMAL;
+BEGIN
+  -- Công nợ khách hàng (đơn chưa thanh toán)
+  SELECT COALESCE(SUM(COALESCE((
+    SELECT SUM(quantity * unit_price) FROM order_items WHERE order_id = o.id
+  ), 0)), 0)
+  INTO v_customer_debt
+  FROM orders o
+  WHERE DATE(o.created_at) BETWEEN p_start_date AND p_end_date
+    AND o.status NOT IN ('paid', 'completed', 'closed');
+
+  -- Công nợ nhà cung cấp (giả sử 10% từ chi mua)
+  SELECT COALESCE(SUM(quantity * unit_price) * 0.1, 0)
+  INTO v_supplier_debt
+  FROM order_items oi
+  JOIN orders o ON oi.order_id = o.id
+  WHERE DATE(o.created_at) BETWEEN p_start_date AND p_end_date
+    AND o.status IN ('paid', 'completed', 'closed');
+
+  v_total_debt := v_customer_debt + v_supplier_debt;
+
+  RETURN JSON_BUILD_OBJECT(
+    'customer_debt', v_customer_debt,
+    'supplier_debt', v_supplier_debt,
+    'total_debt', v_total_debt
+  );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_receivables_report"("p_start_date" "date", "p_end_date" "date") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."get_reorder_suggestions"() RETURNS TABLE("id" "uuid", "name" "text", "unit" "text", "stock_quantity" numeric, "low_stock_threshold" numeric, "suggested_quantity" numeric, "status" "text")
+    LANGUAGE "sql"
+    AS $$
+SELECT
+    ing.id,
+    ing.name,
+    ing.unit,
+    ing.stock_quantity,
+    ing.low_stock_threshold,
+    -- Logic gợi ý: Nếu hết thì nhập gấp rưỡi, nếu sắp hết thì nhập đầy
+    CASE
+        WHEN ing.stock_quantity <= 0 THEN ing.initial_stock * 1.5
+        ELSE ing.initial_stock - ing.stock_quantity
+    END::numeric(10,2) AS suggested_quantity,
+    CASE
+        WHEN ing.stock_quantity <= 0 THEN 'Hết hàng'
+        ELSE 'Sắp hết'
+    END AS status
+FROM public.ingredients ing
+WHERE ing.stock_quantity <= ing.low_stock_threshold
+ORDER BY ing.stock_quantity ASC;
+$$;
+
+
+ALTER FUNCTION "public"."get_reorder_suggestions"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."get_sales_report"("p_start_date" "date" DEFAULT CURRENT_DATE, "p_end_date" "date" DEFAULT CURRENT_DATE) RETURNS json
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  v_total_revenue DECIMAL;
+  v_total_orders INT;
+  v_top_products JSON;
+  v_table_revenue JSON;
+  v_hourly_revenue JSON;
+BEGIN
+  -- Tính tổng doanh thu
+  SELECT COALESCE(SUM(quantity * unit_price), 0)
+  INTO v_total_revenue
+  FROM order_items oi
+  JOIN orders o ON oi.order_id = o.id
+  WHERE DATE(o.created_at) BETWEEN p_start_date AND p_end_date
+    AND o.status IN ('paid', 'completed', 'closed');
+
+  -- Tính tổng số đơn hàng
+  SELECT COUNT(DISTINCT id)
+  INTO v_total_orders
+  FROM orders
+  WHERE DATE(created_at) BETWEEN p_start_date AND p_end_date
+    AND status IN ('paid', 'completed', 'closed');
+
+  -- Top 5 sản phẩm bán chạy
+  SELECT JSON_AGG(row_to_json(t))
+  INTO v_top_products
+  FROM (
+    SELECT
+      mi.id,
+      mi.name,
+      SUM(oi.quantity) as quantity,
+      SUM(oi.quantity * oi.unit_price) as revenue,
+      ROUND((SUM(oi.quantity)::NUMERIC / (
+        SELECT SUM(quantity) FROM order_items oi2
+        JOIN orders o2 ON oi2.order_id = o2.id
+        WHERE DATE(o2.created_at) BETWEEN p_start_date AND p_end_date
+          AND o2.status IN ('paid', 'completed', 'closed')
+      ))::NUMERIC * 100, 2) as percentage
+    FROM order_items oi
+    JOIN menu_items mi ON oi.menu_item_id = mi.id
+    JOIN orders o ON oi.order_id = o.id
+    WHERE DATE(o.created_at) BETWEEN p_start_date AND p_end_date
+      AND o.status IN ('paid', 'completed', 'closed')
+    GROUP BY mi.id, mi.name
+    ORDER BY quantity DESC
+    LIMIT 5
+  ) t;
+
+  -- Doanh thu theo bàn
+  SELECT JSON_AGG(row_to_json(t))
+  INTO v_table_revenue
+  FROM (
+    SELECT
+      t.id::TEXT as table_id,
+      t.name as table_name,
+      COALESCE(SUM(oi.quantity * oi.unit_price), 0) as revenue
+    FROM tables t
+    LEFT JOIN order_tables ot ON t.id = ot.table_id
+    LEFT JOIN orders o ON ot.order_id = o.id
+      AND DATE(o.created_at) BETWEEN p_start_date AND p_end_date
+      AND o.status IN ('paid', 'completed', 'closed')
+    LEFT JOIN order_items oi ON o.id = oi.order_id
+    GROUP BY t.id, t.name
+    ORDER BY revenue DESC
+    LIMIT 10
+  ) t;
+
+  -- Doanh thu theo giờ
+  SELECT JSON_AGG(row_to_json(t))
+  INTO v_hourly_revenue
+  FROM (
+    SELECT
+      TO_CHAR(o.created_at, 'HH:00') as hour,
+      COALESCE(SUM(oi.quantity * oi.unit_price), 0)::INT as revenue
+    FROM orders o
+    LEFT JOIN order_items oi ON o.id = oi.order_id
+    WHERE DATE(o.created_at) BETWEEN p_start_date AND p_end_date
+      AND o.status IN ('paid', 'completed', 'closed')
+    GROUP BY TO_CHAR(o.created_at, 'HH:00')
+    ORDER BY hour
+  ) t;
+
+  RETURN JSON_BUILD_OBJECT(
+    'total_revenue', v_total_revenue,
+    'total_orders', v_total_orders,
+    'top_products', COALESCE(v_top_products, '[]'::JSON),
+    'table_revenue', COALESCE(v_table_revenue, '[]'::JSON),
+    'hourly_revenue', COALESCE(v_hourly_revenue, '[]'::JSON)
+  );
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_sales_report"("p_start_date" "date", "p_end_date" "date") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."get_tables_with_notifications"() RETURNS TABLE("id" bigint, "name" "text", "status" "text", "seats" integer, "has_out_of_stock_alert" boolean)
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        t.id,
+        t.name,
+        t.status,
+        t.seats,
+        -- Kiểm tra xem có tồn tại bất kỳ thông báo "hết món" (out_of_stock) nào
+        -- đang ở trạng thái "pending" cho các order đang "pending" của bàn này không.
+        EXISTS (
+            SELECT 1
+            FROM public.order_tables ot
+            JOIN public.orders o ON ot.order_id = o.id
+            JOIN public.return_notifications rn ON o.id = rn.order_id
+            WHERE ot.table_id = t.id
+              AND o.status = 'pending' -- Chỉ quan tâm order đang phục vụ
+              AND rn.notification_type = 'out_of_stock'
+              AND rn.status = 'pending'
+        ) AS has_out_of_stock_alert
+    FROM
+        public.tables t
+    ORDER BY
+        t.id;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_tables_with_notifications"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."get_total_returned_quantity_for_order"("p_order_id" "uuid") RETURNS integer
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+  total_quantity INT;
+BEGIN
+  SELECT COALESCE(SUM(rsi.quantity), 0)
+  INTO total_quantity
+  FROM return_slip_items rsi
+  JOIN return_slips rs ON rsi.return_slip_id = rs.id
+  WHERE rs.order_id = p_order_id;
+  
+  RETURN total_quantity;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_total_returned_quantity_for_order"("p_order_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."get_transactions_report"("p_start_date" timestamp with time zone, "p_end_date" timestamp with time zone) RETURNS TABLE("id" "uuid", "amount" numeric, "payment_method" "text", "transaction_time" "text", "table_name" "text", "items" bigint)
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        o.id,
+        o.total_price AS amount,
+        CASE
+            WHEN LOWER(TRIM(o.payment_method)) = 'momo' THEN 'momo'
+            WHEN LOWER(TRIM(o.payment_method)) IN ('transfer', 'chuyển khoản') THEN 'transfer'
+            ELSE 'cash'
+        END AS payment_method,
+        to_char(o.created_at AT TIME ZONE 'Asia/Ho_Chi_Minh', 'HH24:MI') AS transaction_time,
+        COALESCE(
+            (
+                SELECT string_agg(t.name, ', ')
+                FROM public.order_tables ot
+                JOIN public.tables t ON ot.table_id = t.id
+                WHERE ot.order_id = o.id
+            ),
+            'Đơn thanh toán'
+        ) AS table_name,
+        (
+            SELECT COALESCE(SUM(oi.quantity), 0) FROM public.order_items oi WHERE oi.order_id = o.id
+        ) AS items
+    FROM
+        public.orders o
+    WHERE
+        o.status IN ('completed', 'paid', 'closed')
+        AND o.created_at >= p_start_date
+        AND o.created_at <= p_end_date
+        AND o.total_price > 0 
+    ORDER BY
+        o.created_at DESC;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_transactions_report"("p_start_date" timestamp with time zone, "p_end_date" timestamp with time zone) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."get_transactions_with_details"("p_start_date" timestamp with time zone, "p_end_date" timestamp with time zone) RETURNS TABLE("id" "uuid", "created_at" timestamp with time zone, "amount" numeric, "status" "text", "payment_method" "text", "table_name" "text", "total_items" bigint)
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        o.id,
+        o.created_at,
+        o.total_price AS amount,
+        o.status,
+        o.payment_method,
+        NULL::text AS table_name,
+        COALESCE(oi_sum.total_items, 0) AS total_items
+    FROM
+        orders o
+    LEFT JOIN (
+        SELECT
+            -- >>> THAY THẾ 'order_id' BẰNG TÊN CỘT ĐÚNG CỦA BẠN <<<
+            order_id,  -- VÍ DỤ: "order", "parent_order", v.v.
+            SUM(quantity) AS total_items
+        FROM
+            order_items
+        GROUP BY
+            -- >>> THAY THẾ 'order_id' BẰNG TÊN CỘT ĐÚNG CỦA BẠN <<<
+            order_id   -- TÊN CỘT Ở ĐÂY PHẢI GIỐNG Ở TRÊN
+    ) oi_sum ON o.id = oi_sum.order_id -- VÀ THAY CẢ Ở ĐÂY NỮA
+    WHERE
+        o.status IN ('completed', 'paid')
+        AND o.created_at >= p_start_date
+        AND o.created_at <= p_end_date
+    ORDER BY
+        o.created_at DESC;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."get_transactions_with_details"("p_start_date" timestamp with time zone, "p_end_date" timestamp with time zone) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."handle_cancellation_request_update"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+    NEW.updated_at = timezone('utc'::text, now());
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."handle_cancellation_request_update"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."handle_ingredient_stock_change"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+    affected_menu_item_record RECORD;
+BEGIN
+    -- Lặp qua tất cả các món ăn có chứa nguyên liệu vừa thay đổi số lượng
+    FOR affected_menu_item_record IN
+        SELECT menu_item_id
+        FROM public.menu_item_ingredients
+        WHERE ingredient_id = NEW.id
+    LOOP
+        -- Gọi hàm kiểm tra cho từng món
+        PERFORM public.update_menu_item_availability(affected_menu_item_record.menu_item_id);
+    END LOOP;
+
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."handle_ingredient_stock_change"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."handle_item_return"("p_order_id" "uuid", "p_reason" "text", "p_items" "jsonb") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+    v_slip_id bigint;
+    item_record jsonb;
+    v_order_item_id bigint;
+    v_quantity_to_return int;
+    v_current_returned_qty int;
+    v_original_qty int;
+BEGIN
+    INSERT INTO public.return_slips (order_id, reason)
+    VALUES (p_order_id, p_reason)
+    RETURNING id INTO v_slip_id;
+
+    FOR item_record IN SELECT * FROM jsonb_array_elements(p_items)
+    LOOP
+        v_order_item_id := (item_record->>'order_item_id')::bigint;
+        v_quantity_to_return := (item_record->>'quantity')::int;
+
+        SELECT quantity, returned_quantity
+        INTO v_original_qty, v_current_returned_qty
+        FROM public.order_items
+        WHERE id = v_order_item_id AND order_id = p_order_id;
+
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'Món trong order (ID: %) không tồn tại.', v_order_item_id;
+        END IF;
+        IF v_quantity_to_return <= 0 OR (v_current_returned_qty + v_quantity_to_return) > v_original_qty THEN
+             RAISE EXCEPTION 'Số lượng trả (%) không hợp lệ.', v_quantity_to_return;
+        END IF;
+
+        INSERT INTO public.return_slip_items (return_slip_id, order_item_id, quantity)
+        VALUES (v_slip_id, v_order_item_id, v_quantity_to_return);
+
+        UPDATE public.order_items
+        SET returned_quantity = returned_quantity + v_quantity_to_return
+        WHERE id = v_order_item_id;
+    END LOOP;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."handle_item_return"("p_order_id" "uuid", "p_reason" "text", "p_items" "jsonb") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."handle_menu_item_availability_change"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+    affected_order RECORD;
+BEGIN
+    -- Chỉ chạy khi trạng thái `is_available` thay đổi thành `false` (hết hàng)
+    IF OLD.is_available = TRUE AND NEW.is_available = FALSE THEN
+        -- Lặp qua tất cả các order_items đang ở trạng thái 'waiting' của món vừa hết hàng
+        FOR affected_order IN
+            SELECT oi.order_id, string_agg(t.name, ', ') as table_name
+            FROM public.order_items oi
+            JOIN public.orders o ON oi.order_id = o.id
+            JOIN public.order_tables ot ON o.id = ot.order_id
+            JOIN public.tables t ON ot.table_id = t.id
+            WHERE oi.menu_item_id = NEW.id AND oi.status = 'waiting'
+            GROUP BY oi.order_id
+        LOOP
+            -- Tạo thông báo "Hết hàng" cho nhân viên
+            INSERT INTO public.return_notifications (order_id, table_name, item_name, notification_type, status)
+            VALUES (affected_order.order_id, affected_order.table_name, NEW.name, 'out_of_stock', 'pending');
+            
+            -- "Chạm" vào order để kích hoạt Realtime cho OrderScreen
+            UPDATE public.orders SET updated_at = NOW() WHERE id = affected_order.order_id;
+        END LOOP;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."handle_menu_item_availability_change"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."handle_new_user"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+BEGIN
+  INSERT INTO public.profiles (id, email, full_name, role) -- Thêm full_name vào đây
+  VALUES (
+    new.id,
+    new.email,
+    new.raw_user_meta_data->>'full_name', -- Lấy full_name từ metadata
+    COALESCE(new.raw_user_meta_data->>'role', 'nhan_vien')
+  );
+  RETURN new;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."handle_new_user"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."handle_order_merge"("source_order_id_input" "uuid", "target_table_ids_input" bigint[]) RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+    target_order_id uuid;
+BEGIN
+    FOR target_order_id IN
+        SELECT ot.order_id
+        FROM public.order_tables ot
+        JOIN public.orders o ON ot.order_id = o.id
+        WHERE ot.table_id = ANY(target_table_ids_input) AND o.status = 'pending'
+    LOOP
+        UPDATE public.order_items SET order_id = source_order_id_input WHERE order_id = target_order_id;
+        UPDATE public.orders SET status = 'cancelled' WHERE id = target_order_id;
+    END LOOP;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."handle_order_merge"("source_order_id_input" "uuid", "target_table_ids_input" bigint[]) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."handle_order_split"("source_order_id_input" "uuid", "target_table_id_input" bigint, "items_to_move_input" "jsonb") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+    new_order_id uuid;
+    item_record jsonb;
+    source_item_id bigint;
+    quantity_to_move int;
+    source_item_record public.order_items;
+BEGIN
+    -- 1. Tạo một order mới
+    INSERT INTO public.orders (status) VALUES ('pending')
+    RETURNING id INTO new_order_id;
+
+    -- 2. Liên kết order mới với bàn đích (trigger sẽ tự động set bàn 'Đang phục vụ')
+    INSERT INTO public.order_tables (order_id, table_id)
+    VALUES (new_order_id, target_table_id_input);
+
+    -- 3. Lặp qua danh sách các món cần tách
+    FOR item_record IN SELECT * FROM jsonb_array_elements(items_to_move_input)
+    LOOP
+        source_item_id := (item_record->>'item_id')::bigint;
+        quantity_to_move := (item_record->>'quantity')::int;
+
+        -- Lấy thông tin đầy đủ của món gốc
+        SELECT * INTO source_item_record FROM public.order_items WHERE id = source_item_id;
+
+        -- 4. Xử lý logic tách
+        IF source_item_record.quantity > quantity_to_move THEN
+            -- Nếu chỉ tách một phần: Cập nhật số lượng món gốc
+            UPDATE public.order_items
+            SET quantity = quantity - quantity_to_move
+            WHERE id = source_item_id;
+
+            -- Và tạo một món mới cho order mới
+            INSERT INTO public.order_items (order_id, menu_item_id, quantity, unit_price, customizations, status)
+            VALUES (new_order_id, source_item_record.menu_item_id, quantity_to_move, source_item_record.unit_price, source_item_record.customizations, source_item_record.status);
+        
+        ELSE
+            -- Nếu tách toàn bộ: Chỉ cần cập nhật order_id của món đó sang order mới
+            UPDATE public.order_items
+            SET order_id = new_order_id
+            WHERE id = source_item_id;
+        END IF;
+    END LOOP;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."handle_order_split"("source_order_id_input" "uuid", "target_table_id_input" bigint, "items_to_move_input" "jsonb") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."handle_table_grouping"("source_order_id_input" "uuid", "target_table_ids_input" bigint[]) RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+    target_id bigint;
+BEGIN
+    FOREACH target_id IN ARRAY target_table_ids_input
+    LOOP
+        INSERT INTO public.order_tables (order_id, table_id)
+        VALUES (source_order_id_input, target_id);
+    END LOOP;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."handle_table_grouping"("source_order_id_input" "uuid", "target_table_ids_input" bigint[]) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."handle_table_transfer"("source_table_id_input" bigint, "target_table_id_input" bigint) RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+    order_id_to_move uuid;
+BEGIN
+    SELECT order_id INTO order_id_to_move
+    FROM public.order_tables
+    JOIN public.orders ON orders.id = order_tables.order_id
+    WHERE order_tables.table_id = source_table_id_input
+    AND orders.status IN ('pending', 'paid')
+    LIMIT 1;
+
+    IF order_id_to_move IS NOT NULL THEN
+        UPDATE public.order_tables
+        SET table_id = target_table_id_input
+        WHERE table_id = source_table_id_input AND order_id = order_id_to_move;
+    END IF;
+    
+    UPDATE public.cart_items
+    SET table_id = target_table_id_input
+    WHERE table_id = source_table_id_input;
+
+    UPDATE public.tables SET status = 'Trống' WHERE id = source_table_id_input;
+    UPDATE public.tables SET status = 'Đang phục vụ' WHERE id = target_table_id_input;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."handle_table_transfer"("source_table_id_input" bigint, "target_table_id_input" bigint) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."moddatetime"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."moddatetime"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."reset_daily_item_quantities"() RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+BEGIN
+    UPDATE public.menu_items
+    SET
+        remaining_quantity = daily_stock_limit,
+        is_available = TRUE -- Đồng thời mở bán lại các món này
+    WHERE
+        daily_stock_limit IS NOT NULL AND daily_stock_limit > 0;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."reset_daily_item_quantities"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."reset_daily_stock"() RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+BEGIN
+  -- Reset tất cả nguyên liệu về initial_stock nếu chưa reset hôm nay
+  UPDATE "public"."ingredients"
+  SET 
+    stock_quantity = initial_stock,
+    last_reset_date = CURRENT_DATE
+  WHERE last_reset_date < CURRENT_DATE;
+  
+  -- Log hoạt động (optional - để debug)
+  RAISE NOTICE 'Reset daily stock at %', NOW();
+END;
+$$;
+
+
+ALTER FUNCTION "public"."reset_daily_stock"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."reset_table_status_on_order_close"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+    table_ids_in_session BIGINT[];
+    order_ids_in_session UUID[];
+BEGIN
+    -- Chỉ chạy khi một order được ĐÓNG hoặc HỦY
+    IF NEW.status IN ('closed', 'cancelled') THEN
+        -- 1. Tìm tất cả các bàn được liên kết với order đang đóng này.
+        SELECT array_agg(table_id)
+        INTO table_ids_in_session
+        FROM public.order_tables
+        WHERE order_id = NEW.id;
+
+        IF array_length(table_ids_in_session, 1) > 0 THEN
+            -- 2. Tìm TẤT CẢ các order (paid, pending, closed) đang liên kết với những bàn này.
+            -- Thao tác này sẽ gom tất cả order từ toàn bộ phiên phục vụ liên tục.
+            SELECT array_agg(order_id)
+            INTO order_ids_in_session
+            FROM public.order_tables
+            WHERE table_id = ANY(table_ids_in_session);
+
+            -- 3. Reset trạng thái các bàn về 'Trống'.
+            UPDATE public.tables
+            SET status = 'Trống'
+            WHERE id = ANY(table_ids_in_session);
+
+            -- 4. [SỬA LỖI QUAN TRỌNG] Xóa tất cả liên kết order_tables của toàn bộ phiên.
+            IF array_length(order_ids_in_session, 1) > 0 THEN
+                DELETE FROM public.order_tables
+                WHERE order_id = ANY(order_ids_in_session);
+            END IF;
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."reset_table_status_on_order_close"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."send_provisional_bill"("p_order_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+    UPDATE orders
+    SET is_provisional = true
+    WHERE id = p_order_id;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."send_provisional_bill"("p_order_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."setup_ingredient"("p_name" "text", "p_unit" "text", "p_initial_stock" numeric DEFAULT 100, "p_low_threshold" numeric DEFAULT 50) RETURNS TABLE("id" "uuid", "name" "text", "created" boolean)
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+    v_id UUID;
+BEGIN
+    -- Check xem đã tồn tại chưa
+    SELECT "public"."ingredients"."id" INTO v_id FROM "public"."ingredients" WHERE "public"."ingredients"."name" = p_name LIMIT 1;
+    
+    IF v_id IS NULL THEN
+        -- Tạo nguyên liệu mới
+        INSERT INTO "public"."ingredients" (name, unit, initial_stock, stock_quantity, low_stock_threshold)
+        VALUES (p_name, p_unit, p_initial_stock, p_initial_stock, p_low_threshold)
+        RETURNING "public"."ingredients".id INTO v_id;
+        
+        RETURN QUERY SELECT v_id, p_name, true;
+    ELSE
+        -- Nguyên liệu đã tồn tại
+        RETURN QUERY SELECT v_id, p_name, false;
+    END IF;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."setup_ingredient"("p_name" "text", "p_unit" "text", "p_initial_stock" numeric, "p_low_threshold" numeric) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."setup_menu_recipe"("p_menu_item_id" "uuid", "p_ingredient_name" "text", "p_quantity_required" numeric) RETURNS boolean
+    LANGUAGE "plpgsql"
+    AS $$
+DECLARE
+    v_ingredient_id UUID;
+BEGIN
+    -- Tìm nguyên liệu theo tên
+    SELECT "public"."ingredients"."id" INTO v_ingredient_id FROM "public"."ingredients" WHERE "public"."ingredients"."name" = p_ingredient_name LIMIT 1;
+    
+    IF v_ingredient_id IS NULL THEN
+        RAISE EXCEPTION 'Nguyên liệu không tồn tại: %', p_ingredient_name;
+    END IF;
+    
+    -- Xóa công thức cũ nếu có
+    DELETE FROM "public"."menu_item_ingredients"
+    WHERE menu_item_id = p_menu_item_id AND ingredient_id = v_ingredient_id;
+    
+    -- Thêm công thức mới
+    INSERT INTO "public"."menu_item_ingredients" (menu_item_id, ingredient_id, quantity_required)
+    VALUES (p_menu_item_id, v_ingredient_id, p_quantity_required)
+    ON CONFLICT (menu_item_id, ingredient_id) 
+    DO UPDATE SET quantity_required = p_quantity_required;
+    
+    RETURN true;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."setup_menu_recipe"("p_menu_item_id" "uuid", "p_ingredient_name" "text", "p_quantity_required" numeric) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."sp_handle_item_return"("p_order_id" "uuid", "p_reason" "text", "p_items" "jsonb") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+    v_slip_id bigint;
+    item_record jsonb;
+    v_order_item_id bigint;
+    v_quantity_to_return int;
+    v_current_returned_qty int;
+    v_original_qty int;
+BEGIN
+    INSERT INTO public.return_slips (order_id, reason)
+    VALUES (p_order_id, p_reason)
+    RETURNING id INTO v_slip_id;
+
+    FOR item_record IN SELECT * FROM jsonb_array_elements(p_items)
+    LOOP
+        v_order_item_id := (item_record->>'order_item_id')::bigint;
+        v_quantity_to_return := (item_record->>'quantity')::int;
+
+        SELECT quantity, returned_quantity
+        INTO v_original_qty, v_current_returned_qty
+        FROM public.order_items
+        WHERE id = v_order_item_id AND order_id = p_order_id;
+
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'Món trong order (ID: %) không tồn tại.', v_order_item_id;
+        END IF;
+
+        IF v_quantity_to_return <= 0 OR (v_current_returned_qty + v_quantity_to_return) > v_original_qty THEN
+             RAISE EXCEPTION 'Số lượng trả (%) không hợp lệ.', v_quantity_to_return;
+        END IF;
+
+        INSERT INTO public.return_slip_items (return_slip_id, order_item_id, quantity)
+        VALUES (v_slip_id, v_order_item_id, v_quantity_to_return);
+
+        UPDATE public.order_items
+        SET returned_quantity = returned_quantity + v_quantity_to_return
+        WHERE id = v_order_item_id;
+    END LOOP;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."sp_handle_item_return"("p_order_id" "uuid", "p_reason" "text", "p_items" "jsonb") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."sp_process_item_return"("p_order_id" "uuid", "p_reason" "text", "p_items" "jsonb") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+    v_slip_id bigint;
+    item_record jsonb;
+    v_order_item_id bigint;
+    v_quantity_to_return int;
+    v_current_returned_qty int;
+    v_original_qty int;
+BEGIN
+    -- 1. Tạo một phiếu trả hàng mới
+    INSERT INTO public.return_slips (order_id, reason)
+    VALUES (p_order_id, p_reason)
+    RETURNING id INTO v_slip_id;
+
+    -- 2. Lặp qua từng món hàng cần trả
+    FOR item_record IN SELECT * FROM jsonb_array_elements(p_items)
+    LOOP
+        v_order_item_id := (item_record->>'order_item_id')::bigint;
+        v_quantity_to_return := (item_record->>'quantity')::int;
+
+        -- Lấy số lượng của món hàng gốc từ bảng order_items
+        -- Phép so sánh order_id (uuid) = p_order_id (uuid) bây giờ sẽ chính xác
+        SELECT quantity, returned_quantity
+        INTO v_original_qty, v_current_returned_qty
+        FROM public.order_items
+        WHERE id = v_order_item_id AND order_id = p_order_id;
+
+        -- Kiểm tra các điều kiện hợp lệ
+        IF NOT FOUND THEN
+            RAISE EXCEPTION 'Món trong order (ID: %) không tồn tại.', v_order_item_id;
+        END IF;
+
+        IF v_quantity_to_return <= 0 OR (v_current_returned_qty + v_quantity_to_return) > v_original_qty THEN
+             RAISE EXCEPTION 'Số lượng trả (%) không hợp lệ.', v_quantity_to_return;
+        END IF;
+
+        -- 3. Thêm chi tiết vào phiếu trả
+        INSERT INTO public.return_slip_items (return_slip_id, order_item_id, quantity)
+        VALUES (v_slip_id, v_order_item_id, v_quantity_to_return);
+
+        -- 4. Cập nhật số lượng đã trả ở order gốc
+        UPDATE public.order_items
+        SET returned_quantity = returned_quantity + v_quantity_to_return
+        WHERE id = v_order_item_id;
+    END LOOP;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."sp_process_item_return"("p_order_id" "uuid", "p_reason" "text", "p_items" "jsonb") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."suggest_import_quantity"("p_ingredient_id" "uuid") RETURNS TABLE("ingredient_name" "text", "current_stock" numeric, "initial_stock" numeric, "low_threshold" numeric, "suggest_quantity" numeric, "reason" "text")
+    LANGUAGE "sql"
+    AS $$
+SELECT
+    ing.name,
+    ing.stock_quantity,
+    ing.initial_stock,
+    ing.low_stock_threshold,
+    CASE
+        WHEN ing.stock_quantity <= 0 THEN ing.initial_stock * 1.5  -- Hết → Nhập gấp 1.5
+        WHEN ing.stock_quantity <= ing.low_stock_threshold THEN ing.initial_stock  -- Sắp hết → Nhập full
+        ELSE 0  -- Đủ → Không cần nhập
+    END::NUMERIC AS suggest_quantity,
+    CASE
+        WHEN ing.stock_quantity <= 0 THEN 'Hết - Nhập ngay gấp 1.5 lần'
+        WHEN ing.stock_quantity <= ing.low_stock_threshold THEN 'Sắp hết - Nhập full'
+        ELSE 'Đủ - Không cần'
+    END AS reason
+FROM "public"."ingredients" ing
+WHERE ing.id = p_ingredient_id;
+$$;
+
+
+ALTER FUNCTION "public"."suggest_import_quantity"("p_ingredient_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."toggle_provisional_bill_status"("p_order_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+BEGIN
+  -- Toggle trạng thái is_provisional
+  UPDATE orders 
+  SET is_provisional = NOT is_provisional
+  WHERE id = p_order_id;
+  
+  -- Kiểm tra xem có lỗi không
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Order not found: %', p_order_id;
+  END IF;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."toggle_provisional_bill_status"("p_order_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."transfer_order_to_new_table"("p_order_id" "uuid", "p_old_table_id" bigint, "p_new_table_id" bigint) RETURNS "void"
+    LANGUAGE "plpgsql"
+    AS $$
+begin
+  -- 1. Cập nhật liên kết order sang bàn mới
+  update public.order_tables
+  set table_id = p_new_table_id
+  where order_id = p_order_id and table_id = p_old_table_id;
+
+  -- 2. Cập nhật trạng thái bàn cũ thành 'Trống'
+  update public.tables
+  set status = 'Trống'
+  where id = p_old_table_id;
+
+  -- 3. Cập nhật trạng thái bàn mới thành 'Đang phục vụ'
+  update public.tables
+  set status = 'Đang phục vụ'
+  where id = p_new_table_id;
+end;
+$$;
+
+
+ALTER FUNCTION "public"."transfer_order_to_new_table"("p_order_id" "uuid", "p_old_table_id" bigint, "p_new_table_id" bigint) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."update_menu_item_availability"("p_menu_item_id" "uuid") RETURNS "void"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+DECLARE
+    v_is_available_by_daily_limit BOOLEAN;
+    v_menu_item RECORD;
+BEGIN
+    -- Lấy thông tin về giới hạn hàng ngày của món ăn
+    SELECT daily_stock_limit, remaining_quantity
+    INTO v_menu_item
+    FROM public.menu_items
+    WHERE id = p_menu_item_id;
+
+    -- ĐIỀU KIỆN DUY NHẤT: Kiểm tra giới hạn bán hàng ngày
+    -- Món ăn được coi là còn hàng NẾU không có giới hạn (daily_stock_limit IS NULL)
+    -- HOẶC nếu số lượng còn lại > 0.
+    v_is_available_by_daily_limit := (v_menu_item.daily_stock_limit IS NULL) OR (v_menu_item.remaining_quantity > 0);
+
+    -- [SỬA ĐỔI QUAN TRỌNG]
+    -- Bỏ qua hoàn toàn việc kiểm tra nguyên liệu.
+    -- Món ăn sẽ chỉ phụ thuộc vào số lượng giới hạn bán trong ngày.
+    UPDATE public.menu_items
+    SET is_available = v_is_available_by_daily_limit
+    WHERE id = p_menu_item_id;
+
+END;
+$$;
+
+
+ALTER FUNCTION "public"."update_menu_item_availability"("p_menu_item_id" "uuid") OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."update_order_timestamp_on_item_change"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+BEGIN
+    UPDATE public.orders SET updated_at = NOW() WHERE id = OLD.order_id;
+    RETURN NULL;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."update_order_timestamp_on_item_change"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."update_returned_quantity"("p_order_item_id" integer, "p_quantity_to_return" integer) RETURNS "void"
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+    UPDATE order_items
+    SET returned_quantity = returned_quantity + p_quantity_to_return
+    WHERE id = p_order_item_id;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."update_returned_quantity"("p_order_item_id" integer, "p_quantity_to_return" integer) OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."update_table_status_on_insert_order_tables"() RETURNS "trigger"
+    LANGUAGE "plpgsql" SECURITY DEFINER
+    AS $$
+BEGIN
+    -- Cập nhật trạng thái của bàn (có ID là NEW.table_id) thành 'Đang phục vụ'
+    UPDATE public.tables
+    SET status = 'Đang phục vụ'
+    WHERE id = NEW.table_id;
+    
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."update_table_status_on_insert_order_tables"() OWNER TO "postgres";
+
+
+CREATE OR REPLACE FUNCTION "public"."update_updated_at_column"() RETURNS "trigger"
+    LANGUAGE "plpgsql"
+    AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION "public"."update_updated_at_column"() OWNER TO "postgres";
+
+SET default_tablespace = '';
+
+SET default_table_access_method = "heap";
+
+
+CREATE TABLE IF NOT EXISTS "public"."cancellation_requests" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "order_id" "uuid" NOT NULL,
+    "table_name" "text",
+    "reason" "text",
+    "requested_items" "jsonb",
+    "status" "text" DEFAULT 'pending'::"text",
+    "created_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."cancellation_requests" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."cart_items" (
+    "id" bigint NOT NULL,
+    "table_id" bigint NOT NULL,
+    "menu_item_id" "uuid" NOT NULL,
+    "quantity" integer NOT NULL,
+    "unit_price" numeric(10,0) NOT NULL,
+    "total_price" numeric(10,0) NOT NULL,
+    "customizations" "jsonb",
+    "unique_id" "text",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "user_id" "uuid" DEFAULT "auth"."uid"()
+);
+
+
+ALTER TABLE "public"."cart_items" OWNER TO "postgres";
+
+
+CREATE SEQUENCE IF NOT EXISTS "public"."cart_items_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE "public"."cart_items_id_seq" OWNER TO "postgres";
+
+
+ALTER SEQUENCE "public"."cart_items_id_seq" OWNED BY "public"."cart_items"."id";
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."categories" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "name" "text" NOT NULL
+);
+
+
+ALTER TABLE "public"."categories" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."expenses" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "description" "text" NOT NULL,
+    "amount" numeric(10,0) NOT NULL,
+    "expense_date" "date" DEFAULT CURRENT_DATE NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "payment_method" "text" DEFAULT 'cash'::"text",
+    "category" "text"
+);
+
+
+ALTER TABLE "public"."expenses" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."ingredients" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "name" "text" NOT NULL,
+    "unit" "text" NOT NULL,
+    "stock_quantity" numeric(10,2) DEFAULT 0 NOT NULL,
+    "low_stock_threshold" numeric(10,2) DEFAULT 100,
+    "initial_stock" numeric(10,2) DEFAULT 100,
+    "last_reset_date" "date" DEFAULT CURRENT_DATE
+);
+
+
+ALTER TABLE "public"."ingredients" OWNER TO "postgres";
+
+
+CREATE OR REPLACE VIEW "public"."ingredients_need_reorder" AS
+ SELECT "id",
+    "name",
+    "unit",
+    "stock_quantity",
+    "low_stock_threshold",
+    "initial_stock",
+        CASE
+            WHEN ("stock_quantity" <= (0)::numeric) THEN 'Hết'::"text"
+            WHEN ("stock_quantity" <= "low_stock_threshold") THEN 'Sắp hết'::"text"
+            ELSE 'Đủ'::"text"
+        END AS "status",
+        CASE
+            WHEN ("stock_quantity" <= (0)::numeric) THEN 'Cần nhập ngay'::"text"
+            WHEN ("stock_quantity" <= "low_stock_threshold") THEN 'Nên nhập trong ngày'::"text"
+            ELSE 'Tồn kho ổn định'::"text"
+        END AS "recommendation",
+    "round"(((("stock_quantity")::numeric / ("low_stock_threshold")::numeric) * (100)::numeric), 1) AS "percentage_of_threshold"
+   FROM "public"."ingredients"
+  WHERE ("stock_quantity" <= "low_stock_threshold")
+  ORDER BY "stock_quantity";
+
+
+ALTER VIEW "public"."ingredients_need_reorder" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."menu_item_ingredients" (
+    "menu_item_id" "uuid" NOT NULL,
+    "ingredient_id" "uuid" NOT NULL,
+    "quantity_required" numeric(10,2) NOT NULL
+);
+
+
+ALTER TABLE "public"."menu_item_ingredients" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."menu_items" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "name" "text" NOT NULL,
+    "price" numeric(10,0) NOT NULL,
+    "description" "text",
+    "image_url" "text",
+    "category_id" "uuid",
+    "is_available" boolean DEFAULT true,
+    "is_hot" boolean DEFAULT false,
+    "is_active" boolean DEFAULT true,
+    "cost" numeric(10,0) DEFAULT 0,
+    "stock_quantity" integer DEFAULT 0,
+    "low_stock_threshold" integer DEFAULT 5,
+    "is_hidden" boolean DEFAULT false,
+    "daily_stock_limit" integer,
+    "remaining_quantity" integer
+);
+
+
+ALTER TABLE "public"."menu_items" OWNER TO "postgres";
+
+
+COMMENT ON COLUMN "public"."menu_items"."image_url" IS 'URL hình ảnh sản phẩm được lưu từ Cloudinary';
+
+
+
+COMMENT ON COLUMN "public"."menu_items"."is_hidden" IS 'True = Ẩn món (Admin ẩn, không bán nữa). False = Bán bình thường. Khác với is_available (báo hết hôm nay).';
+
+
+
+CREATE OR REPLACE VIEW "public"."menu_cost_analysis" AS
+ SELECT "mi"."id",
+    "mi"."name",
+    "mi"."price",
+    COALESCE("sum"(
+        CASE
+            WHEN ("ing"."unit" = 'kg'::"text") THEN ("mii"."quantity_required" * (50000)::numeric)
+            WHEN ("ing"."unit" = 'lít'::"text") THEN ("mii"."quantity_required" * (30000)::numeric)
+            WHEN ("ing"."unit" = 'hộp'::"text") THEN ("mii"."quantity_required" * (25000)::numeric)
+            WHEN ("ing"."unit" = 'chai'::"text") THEN ("mii"."quantity_required" * (40000)::numeric)
+            ELSE ("mii"."quantity_required" * (20000)::numeric)
+        END), (0)::numeric) AS "estimated_cost",
+    ("mi"."price" - COALESCE("sum"(
+        CASE
+            WHEN ("ing"."unit" = 'kg'::"text") THEN ("mii"."quantity_required" * (50000)::numeric)
+            WHEN ("ing"."unit" = 'lít'::"text") THEN ("mii"."quantity_required" * (30000)::numeric)
+            WHEN ("ing"."unit" = 'hộp'::"text") THEN ("mii"."quantity_required" * (25000)::numeric)
+            WHEN ("ing"."unit" = 'chai'::"text") THEN ("mii"."quantity_required" * (40000)::numeric)
+            ELSE ("mii"."quantity_required" * (20000)::numeric)
+        END), (0)::numeric)) AS "estimated_profit",
+    "round"(((("mi"."price" - COALESCE("sum"(
+        CASE
+            WHEN ("ing"."unit" = 'kg'::"text") THEN ("mii"."quantity_required" * (50000)::numeric)
+            WHEN ("ing"."unit" = 'lít'::"text") THEN ("mii"."quantity_required" * (30000)::numeric)
+            WHEN ("ing"."unit" = 'hộp'::"text") THEN ("mii"."quantity_required" * (25000)::numeric)
+            WHEN ("ing"."unit" = 'chai'::"text") THEN ("mii"."quantity_required" * (40000)::numeric)
+            ELSE ("mii"."quantity_required" * (20000)::numeric)
+        END), (0)::numeric)) / "mi"."price") * (100)::numeric)) AS "profit_margin_percent"
+   FROM (("public"."menu_items" "mi"
+     LEFT JOIN "public"."menu_item_ingredients" "mii" ON (("mi"."id" = "mii"."menu_item_id")))
+     LEFT JOIN "public"."ingredients" "ing" ON (("mii"."ingredient_id" = "ing"."id")))
+  WHERE ("mi"."is_active" = true)
+  GROUP BY "mi"."id", "mi"."name", "mi"."price";
+
+
+ALTER VIEW "public"."menu_cost_analysis" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."menu_item_options" (
+    "menu_item_id" "uuid" NOT NULL,
+    "option_group_id" bigint NOT NULL
+);
+
+
+ALTER TABLE "public"."menu_item_options" OWNER TO "postgres";
+
+
+CREATE OR REPLACE VIEW "public"."menu_recipes" AS
+ SELECT "mi"."id" AS "menu_item_id",
+    "mi"."name" AS "menu_name",
+    "ing"."id" AS "ingredient_id",
+    "ing"."name" AS "ingredient_name",
+    "ing"."unit",
+    "mii"."quantity_required" AS "quantity_per_serving",
+        CASE
+            WHEN ("ing"."unit" = 'kg'::"text") THEN (("mii"."quantity_required" * (1000)::numeric) || ' g'::"text")
+            WHEN ("ing"."unit" = 'lít'::"text") THEN (("mii"."quantity_required" * (1000)::numeric) || ' ml'::"text")
+            ELSE "concat"("mii"."quantity_required", ' ', "ing"."unit")
+        END AS "display_quantity"
+   FROM (("public"."menu_items" "mi"
+     JOIN "public"."menu_item_ingredients" "mii" ON (("mi"."id" = "mii"."menu_item_id")))
+     JOIN "public"."ingredients" "ing" ON (("mii"."ingredient_id" = "ing"."id")))
+  ORDER BY "mi"."name", "ing"."name";
+
+
+ALTER VIEW "public"."menu_recipes" OWNER TO "postgres";
+
+
+CREATE OR REPLACE VIEW "public"."menu_with_recipes" AS
+ SELECT "mi"."id",
+    "mi"."name",
+    "mi"."price",
+    "mi"."category_id",
+    "mi"."is_available",
+    "count"("mii"."ingredient_id") AS "num_ingredients",
+    "string_agg"("concat"("ing"."name", ' (', "mii"."quantity_required", "ing"."unit", ')'), ', '::"text") AS "recipe"
+   FROM (("public"."menu_items" "mi"
+     LEFT JOIN "public"."menu_item_ingredients" "mii" ON (("mi"."id" = "mii"."menu_item_id")))
+     LEFT JOIN "public"."ingredients" "ing" ON (("mii"."ingredient_id" = "ing"."id")))
+  WHERE ("mi"."is_active" = true)
+  GROUP BY "mi"."id", "mi"."name", "mi"."price", "mi"."category_id", "mi"."is_available";
+
+
+ALTER VIEW "public"."menu_with_recipes" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."option_choices" (
+    "id" bigint NOT NULL,
+    "group_id" bigint NOT NULL,
+    "name" "text" NOT NULL,
+    "price_adjustment" numeric(10,0) DEFAULT 0 NOT NULL
+);
+
+
+ALTER TABLE "public"."option_choices" OWNER TO "postgres";
+
+
+CREATE SEQUENCE IF NOT EXISTS "public"."option_choices_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE "public"."option_choices_id_seq" OWNER TO "postgres";
+
+
+ALTER SEQUENCE "public"."option_choices_id_seq" OWNED BY "public"."option_choices"."id";
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."option_groups" (
+    "id" bigint NOT NULL,
+    "name" "text" NOT NULL,
+    "type" "text" NOT NULL
+);
+
+
+ALTER TABLE "public"."option_groups" OWNER TO "postgres";
+
+
+CREATE SEQUENCE IF NOT EXISTS "public"."option_groups_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE "public"."option_groups_id_seq" OWNER TO "postgres";
+
+
+ALTER SEQUENCE "public"."option_groups_id_seq" OWNED BY "public"."option_groups"."id";
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."order_actions_log" (
+    "id" bigint NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"() NOT NULL,
+    "action_type" "text" NOT NULL,
+    "source_order_ids" bigint[],
+    "target_order_id" bigint,
+    "moved_order_item_ids" bigint[],
+    "performed_by_user_id" "uuid",
+    "details" "jsonb"
+);
+
+
+ALTER TABLE "public"."order_actions_log" OWNER TO "postgres";
+
+
+ALTER TABLE "public"."order_actions_log" ALTER COLUMN "id" ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME "public"."order_actions_log_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."order_items" (
+    "id" bigint NOT NULL,
+    "order_id" "uuid" NOT NULL,
+    "menu_item_id" "uuid",
+    "quantity" integer NOT NULL,
+    "unit_price" numeric(10,0) NOT NULL,
+    "customizations" "jsonb",
+    "status" "text" DEFAULT 'waiting'::"text",
+    "returned_quantity" integer DEFAULT 0,
+    "created_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."order_items" OWNER TO "postgres";
+
+
+CREATE SEQUENCE IF NOT EXISTS "public"."order_items_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE "public"."order_items_id_seq" OWNER TO "postgres";
+
+
+ALTER SEQUENCE "public"."order_items_id_seq" OWNED BY "public"."order_items"."id";
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."order_tables" (
+    "order_id" "uuid" NOT NULL,
+    "table_id" bigint NOT NULL
+);
+
+
+ALTER TABLE "public"."order_tables" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."orders" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "total_price" numeric(10,0),
+    "status" "public"."order_status_enum" DEFAULT 'pending'::"public"."order_status_enum",
+    "is_provisional" boolean DEFAULT false,
+    "payment_method" "text",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "user_id" "uuid" DEFAULT "auth"."uid"(),
+    "updated_at" timestamp with time zone DEFAULT "now"(),
+    "table_name" "text",
+    "order_code" "text",
+    "paid_at" timestamp with time zone
+);
+
+
+ALTER TABLE "public"."orders" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."profiles" (
+    "id" "uuid" NOT NULL,
+    "email" character varying(255),
+    "full_name" "text",
+    "role" "text" DEFAULT 'nhan_vien'::"text" NOT NULL
+);
+
+
+ALTER TABLE "public"."profiles" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."purchase_order_items" (
+    "id" bigint NOT NULL,
+    "purchase_order_id" "uuid" NOT NULL,
+    "ingredient_id" "uuid" NOT NULL,
+    "quantity" numeric(10,2) NOT NULL
+);
+
+
+ALTER TABLE "public"."purchase_order_items" OWNER TO "postgres";
+
+
+ALTER TABLE "public"."purchase_order_items" ALTER COLUMN "id" ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME "public"."purchase_order_items_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."purchase_orders" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "po_code" "text",
+    "status" "text" DEFAULT 'pending'::"text" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "completed_at" timestamp with time zone,
+    "user_id" "uuid",
+    "notes" "text"
+);
+
+
+ALTER TABLE "public"."purchase_orders" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."return_notifications" (
+    "id" bigint NOT NULL,
+    "order_id" "uuid" NOT NULL,
+    "table_name" "text",
+    "item_name" "text" NOT NULL,
+    "status" "text" DEFAULT 'pending'::"text",
+    "acknowledged_at" timestamp with time zone,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "notification_type" "text"
+);
+
+
+ALTER TABLE "public"."return_notifications" OWNER TO "postgres";
+
+
+CREATE SEQUENCE IF NOT EXISTS "public"."return_notifications_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE "public"."return_notifications_id_seq" OWNER TO "postgres";
+
+
+ALTER SEQUENCE "public"."return_notifications_id_seq" OWNED BY "public"."return_notifications"."id";
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."return_slip_items" (
+    "id" bigint NOT NULL,
+    "return_slip_id" bigint NOT NULL,
+    "order_item_id" bigint NOT NULL,
+    "quantity" integer NOT NULL,
+    "unit_price" numeric(10,0) NOT NULL
+);
+
+
+ALTER TABLE "public"."return_slip_items" OWNER TO "postgres";
+
+
+CREATE SEQUENCE IF NOT EXISTS "public"."return_slip_items_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE "public"."return_slip_items_id_seq" OWNER TO "postgres";
+
+
+ALTER SEQUENCE "public"."return_slip_items_id_seq" OWNED BY "public"."return_slip_items"."id";
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."return_slips" (
+    "id" bigint NOT NULL,
+    "order_id" "uuid" NOT NULL,
+    "reason" "text",
+    "type" "text",
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "status" "public"."return_slip_status" DEFAULT 'approved'::"public"."return_slip_status" NOT NULL
+);
+
+
+ALTER TABLE "public"."return_slips" OWNER TO "postgres";
+
+
+CREATE SEQUENCE IF NOT EXISTS "public"."return_slips_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE "public"."return_slips_id_seq" OWNER TO "postgres";
+
+
+ALTER SEQUENCE "public"."return_slips_id_seq" OWNED BY "public"."return_slips"."id";
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."stock_history" (
+    "id" bigint NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"(),
+    "ingredient_id" "uuid" NOT NULL,
+    "quantity_change" numeric(10,2) NOT NULL,
+    "user_id" "uuid",
+    "notes" "text"
+);
+
+
+ALTER TABLE "public"."stock_history" OWNER TO "postgres";
+
+
+ALTER TABLE "public"."stock_history" ALTER COLUMN "id" ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME "public"."stock_history_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+
+CREATE TABLE IF NOT EXISTS "public"."tables" (
+    "id" bigint NOT NULL,
+    "name" "text" NOT NULL,
+    "status" "text" DEFAULT 'Trống'::"text",
+    "seats" integer
+);
+
+
+ALTER TABLE "public"."tables" OWNER TO "postgres";
+
+
+CREATE SEQUENCE IF NOT EXISTS "public"."tables_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE "public"."tables_id_seq" OWNER TO "postgres";
+
+
+ALTER SEQUENCE "public"."tables_id_seq" OWNED BY "public"."tables"."id";
+
+
+
+CREATE OR REPLACE VIEW "public"."today_ingredient_consumption" AS
+ SELECT "ing"."id",
+    "ing"."name",
+    "ing"."unit",
+    COALESCE("sum"((- "sh"."quantity_change")), (0)::numeric) AS "consumed_today",
+    "ing"."stock_quantity" AS "remaining",
+    "ing"."low_stock_threshold",
+        CASE
+            WHEN (("ing"."stock_quantity" / ("ing"."low_stock_threshold")::numeric) < 0.25) THEN '🔴 Nguy hiểm'::"text"
+            WHEN (("ing"."stock_quantity" / ("ing"."low_stock_threshold")::numeric) < 0.5) THEN '🟠 Cảnh báo'::"text"
+            ELSE '🟢 An toàn'::"text"
+        END AS "alert_level"
+   FROM ("public"."ingredients" "ing"
+     LEFT JOIN "public"."stock_history" "sh" ON ((("sh"."ingredient_id" = "ing"."id") AND ("date"("sh"."created_at") = CURRENT_DATE))))
+  GROUP BY "ing"."id", "ing"."name", "ing"."unit", "ing"."stock_quantity", "ing"."low_stock_threshold"
+  ORDER BY COALESCE("sum"((- "sh"."quantity_change")), (0)::numeric) DESC;
+
+
+ALTER VIEW "public"."today_ingredient_consumption" OWNER TO "postgres";
+
+
+CREATE TABLE IF NOT EXISTS "public"."transactions" (
+    "id" "uuid" DEFAULT "extensions"."uuid_generate_v4"() NOT NULL,
+    "order_id" "uuid" NOT NULL,
+    "amount" numeric(10,0) NOT NULL,
+    "payment_method" "public"."payment_method_enum" NOT NULL,
+    "created_at" timestamp with time zone DEFAULT "now"()
+);
+
+
+ALTER TABLE "public"."transactions" OWNER TO "postgres";
+
+
+ALTER TABLE ONLY "public"."cart_items" ALTER COLUMN "id" SET DEFAULT "nextval"('"public"."cart_items_id_seq"'::"regclass");
+
+
+
+ALTER TABLE ONLY "public"."option_choices" ALTER COLUMN "id" SET DEFAULT "nextval"('"public"."option_choices_id_seq"'::"regclass");
+
+
+
+ALTER TABLE ONLY "public"."option_groups" ALTER COLUMN "id" SET DEFAULT "nextval"('"public"."option_groups_id_seq"'::"regclass");
+
+
+
+ALTER TABLE ONLY "public"."order_items" ALTER COLUMN "id" SET DEFAULT "nextval"('"public"."order_items_id_seq"'::"regclass");
+
+
+
+ALTER TABLE ONLY "public"."return_notifications" ALTER COLUMN "id" SET DEFAULT "nextval"('"public"."return_notifications_id_seq"'::"regclass");
+
+
+
+ALTER TABLE ONLY "public"."return_slip_items" ALTER COLUMN "id" SET DEFAULT "nextval"('"public"."return_slip_items_id_seq"'::"regclass");
+
+
+
+ALTER TABLE ONLY "public"."return_slips" ALTER COLUMN "id" SET DEFAULT "nextval"('"public"."return_slips_id_seq"'::"regclass");
+
+
+
+ALTER TABLE ONLY "public"."tables" ALTER COLUMN "id" SET DEFAULT "nextval"('"public"."tables_id_seq"'::"regclass");
+
+
+
+ALTER TABLE ONLY "public"."cancellation_requests"
+    ADD CONSTRAINT "cancellation_requests_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."cart_items"
+    ADD CONSTRAINT "cart_items_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."cart_items"
+    ADD CONSTRAINT "cart_items_unique_id_key" UNIQUE ("unique_id");
+
+
+
+ALTER TABLE ONLY "public"."categories"
+    ADD CONSTRAINT "categories_name_key" UNIQUE ("name");
+
+
+
+ALTER TABLE ONLY "public"."categories"
+    ADD CONSTRAINT "categories_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."expenses"
+    ADD CONSTRAINT "expenses_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."ingredients"
+    ADD CONSTRAINT "ingredients_name_key" UNIQUE ("name");
+
+
+
+ALTER TABLE ONLY "public"."ingredients"
+    ADD CONSTRAINT "ingredients_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."menu_item_ingredients"
+    ADD CONSTRAINT "menu_item_ingredients_pkey" PRIMARY KEY ("menu_item_id", "ingredient_id");
+
+
+
+ALTER TABLE ONLY "public"."menu_item_options"
+    ADD CONSTRAINT "menu_item_options_pkey" PRIMARY KEY ("menu_item_id", "option_group_id");
+
+
+
+ALTER TABLE ONLY "public"."menu_items"
+    ADD CONSTRAINT "menu_items_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."option_choices"
+    ADD CONSTRAINT "option_choices_group_id_name_key" UNIQUE ("group_id", "name");
+
+
+
+ALTER TABLE ONLY "public"."option_choices"
+    ADD CONSTRAINT "option_choices_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."option_groups"
+    ADD CONSTRAINT "option_groups_name_key" UNIQUE ("name");
+
+
+
+ALTER TABLE ONLY "public"."option_groups"
+    ADD CONSTRAINT "option_groups_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."order_actions_log"
+    ADD CONSTRAINT "order_actions_log_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."order_items"
+    ADD CONSTRAINT "order_items_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."order_tables"
+    ADD CONSTRAINT "order_tables_pkey" PRIMARY KEY ("order_id", "table_id");
+
+
+
+ALTER TABLE ONLY "public"."orders"
+    ADD CONSTRAINT "orders_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."profiles"
+    ADD CONSTRAINT "profiles_email_key" UNIQUE ("email");
+
+
+
+ALTER TABLE ONLY "public"."profiles"
+    ADD CONSTRAINT "profiles_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."purchase_order_items"
+    ADD CONSTRAINT "purchase_order_items_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."purchase_orders"
+    ADD CONSTRAINT "purchase_orders_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."purchase_orders"
+    ADD CONSTRAINT "purchase_orders_po_code_key" UNIQUE ("po_code");
+
+
+
+ALTER TABLE ONLY "public"."return_notifications"
+    ADD CONSTRAINT "return_notifications_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."return_slip_items"
+    ADD CONSTRAINT "return_slip_items_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."return_slips"
+    ADD CONSTRAINT "return_slips_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."stock_history"
+    ADD CONSTRAINT "stock_history_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."tables"
+    ADD CONSTRAINT "tables_name_key" UNIQUE ("name");
+
+
+
+ALTER TABLE ONLY "public"."tables"
+    ADD CONSTRAINT "tables_pkey" PRIMARY KEY ("id");
+
+
+
+ALTER TABLE ONLY "public"."transactions"
+    ADD CONSTRAINT "transactions_pkey" PRIMARY KEY ("id");
+
+
+
+CREATE OR REPLACE TRIGGER "deduct_ingredients_on_order" AFTER INSERT ON "public"."order_items" FOR EACH ROW EXECUTE FUNCTION "public"."deduct_ingredients_on_order"();
+
+
+
+CREATE OR REPLACE TRIGGER "handle_updated_at" BEFORE UPDATE ON "public"."orders" FOR EACH ROW EXECUTE FUNCTION "public"."moddatetime"();
+
+
+
+CREATE OR REPLACE TRIGGER "on_ingredient_stock_update" AFTER UPDATE OF "stock_quantity" ON "public"."ingredients" FOR EACH ROW EXECUTE FUNCTION "public"."handle_ingredient_stock_change"();
+
+
+
+CREATE OR REPLACE TRIGGER "on_order_item_insert_decrement_quantity" AFTER INSERT ON "public"."order_items" FOR EACH ROW EXECUTE FUNCTION "public"."decrement_menu_item_quantity"();
+
+
+
+CREATE OR REPLACE TRIGGER "trigger_after_return_slip_insert" AFTER INSERT ON "public"."return_slips" FOR EACH ROW EXECUTE FUNCTION "public"."create_notification_after_kitchen_approval"();
+
+
+
+CREATE OR REPLACE TRIGGER "trigger_deduct_ingredients" AFTER INSERT ON "public"."order_items" FOR EACH ROW EXECUTE FUNCTION "public"."deduct_ingredients_on_order"();
+
+
+
+CREATE OR REPLACE TRIGGER "trigger_notify_and_update_order_on_menu_change" AFTER UPDATE OF "is_available" ON "public"."menu_items" FOR EACH ROW EXECUTE FUNCTION "public"."handle_menu_item_availability_change"();
+
+
+
+CREATE OR REPLACE TRIGGER "trigger_notify_on_item_completed" AFTER UPDATE OF "status" ON "public"."order_items" FOR EACH ROW EXECUTE FUNCTION "public"."create_item_ready_notification"();
+
+
+
+CREATE OR REPLACE TRIGGER "trigger_on_item_delete" AFTER DELETE ON "public"."order_items" FOR EACH ROW EXECUTE FUNCTION "public"."update_order_timestamp_on_item_change"();
+
+
+
+CREATE OR REPLACE TRIGGER "trigger_on_item_update" AFTER UPDATE ON "public"."order_items" FOR EACH ROW WHEN ((("old"."quantity" IS DISTINCT FROM "new"."quantity") OR ("old"."returned_quantity" IS DISTINCT FROM "new"."returned_quantity"))) EXECUTE FUNCTION "public"."update_order_timestamp_on_item_change"();
+
+
+
+CREATE OR REPLACE TRIGGER "trigger_on_new_order_table_link" AFTER INSERT ON "public"."order_tables" FOR EACH ROW EXECUTE FUNCTION "public"."update_table_status_on_insert_order_tables"();
+
+
+
+CREATE OR REPLACE TRIGGER "trigger_on_order_status_change" AFTER UPDATE OF "status" ON "public"."orders" FOR EACH ROW WHEN (("old"."status" IS DISTINCT FROM "new"."status")) EXECUTE FUNCTION "public"."reset_table_status_on_order_close"();
+
+
+
+ALTER TABLE ONLY "public"."cancellation_requests"
+    ADD CONSTRAINT "cancellation_requests_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id");
+
+
+
+ALTER TABLE ONLY "public"."cart_items"
+    ADD CONSTRAINT "cart_items_menu_item_id_fkey" FOREIGN KEY ("menu_item_id") REFERENCES "public"."menu_items"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."cart_items"
+    ADD CONSTRAINT "cart_items_table_id_fkey" FOREIGN KEY ("table_id") REFERENCES "public"."tables"("id");
+
+
+
+ALTER TABLE ONLY "public"."cart_items"
+    ADD CONSTRAINT "cart_items_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id");
+
+
+
+ALTER TABLE ONLY "public"."menu_item_ingredients"
+    ADD CONSTRAINT "menu_item_ingredients_ingredient_id_fkey" FOREIGN KEY ("ingredient_id") REFERENCES "public"."ingredients"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."menu_item_ingredients"
+    ADD CONSTRAINT "menu_item_ingredients_menu_item_id_fkey" FOREIGN KEY ("menu_item_id") REFERENCES "public"."menu_items"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."menu_item_options"
+    ADD CONSTRAINT "menu_item_options_menu_item_id_fkey" FOREIGN KEY ("menu_item_id") REFERENCES "public"."menu_items"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."menu_item_options"
+    ADD CONSTRAINT "menu_item_options_option_group_id_fkey" FOREIGN KEY ("option_group_id") REFERENCES "public"."option_groups"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."menu_items"
+    ADD CONSTRAINT "menu_items_category_id_fkey" FOREIGN KEY ("category_id") REFERENCES "public"."categories"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."option_choices"
+    ADD CONSTRAINT "option_choices_group_id_fkey" FOREIGN KEY ("group_id") REFERENCES "public"."option_groups"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."order_actions_log"
+    ADD CONSTRAINT "order_actions_log_performed_by_user_id_fkey" FOREIGN KEY ("performed_by_user_id") REFERENCES "auth"."users"("id");
+
+
+
+ALTER TABLE ONLY "public"."order_items"
+    ADD CONSTRAINT "order_items_menu_item_id_fkey" FOREIGN KEY ("menu_item_id") REFERENCES "public"."menu_items"("id") ON DELETE SET NULL;
+
+
+
+ALTER TABLE ONLY "public"."order_items"
+    ADD CONSTRAINT "order_items_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."order_tables"
+    ADD CONSTRAINT "order_tables_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."order_tables"
+    ADD CONSTRAINT "order_tables_table_id_fkey" FOREIGN KEY ("table_id") REFERENCES "public"."tables"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."orders"
+    ADD CONSTRAINT "orders_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id");
+
+
+
+ALTER TABLE ONLY "public"."profiles"
+    ADD CONSTRAINT "profiles_id_fkey" FOREIGN KEY ("id") REFERENCES "auth"."users"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."purchase_order_items"
+    ADD CONSTRAINT "purchase_order_items_ingredient_id_fkey" FOREIGN KEY ("ingredient_id") REFERENCES "public"."ingredients"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."purchase_order_items"
+    ADD CONSTRAINT "purchase_order_items_purchase_order_id_fkey" FOREIGN KEY ("purchase_order_id") REFERENCES "public"."purchase_orders"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."purchase_orders"
+    ADD CONSTRAINT "purchase_orders_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id");
+
+
+
+ALTER TABLE ONLY "public"."return_notifications"
+    ADD CONSTRAINT "return_notifications_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."return_slip_items"
+    ADD CONSTRAINT "return_slip_items_order_item_id_fkey" FOREIGN KEY ("order_item_id") REFERENCES "public"."order_items"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."return_slip_items"
+    ADD CONSTRAINT "return_slip_items_return_slip_id_fkey" FOREIGN KEY ("return_slip_id") REFERENCES "public"."return_slips"("id") ON DELETE CASCADE;
+
+
+
+ALTER TABLE ONLY "public"."return_slips"
+    ADD CONSTRAINT "return_slips_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id");
+
+
+
+ALTER TABLE ONLY "public"."stock_history"
+    ADD CONSTRAINT "stock_history_ingredient_id_fkey" FOREIGN KEY ("ingredient_id") REFERENCES "public"."ingredients"("id");
+
+
+
+ALTER TABLE ONLY "public"."stock_history"
+    ADD CONSTRAINT "stock_history_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id");
+
+
+
+ALTER TABLE ONLY "public"."transactions"
+    ADD CONSTRAINT "transactions_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id");
+
+
+
+CREATE POLICY "Admins can update user profiles" ON "public"."profiles" FOR UPDATE USING (("public"."get_my_role"() = 'admin'::"text")) WITH CHECK (("public"."get_my_role"() = 'admin'::"text"));
+
+
+
+CREATE POLICY "Admins can view all user profiles" ON "public"."profiles" FOR SELECT USING (("public"."get_my_role"() = 'admin'::"text"));
+
+
+
+CREATE POLICY "Allow authenticated read access" ON "public"."categories" FOR SELECT TO "authenticated" USING (true);
+
+
+
+CREATE POLICY "Allow authenticated read access" ON "public"."menu_item_options" FOR SELECT TO "authenticated" USING (true);
+
+
+
+CREATE POLICY "Allow authenticated read access" ON "public"."option_choices" FOR SELECT TO "authenticated" USING (true);
+
+
+
+CREATE POLICY "Allow authenticated read access" ON "public"."option_groups" FOR SELECT TO "authenticated" USING (true);
+
+
+
+CREATE POLICY "Allow authenticated read access for everyone" ON "public"."tables" FOR SELECT TO "authenticated" USING (true);
+
+
+
+CREATE POLICY "Allow authenticated users to manage PO Items" ON "public"."purchase_order_items" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "Allow authenticated users to manage POs" ON "public"."purchase_orders" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "Allow authenticated users to manage data" ON "public"."expenses" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "Allow authenticated users to manage ingredients" ON "public"."ingredients" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "Allow authenticated users to manage logs" ON "public"."order_actions_log" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "Allow authenticated users to manage recipes" ON "public"."menu_item_ingredients" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "Allow authenticated users to manage stock history" ON "public"."stock_history" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "Allow authenticated users to read all orders" ON "public"."orders" FOR SELECT TO "authenticated" USING (true);
+
+
+
+CREATE POLICY "Allow full access for authenticated users" ON "public"."cancellation_requests" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "Allow full access for authenticated users" ON "public"."cart_items" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "Allow full access for authenticated users" ON "public"."menu_items" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "Allow full access for authenticated users" ON "public"."order_items" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "Allow full access for authenticated users" ON "public"."order_tables" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "Allow full access for authenticated users" ON "public"."orders" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "Allow full access for authenticated users" ON "public"."return_notifications" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "Allow full access for authenticated users" ON "public"."return_slip_items" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "Allow full access for authenticated users" ON "public"."return_slips" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "Allow full access for authenticated users" ON "public"."tables" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "Allow full access for authenticated users" ON "public"."transactions" TO "authenticated" USING (true) WITH CHECK (true);
+
+
+
+CREATE POLICY "Allow public read access to orders" ON "public"."orders" FOR SELECT USING (true);
+
+
+
+CREATE POLICY "Allow users to read their own profile" ON "public"."profiles" FOR SELECT USING (("auth"."uid"() = "id"));
+
+
+
+CREATE POLICY "Public orders are viewable by everyone." ON "public"."orders" FOR SELECT USING (true);
+
+
+
+ALTER TABLE "public"."cancellation_requests" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."cart_items" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."categories" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."expenses" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."ingredients" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."menu_item_ingredients" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."menu_item_options" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."menu_items" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."option_choices" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."option_groups" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."order_actions_log" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."order_items" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."order_tables" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."orders" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."profiles" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."purchase_order_items" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."purchase_orders" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."return_notifications" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."return_slip_items" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."return_slips" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."stock_history" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."tables" ENABLE ROW LEVEL SECURITY;
+
+
+ALTER TABLE "public"."transactions" ENABLE ROW LEVEL SECURITY;
+
+
+
+
+ALTER PUBLICATION "supabase_realtime" OWNER TO "postgres";
+
+
+
+
+
+
+ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."cancellation_requests";
+
+
+
+ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."menu_items";
+
+
+
+ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."order_items";
+
+
+
+ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."orders";
+
+
+
+ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."return_notifications";
+
+
+
+ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."return_slips";
+
+
+
+ALTER PUBLICATION "supabase_realtime" ADD TABLE ONLY "public"."tables";
+
+
+
+
+
+
+GRANT USAGE ON SCHEMA "public" TO "postgres";
+GRANT USAGE ON SCHEMA "public" TO "anon";
+GRANT USAGE ON SCHEMA "public" TO "authenticated";
+GRANT USAGE ON SCHEMA "public" TO "service_role";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+GRANT ALL ON FUNCTION "public"."approve_cancellation_request"("p_request_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."approve_cancellation_request"("p_request_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."approve_cancellation_request"("p_request_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."calculate_ingredients_needed"("p_menu_item_id" "uuid", "p_quantity" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."calculate_ingredients_needed"("p_menu_item_id" "uuid", "p_quantity" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."calculate_ingredients_needed"("p_menu_item_id" "uuid", "p_quantity" integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."cancel_order_and_reset_tables"("p_order_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."cancel_order_and_reset_tables"("p_order_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."cancel_order_and_reset_tables"("p_order_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."cancel_order_items"("p_order_item_ids" integer[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."cancel_order_items"("p_order_item_ids" integer[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."cancel_order_items"("p_order_item_ids" integer[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."cancel_provisional_bill"("p_order_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."cancel_provisional_bill"("p_order_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."cancel_provisional_bill"("p_order_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."check_item_has_active_orders"("p_item_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."check_item_has_active_orders"("p_item_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."check_item_has_active_orders"("p_item_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."complete_purchase_order"("p_po_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."complete_purchase_order"("p_po_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."complete_purchase_order"("p_po_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."create_item_ready_notification"() TO "anon";
+GRANT ALL ON FUNCTION "public"."create_item_ready_notification"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."create_item_ready_notification"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."create_notification_after_kitchen_approval"() TO "anon";
+GRANT ALL ON FUNCTION "public"."create_notification_after_kitchen_approval"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."create_notification_after_kitchen_approval"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."create_random_orders"("num_orders" integer, "days_ago" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."create_random_orders"("num_orders" integer, "days_ago" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."create_random_orders"("num_orders" integer, "days_ago" integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."decrement_menu_item_quantity"() TO "anon";
+GRANT ALL ON FUNCTION "public"."decrement_menu_item_quantity"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."decrement_menu_item_quantity"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."deduct_ingredients_on_order"() TO "anon";
+GRANT ALL ON FUNCTION "public"."deduct_ingredients_on_order"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."deduct_ingredients_on_order"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."delete_old_unverified_users"() TO "anon";
+GRANT ALL ON FUNCTION "public"."delete_old_unverified_users"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."delete_old_unverified_users"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."force_close_all_active_sessions"() TO "anon";
+GRANT ALL ON FUNCTION "public"."force_close_all_active_sessions"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."force_close_all_active_sessions"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."force_close_all_orders"() TO "anon";
+GRANT ALL ON FUNCTION "public"."force_close_all_orders"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."force_close_all_orders"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."force_close_all_tables"() TO "anon";
+GRANT ALL ON FUNCTION "public"."force_close_all_tables"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."force_close_all_tables"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."force_complete_all_kitchen_items"() TO "anon";
+GRANT ALL ON FUNCTION "public"."force_complete_all_kitchen_items"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."force_complete_all_kitchen_items"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."force_end_of_day_cleanup"() TO "anon";
+GRANT ALL ON FUNCTION "public"."force_end_of_day_cleanup"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."force_end_of_day_cleanup"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."force_reset_operations"() TO "anon";
+GRANT ALL ON FUNCTION "public"."force_reset_operations"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."force_reset_operations"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_cash_flow_report"("p_start_date" "date", "p_end_date" "date") TO "anon";
+GRANT ALL ON FUNCTION "public"."get_cash_flow_report"("p_start_date" "date", "p_end_date" "date") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_cash_flow_report"("p_start_date" "date", "p_end_date" "date") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_cash_fund_data"("p_start_date" timestamp with time zone, "p_end_date" timestamp with time zone) TO "anon";
+GRANT ALL ON FUNCTION "public"."get_cash_fund_data"("p_start_date" timestamp with time zone, "p_end_date" timestamp with time zone) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_cash_fund_data"("p_start_date" timestamp with time zone, "p_end_date" timestamp with time zone) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_cash_fund_report"("p_start_date" "date", "p_end_date" "date") TO "anon";
+GRANT ALL ON FUNCTION "public"."get_cash_fund_report"("p_start_date" "date", "p_end_date" "date") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_cash_fund_report"("p_start_date" "date", "p_end_date" "date") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_cashier_dashboard_data"() TO "anon";
+GRANT ALL ON FUNCTION "public"."get_cashier_dashboard_data"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_cashier_dashboard_data"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_daily_cash_reconciliation"("p_target_date" "date") TO "anon";
+GRANT ALL ON FUNCTION "public"."get_daily_cash_reconciliation"("p_target_date" "date") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_daily_cash_reconciliation"("p_target_date" "date") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_daily_summary_report"("p_target_date" "date") TO "anon";
+GRANT ALL ON FUNCTION "public"."get_daily_summary_report"("p_target_date" "date") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_daily_summary_report"("p_target_date" "date") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_dashboard_data"() TO "anon";
+GRANT ALL ON FUNCTION "public"."get_dashboard_data"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_dashboard_data"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_dashboard_overview"() TO "anon";
+GRANT ALL ON FUNCTION "public"."get_dashboard_overview"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_dashboard_overview"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_employee_count"() TO "anon";
+GRANT ALL ON FUNCTION "public"."get_employee_count"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_employee_count"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_financial_summary_report"("p_start_date" "date", "p_end_date" "date") TO "anon";
+GRANT ALL ON FUNCTION "public"."get_financial_summary_report"("p_start_date" "date", "p_end_date" "date") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_financial_summary_report"("p_start_date" "date", "p_end_date" "date") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_full_dashboard_data"() TO "anon";
+GRANT ALL ON FUNCTION "public"."get_full_dashboard_data"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_full_dashboard_data"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_inventory_report"() TO "anon";
+GRANT ALL ON FUNCTION "public"."get_inventory_report"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_inventory_report"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_live_dashboard_snapshot"() TO "anon";
+GRANT ALL ON FUNCTION "public"."get_live_dashboard_snapshot"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_live_dashboard_snapshot"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_my_role"() TO "anon";
+GRANT ALL ON FUNCTION "public"."get_my_role"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_my_role"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_profit_by_product"("p_start_date" "date", "p_end_date" "date") TO "anon";
+GRANT ALL ON FUNCTION "public"."get_profit_by_product"("p_start_date" "date", "p_end_date" "date") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_profit_by_product"("p_start_date" "date", "p_end_date" "date") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_profit_report"("p_start_date" "date", "p_end_date" "date") TO "anon";
+GRANT ALL ON FUNCTION "public"."get_profit_report"("p_start_date" "date", "p_end_date" "date") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_profit_report"("p_start_date" "date", "p_end_date" "date") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_profit_trend"("p_start_date" "date", "p_end_date" "date") TO "anon";
+GRANT ALL ON FUNCTION "public"."get_profit_trend"("p_start_date" "date", "p_end_date" "date") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_profit_trend"("p_start_date" "date", "p_end_date" "date") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_purchase_report"("p_start_date" "date", "p_end_date" "date") TO "anon";
+GRANT ALL ON FUNCTION "public"."get_purchase_report"("p_start_date" "date", "p_end_date" "date") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_purchase_report"("p_start_date" "date", "p_end_date" "date") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_receivables_report"("p_start_date" "date", "p_end_date" "date") TO "anon";
+GRANT ALL ON FUNCTION "public"."get_receivables_report"("p_start_date" "date", "p_end_date" "date") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_receivables_report"("p_start_date" "date", "p_end_date" "date") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_reorder_suggestions"() TO "anon";
+GRANT ALL ON FUNCTION "public"."get_reorder_suggestions"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_reorder_suggestions"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_sales_report"("p_start_date" "date", "p_end_date" "date") TO "anon";
+GRANT ALL ON FUNCTION "public"."get_sales_report"("p_start_date" "date", "p_end_date" "date") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_sales_report"("p_start_date" "date", "p_end_date" "date") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_tables_with_notifications"() TO "anon";
+GRANT ALL ON FUNCTION "public"."get_tables_with_notifications"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_tables_with_notifications"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_total_returned_quantity_for_order"("p_order_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."get_total_returned_quantity_for_order"("p_order_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_total_returned_quantity_for_order"("p_order_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_transactions_report"("p_start_date" timestamp with time zone, "p_end_date" timestamp with time zone) TO "anon";
+GRANT ALL ON FUNCTION "public"."get_transactions_report"("p_start_date" timestamp with time zone, "p_end_date" timestamp with time zone) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_transactions_report"("p_start_date" timestamp with time zone, "p_end_date" timestamp with time zone) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."get_transactions_with_details"("p_start_date" timestamp with time zone, "p_end_date" timestamp with time zone) TO "anon";
+GRANT ALL ON FUNCTION "public"."get_transactions_with_details"("p_start_date" timestamp with time zone, "p_end_date" timestamp with time zone) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."get_transactions_with_details"("p_start_date" timestamp with time zone, "p_end_date" timestamp with time zone) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."handle_cancellation_request_update"() TO "anon";
+GRANT ALL ON FUNCTION "public"."handle_cancellation_request_update"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."handle_cancellation_request_update"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."handle_ingredient_stock_change"() TO "anon";
+GRANT ALL ON FUNCTION "public"."handle_ingredient_stock_change"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."handle_ingredient_stock_change"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."handle_item_return"("p_order_id" "uuid", "p_reason" "text", "p_items" "jsonb") TO "anon";
+GRANT ALL ON FUNCTION "public"."handle_item_return"("p_order_id" "uuid", "p_reason" "text", "p_items" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."handle_item_return"("p_order_id" "uuid", "p_reason" "text", "p_items" "jsonb") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."handle_menu_item_availability_change"() TO "anon";
+GRANT ALL ON FUNCTION "public"."handle_menu_item_availability_change"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."handle_menu_item_availability_change"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "anon";
+GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."handle_new_user"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."handle_order_merge"("source_order_id_input" "uuid", "target_table_ids_input" bigint[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."handle_order_merge"("source_order_id_input" "uuid", "target_table_ids_input" bigint[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."handle_order_merge"("source_order_id_input" "uuid", "target_table_ids_input" bigint[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."handle_order_split"("source_order_id_input" "uuid", "target_table_id_input" bigint, "items_to_move_input" "jsonb") TO "anon";
+GRANT ALL ON FUNCTION "public"."handle_order_split"("source_order_id_input" "uuid", "target_table_id_input" bigint, "items_to_move_input" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."handle_order_split"("source_order_id_input" "uuid", "target_table_id_input" bigint, "items_to_move_input" "jsonb") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."handle_table_grouping"("source_order_id_input" "uuid", "target_table_ids_input" bigint[]) TO "anon";
+GRANT ALL ON FUNCTION "public"."handle_table_grouping"("source_order_id_input" "uuid", "target_table_ids_input" bigint[]) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."handle_table_grouping"("source_order_id_input" "uuid", "target_table_ids_input" bigint[]) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."handle_table_transfer"("source_table_id_input" bigint, "target_table_id_input" bigint) TO "anon";
+GRANT ALL ON FUNCTION "public"."handle_table_transfer"("source_table_id_input" bigint, "target_table_id_input" bigint) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."handle_table_transfer"("source_table_id_input" bigint, "target_table_id_input" bigint) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."moddatetime"() TO "anon";
+GRANT ALL ON FUNCTION "public"."moddatetime"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."moddatetime"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."reset_daily_item_quantities"() TO "anon";
+GRANT ALL ON FUNCTION "public"."reset_daily_item_quantities"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."reset_daily_item_quantities"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."reset_daily_stock"() TO "anon";
+GRANT ALL ON FUNCTION "public"."reset_daily_stock"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."reset_daily_stock"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."reset_table_status_on_order_close"() TO "anon";
+GRANT ALL ON FUNCTION "public"."reset_table_status_on_order_close"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."reset_table_status_on_order_close"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."send_provisional_bill"("p_order_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."send_provisional_bill"("p_order_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."send_provisional_bill"("p_order_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."setup_ingredient"("p_name" "text", "p_unit" "text", "p_initial_stock" numeric, "p_low_threshold" numeric) TO "anon";
+GRANT ALL ON FUNCTION "public"."setup_ingredient"("p_name" "text", "p_unit" "text", "p_initial_stock" numeric, "p_low_threshold" numeric) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."setup_ingredient"("p_name" "text", "p_unit" "text", "p_initial_stock" numeric, "p_low_threshold" numeric) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."setup_menu_recipe"("p_menu_item_id" "uuid", "p_ingredient_name" "text", "p_quantity_required" numeric) TO "anon";
+GRANT ALL ON FUNCTION "public"."setup_menu_recipe"("p_menu_item_id" "uuid", "p_ingredient_name" "text", "p_quantity_required" numeric) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."setup_menu_recipe"("p_menu_item_id" "uuid", "p_ingredient_name" "text", "p_quantity_required" numeric) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sp_handle_item_return"("p_order_id" "uuid", "p_reason" "text", "p_items" "jsonb") TO "anon";
+GRANT ALL ON FUNCTION "public"."sp_handle_item_return"("p_order_id" "uuid", "p_reason" "text", "p_items" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sp_handle_item_return"("p_order_id" "uuid", "p_reason" "text", "p_items" "jsonb") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."sp_process_item_return"("p_order_id" "uuid", "p_reason" "text", "p_items" "jsonb") TO "anon";
+GRANT ALL ON FUNCTION "public"."sp_process_item_return"("p_order_id" "uuid", "p_reason" "text", "p_items" "jsonb") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."sp_process_item_return"("p_order_id" "uuid", "p_reason" "text", "p_items" "jsonb") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."suggest_import_quantity"("p_ingredient_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."suggest_import_quantity"("p_ingredient_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."suggest_import_quantity"("p_ingredient_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."toggle_provisional_bill_status"("p_order_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."toggle_provisional_bill_status"("p_order_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."toggle_provisional_bill_status"("p_order_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."transfer_order_to_new_table"("p_order_id" "uuid", "p_old_table_id" bigint, "p_new_table_id" bigint) TO "anon";
+GRANT ALL ON FUNCTION "public"."transfer_order_to_new_table"("p_order_id" "uuid", "p_old_table_id" bigint, "p_new_table_id" bigint) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."transfer_order_to_new_table"("p_order_id" "uuid", "p_old_table_id" bigint, "p_new_table_id" bigint) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."update_menu_item_availability"("p_menu_item_id" "uuid") TO "anon";
+GRANT ALL ON FUNCTION "public"."update_menu_item_availability"("p_menu_item_id" "uuid") TO "authenticated";
+GRANT ALL ON FUNCTION "public"."update_menu_item_availability"("p_menu_item_id" "uuid") TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."update_order_timestamp_on_item_change"() TO "anon";
+GRANT ALL ON FUNCTION "public"."update_order_timestamp_on_item_change"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."update_order_timestamp_on_item_change"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."update_returned_quantity"("p_order_item_id" integer, "p_quantity_to_return" integer) TO "anon";
+GRANT ALL ON FUNCTION "public"."update_returned_quantity"("p_order_item_id" integer, "p_quantity_to_return" integer) TO "authenticated";
+GRANT ALL ON FUNCTION "public"."update_returned_quantity"("p_order_item_id" integer, "p_quantity_to_return" integer) TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."update_table_status_on_insert_order_tables"() TO "anon";
+GRANT ALL ON FUNCTION "public"."update_table_status_on_insert_order_tables"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."update_table_status_on_insert_order_tables"() TO "service_role";
+
+
+
+GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "anon";
+GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "authenticated";
+GRANT ALL ON FUNCTION "public"."update_updated_at_column"() TO "service_role";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+GRANT ALL ON TABLE "public"."cancellation_requests" TO "anon";
+GRANT ALL ON TABLE "public"."cancellation_requests" TO "authenticated";
+GRANT ALL ON TABLE "public"."cancellation_requests" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."cart_items" TO "anon";
+GRANT ALL ON TABLE "public"."cart_items" TO "authenticated";
+GRANT ALL ON TABLE "public"."cart_items" TO "service_role";
+
+
+
+GRANT ALL ON SEQUENCE "public"."cart_items_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."cart_items_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."cart_items_id_seq" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."categories" TO "anon";
+GRANT ALL ON TABLE "public"."categories" TO "authenticated";
+GRANT ALL ON TABLE "public"."categories" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."expenses" TO "anon";
+GRANT ALL ON TABLE "public"."expenses" TO "authenticated";
+GRANT ALL ON TABLE "public"."expenses" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."ingredients" TO "anon";
+GRANT ALL ON TABLE "public"."ingredients" TO "authenticated";
+GRANT ALL ON TABLE "public"."ingredients" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."ingredients_need_reorder" TO "anon";
+GRANT ALL ON TABLE "public"."ingredients_need_reorder" TO "authenticated";
+GRANT ALL ON TABLE "public"."ingredients_need_reorder" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."menu_item_ingredients" TO "anon";
+GRANT ALL ON TABLE "public"."menu_item_ingredients" TO "authenticated";
+GRANT ALL ON TABLE "public"."menu_item_ingredients" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."menu_items" TO "anon";
+GRANT ALL ON TABLE "public"."menu_items" TO "authenticated";
+GRANT ALL ON TABLE "public"."menu_items" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."menu_cost_analysis" TO "anon";
+GRANT ALL ON TABLE "public"."menu_cost_analysis" TO "authenticated";
+GRANT ALL ON TABLE "public"."menu_cost_analysis" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."menu_item_options" TO "anon";
+GRANT ALL ON TABLE "public"."menu_item_options" TO "authenticated";
+GRANT ALL ON TABLE "public"."menu_item_options" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."menu_recipes" TO "anon";
+GRANT ALL ON TABLE "public"."menu_recipes" TO "authenticated";
+GRANT ALL ON TABLE "public"."menu_recipes" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."menu_with_recipes" TO "anon";
+GRANT ALL ON TABLE "public"."menu_with_recipes" TO "authenticated";
+GRANT ALL ON TABLE "public"."menu_with_recipes" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."option_choices" TO "anon";
+GRANT ALL ON TABLE "public"."option_choices" TO "authenticated";
+GRANT ALL ON TABLE "public"."option_choices" TO "service_role";
+
+
+
+GRANT ALL ON SEQUENCE "public"."option_choices_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."option_choices_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."option_choices_id_seq" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."option_groups" TO "anon";
+GRANT ALL ON TABLE "public"."option_groups" TO "authenticated";
+GRANT ALL ON TABLE "public"."option_groups" TO "service_role";
+
+
+
+GRANT ALL ON SEQUENCE "public"."option_groups_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."option_groups_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."option_groups_id_seq" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."order_actions_log" TO "anon";
+GRANT ALL ON TABLE "public"."order_actions_log" TO "authenticated";
+GRANT ALL ON TABLE "public"."order_actions_log" TO "service_role";
+
+
+
+GRANT ALL ON SEQUENCE "public"."order_actions_log_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."order_actions_log_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."order_actions_log_id_seq" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."order_items" TO "anon";
+GRANT ALL ON TABLE "public"."order_items" TO "authenticated";
+GRANT ALL ON TABLE "public"."order_items" TO "service_role";
+
+
+
+GRANT ALL ON SEQUENCE "public"."order_items_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."order_items_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."order_items_id_seq" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."order_tables" TO "anon";
+GRANT ALL ON TABLE "public"."order_tables" TO "authenticated";
+GRANT ALL ON TABLE "public"."order_tables" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."orders" TO "anon";
+GRANT ALL ON TABLE "public"."orders" TO "authenticated";
+GRANT ALL ON TABLE "public"."orders" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."profiles" TO "anon";
+GRANT ALL ON TABLE "public"."profiles" TO "authenticated";
+GRANT ALL ON TABLE "public"."profiles" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."purchase_order_items" TO "anon";
+GRANT ALL ON TABLE "public"."purchase_order_items" TO "authenticated";
+GRANT ALL ON TABLE "public"."purchase_order_items" TO "service_role";
+
+
+
+GRANT ALL ON SEQUENCE "public"."purchase_order_items_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."purchase_order_items_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."purchase_order_items_id_seq" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."purchase_orders" TO "anon";
+GRANT ALL ON TABLE "public"."purchase_orders" TO "authenticated";
+GRANT ALL ON TABLE "public"."purchase_orders" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."return_notifications" TO "anon";
+GRANT ALL ON TABLE "public"."return_notifications" TO "authenticated";
+GRANT ALL ON TABLE "public"."return_notifications" TO "service_role";
+
+
+
+GRANT ALL ON SEQUENCE "public"."return_notifications_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."return_notifications_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."return_notifications_id_seq" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."return_slip_items" TO "anon";
+GRANT ALL ON TABLE "public"."return_slip_items" TO "authenticated";
+GRANT ALL ON TABLE "public"."return_slip_items" TO "service_role";
+
+
+
+GRANT ALL ON SEQUENCE "public"."return_slip_items_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."return_slip_items_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."return_slip_items_id_seq" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."return_slips" TO "anon";
+GRANT ALL ON TABLE "public"."return_slips" TO "authenticated";
+GRANT ALL ON TABLE "public"."return_slips" TO "service_role";
+
+
+
+GRANT ALL ON SEQUENCE "public"."return_slips_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."return_slips_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."return_slips_id_seq" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."stock_history" TO "anon";
+GRANT ALL ON TABLE "public"."stock_history" TO "authenticated";
+GRANT ALL ON TABLE "public"."stock_history" TO "service_role";
+
+
+
+GRANT ALL ON SEQUENCE "public"."stock_history_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."stock_history_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."stock_history_id_seq" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."tables" TO "anon";
+GRANT ALL ON TABLE "public"."tables" TO "authenticated";
+GRANT ALL ON TABLE "public"."tables" TO "service_role";
+
+
+
+GRANT ALL ON SEQUENCE "public"."tables_id_seq" TO "anon";
+GRANT ALL ON SEQUENCE "public"."tables_id_seq" TO "authenticated";
+GRANT ALL ON SEQUENCE "public"."tables_id_seq" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."today_ingredient_consumption" TO "anon";
+GRANT ALL ON TABLE "public"."today_ingredient_consumption" TO "authenticated";
+GRANT ALL ON TABLE "public"."today_ingredient_consumption" TO "service_role";
+
+
+
+GRANT ALL ON TABLE "public"."transactions" TO "anon";
+GRANT ALL ON TABLE "public"."transactions" TO "authenticated";
+GRANT ALL ON TABLE "public"."transactions" TO "service_role";
+
+
+
+
+
+
+
+
+
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "postgres";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "anon";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "authenticated";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON SEQUENCES TO "service_role";
+
+
+
+
+
+
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "postgres";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "anon";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "authenticated";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON FUNCTIONS TO "service_role";
+
+
+
+
+
+
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "postgres";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "anon";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "authenticated";
+ALTER DEFAULT PRIVILEGES FOR ROLE "postgres" IN SCHEMA "public" GRANT ALL ON TABLES TO "service_role";
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+RESET ALL;

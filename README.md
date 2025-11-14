@@ -1,10 +1,10 @@
-# 🍽️ AppDatDoHub - Restaurant Management System
+# 🍽️ TableFlow - Restaurant Management System
 # XÂY DỰNG ỨNG DỤNG GỌI MÓN VÀ THANH TOÁN TẠI BÀN
 
 <div align="center">
 
-[![Status](https://img.shields.io/badge/Status-Active_Development-brightgreen?style=for-the-badge)](https://github.com/Banhcanhcua1107/AppDatDoHub)
-[![Version](https://img.shields.io/badge/Version-1.1.0-blue?style=for-the-badge)](https://github.com/Banhcanhcua1107/AppDatDoHub/releases)
+[![Status](https://img.shields.io/badge/Status-Active_Development-brightgreen?style=for-the-badge)](https://github.com/Banhcanhcua1107/TableFlow)
+[![Version](https://img.shields.io/badge/Version-1.1.0-blue?style=for-the-badge)](https://github.com/Banhcanhcua1107/TableFlow/releases)
 [![React Native](https://img.shields.io/badge/React_Native-0.79.6-61dafb?style=for-the-badge&logo=react)](https://reactnative.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8.3-3178c6?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org)
 [![Expo](https://img.shields.io/badge/Expo-53.0.6-000?style=for-the-badge&logo=expo)](https://expo.dev)
@@ -15,7 +15,7 @@
 
 🎯 Tích hợp đơn hàng Real-time • 👨‍🍳 Kitchen Display System • 💳 Thanh toán MoMo/VietQR • 📊 Báo cáo doanh số
 
-[🌐 Website](#) • [📖 Tài Liệu](#tài-liệu) • [🐛 Issues](https://github.com/Banhcanhcua1107/AppDatDoHub/issues) • [💬 Discussions](https://github.com/Banhcanhcua1107/AppDatDoHub/discussions)
+[🌐 Website](#) • [📖 Tài Liệu](#tài-liệu) • [🐛 Issues](https://github.com/Banhcanhcua1107/TableFlow/issues) • [💬 Discussions](https://github.com/Banhcanhcua1107/TableFlow/discussions)
 
 </div>
 
@@ -23,7 +23,7 @@
 
 ## 📌 Giới Thiệu
 
-**AppDatDoHub** là nền tảng di động **toàn diện** được xây dựng để quản lý hoạt động hàng ngày của nhà hàng, quán ăn.
+**TableFlow** là nền tảng di động **toàn diện** được xây dựng để quản lý hoạt động hàng ngày của nhà hàng, quán ăn.
 
 Ứng dụng hỗ trợ **nhiều vai trò** (Nhân viên phục vụ, Bếp, Thu ngân, Quản lý) với các tính năng **riêng biệt** và **tích hợp tuyệt vời**.
 
