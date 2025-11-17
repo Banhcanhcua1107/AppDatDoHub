@@ -117,6 +117,9 @@ const OrderListItem: React.FC<{
   const isInProgress = status === 'in_progress';
   const isCompleted = status === 'served' || status === 'completed';
 
+  // Tính số lượng hiển thị: nếu hết hoặc không khả dụng thì hiển thị 0
+  const displayQuantity = (isOutOfStock || isUnavailable) ? 0 : item.quantity;
+
   const ExpandedView = () => (
     <View className="mt-4 pt-4 border-t border-gray-100">
       <View className="flex-row items-center justify-between">
@@ -129,7 +132,7 @@ const OrderListItem: React.FC<{
           >
             <Icon name="remove" size={18} color={(!isNew || isOutOfStock || isUnavailable) ? '#ccc' : '#333'} />
           </TouchableOpacity>
-          <Text className="text-lg font-bold mx-4">{item.quantity}</Text>
+          <Text className="text-lg font-bold mx-4">{displayQuantity}</Text>
           <TouchableOpacity
             onPress={() => onUpdateQuantity(item.quantity + 1)}
             disabled={!isNew || isOutOfStock || isUnavailable}
@@ -216,7 +219,7 @@ const OrderListItem: React.FC<{
           <Text
             className={`text-base ${(isPaid || isReturnedItem || isOutOfStock || isUnavailable) ? 'text-gray-500' : 'text-gray-600'}`}
           >
-            {item.quantity} x {item.unit_price.toLocaleString('vi-VN')}đ
+            {displayQuantity} x {item.unit_price.toLocaleString('vi-VN')}đ
           </Text>
         </View>
       </TouchableOpacity>
@@ -280,14 +283,54 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
     item: DisplayItem | null;
   }>({ visible: false, item: null });
   const [closeSessionModal, setCloseSessionModal] = useState(false);
-  
-  // [MỚI] Ref theo dõi món đã từng hết - sử dụng useRef để tránh re-render
-  const previouslyUnavailableItemsRef = useRef<Set<number>>(new Set());
 
-  // ... (Toàn bộ các hàm khác như fetchAllData, handleUpdateQuantity, sendNewItemsToKitchen, v.v. giữ nguyên)
-  // ... (Chúng không cần thay đổi vì lỗi nằm ở hàm thanh toán)
   // [SỬA] Sử dụng ref để tránh re-render khi update activeOrderId
   const isInitialMount = useRef(true);
+  const outOfStockSubscriptionRef = useRef<any>(null);
+
+  /**
+   * [SIMPLIFIED] Subscribe to real-time changes
+   * When kitchen báo hết/còn, items are automatically added/deleted from database
+   * We just need to reload order data when changes happen
+   */
+  const subscribeToOutOfStock = useCallback((orderId: string | null) => {
+    // Unsubscribe từ subscription cũ
+    if (outOfStockSubscriptionRef.current) {
+      try {
+        supabase.removeChannel(outOfStockSubscriptionRef.current);
+      } catch (err) {
+        console.warn('[subscribeToOutOfStock] Error removing old channel:', err);
+      }
+      outOfStockSubscriptionRef.current = null;
+    }
+
+    if (!orderId) return;
+
+    try {
+      // Subscribe to order_items changes for this order
+      const channel = supabase
+        .channel(`order_items:order_id=eq.${orderId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'order_items',
+            filter: `order_id=eq.${orderId}`,
+          },
+          (payload) => {
+            console.log('[subscribeToOutOfStock] order_items changed:', payload.eventType);
+            // Reload data when items change (deleted or added)
+            fetchAllData(false);
+          }
+        )
+        .subscribe();
+
+      outOfStockSubscriptionRef.current = channel;
+    } catch (err) {
+      console.error('[subscribeToOutOfStock] Failed to subscribe:', err);
+    }
+  }, [fetchAllData]);
   
   const fetchAllData = useCallback(
     async (isInitialLoad = true) => {
@@ -375,6 +418,7 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
                   image_url,
                   isReturnedItem: true,
                   is_available,
+                  isUnavailable: false,
                 });
               }
 
@@ -395,6 +439,7 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
                   returned_quantity: item.returned_quantity,
                   image_url,
                   is_available,
+                  isUnavailable: false,
                 };
                 if (displayItem.isPaid) paidItemsData.push(displayItem);
                 else pendingItems.push(displayItem);
@@ -453,6 +498,7 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
                             returned_quantity: item.returned_quantity,
                             image_url,
                             is_available,
+                            isUnavailable: false,
                           });
                         }
                       });
@@ -488,39 +534,17 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
             returned_quantity: 0,
             image_url: item.menu_items?.image_url || null,
             is_available: item.menu_items?.is_available ?? true,
+            isUnavailable: false,
           }));
         }
         
-        // [MỚI] Cập nhật danh sách món đã từng hết
-        const currentlyUnavailableMenuItemIds = new Set<number>();
-        [...newItems, ...pendingItems, ...paidItemsData, ...returnedItemsSectionData].forEach(item => {
-          if (item.is_available === false && item.menuItemId) {
-            currentlyUnavailableMenuItemIds.add(item.menuItemId);
-          }
-        });
-        
-        // [SỬA] Cập nhật ref thay vì state để tránh re-render vô hạn
-        currentlyUnavailableMenuItemIds.forEach(id => {
-          previouslyUnavailableItemsRef.current.add(id);
-        });
-        
-        // [MỚI] Hàm kiểm tra món "không khả dụng" - món trước đó hết, giờ còn lại nhưng không được phục vụ
-        const isItemUnavailable = (item: DisplayItem): boolean => {
-          if (!item.menuItemId) return false;
-          // [SỬA] Sử dụng ref thay vì state
-          return previouslyUnavailableItemsRef.current.has(item.menuItemId) && item.is_available === true;
-        };
-        
-        // Phân loại món thành các nhóm
+        // Phân loại món thành các nhóm: available hoặc out of stock
         const availableNewItems: DisplayItem[] = [];
         const outOfStockNewItems: DisplayItem[] = [];
-        const unavailableNewItems: DisplayItem[] = [];
         
         newItems.forEach(item => {
           if (item.is_available === false) {
             outOfStockNewItems.push(item);
-          } else if (isItemUnavailable(item)) {
-            unavailableNewItems.push({ ...item, isUnavailable: true });
           } else {
             availableNewItems.push(item);
           }
@@ -528,13 +552,10 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
         
         const availablePendingItems: DisplayItem[] = [];
         const outOfStockPendingItems: DisplayItem[] = [];
-        const unavailablePendingItems: DisplayItem[] = [];
         
         pendingItems.forEach(item => {
           if (item.is_available === false) {
             outOfStockPendingItems.push(item);
-          } else if (isItemUnavailable(item)) {
-            unavailablePendingItems.push({ ...item, isUnavailable: true });
           } else {
             availablePendingItems.push(item);
           }
@@ -542,13 +563,10 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
         
         const availablePaidItems: DisplayItem[] = [];
         const outOfStockPaidItems: DisplayItem[] = [];
-        const unavailablePaidItems: DisplayItem[] = [];
         
         paidItemsData.forEach(item => {
           if (item.is_available === false) {
             outOfStockPaidItems.push(item);
-          } else if (isItemUnavailable(item)) {
-            unavailablePaidItems.push({ ...item, isUnavailable: true });
           } else {
             availablePaidItems.push(item);
           }
@@ -556,13 +574,10 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
         
         const availableReturnedItems: DisplayItem[] = [];
         const outOfStockReturnedItems: DisplayItem[] = [];
-        const unavailableReturnedItems: DisplayItem[] = [];
         
         returnedItemsSectionData.forEach(item => {
           if (item.is_available === false) {
             outOfStockReturnedItems.push(item);
-          } else if (isItemUnavailable(item)) {
-            unavailableReturnedItems.push({ ...item, isUnavailable: true });
           } else {
             availableReturnedItems.push(item);
           }
@@ -595,12 +610,6 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
         }
         if (availablePaidItems.length > 0)
           sections.push({ title: 'Món đã thanh toán', data: availablePaidItems });
-        
-        // [MỚI] Section "Món không khả dụng"
-        if (unavailableNewItems.length > 0 || unavailablePendingItems.length > 0 || unavailableReturnedItems.length > 0 || unavailablePaidItems.length > 0) {
-          const unavailableItems = [...unavailableNewItems, ...unavailablePendingItems, ...unavailableReturnedItems, ...unavailablePaidItems];
-          sections.push({ title: 'Món không khả dụng', data: unavailableItems });
-        }
         
         if (outOfStockNewItems.length > 0 || outOfStockPendingItems.length > 0 || outOfStockReturnedItems.length > 0 || outOfStockPaidItems.length > 0) {
           const outOfStockItems = [...outOfStockNewItems, ...outOfStockPendingItems, ...outOfStockReturnedItems, ...outOfStockPaidItems];
@@ -673,6 +682,25 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [routeOrderId, initialTableId])
   );
+
+  /**
+   * [MỚI] Effect để subscribe to out-of-stock events khi activeOrderId thay đổi
+   */
+  useEffect(() => {
+    if (activeOrderId) {
+      subscribeToOutOfStock(activeOrderId);
+    }
+
+    return () => {
+      if (outOfStockSubscriptionRef.current) {
+        supabase.removeChannel(outOfStockSubscriptionRef.current);
+      }
+    };
+  }, [activeOrderId, subscribeToOutOfStock]);
+
+  /**
+   * Auto-reload when items change
+   */
 
   const handleUpdateQuantity = async (item: DisplayItem, newQuantity: number) => {
   if (!item.isNew) return;
@@ -947,8 +975,7 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
   const billableItems = allItems.filter((item) => 
     !item.isPaid && 
     !item.isReturnedItem && 
-    item.is_available !== false &&
-    !item.isUnavailable // [MỚI] Loại trừ món không khả dụng
+    item.is_available !== false
   );
   const paidItems = allItems.filter((item) => item.isPaid);
   const hasNewItems = newItemsFromCart.length > 0;
@@ -1121,7 +1148,38 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         unit_price: item.unit_price,
         customizations: item.customizations,
       }));
-      await supabase.from('order_items').insert(itemsToInsert).throwOnError();
+      const insertedData = await supabase.from('order_items').insert(itemsToInsert).select('id, menu_item_id').throwOnError();
+      
+      // [MỚI] Đánh dấu các items vừa add lại là đã được reorder nếu họ có menu_item từ unavailable items
+      // Fallback: Nếu view không tồn tại, skip bước này
+      if (insertedData.data && insertedData.data.length > 0 && unavailableOrderItems.size > 0) {
+        try {
+          // Lấy danh sách unavailable items để biết menu_item_id nào là unavailable
+          const { data: unavailableDetails, error: unavailableError } = await supabase
+            .from('order_item_unavailable_status')
+            .select('menu_item_id')
+            .eq('order_id', orderIdToUse)
+            .eq('is_currently_unavailable', true);
+
+          if (unavailableError) {
+            console.warn('[sendNewItemsToKitchen] Could not fetch unavailable items (table not migrated):', unavailableError.message);
+          } else {
+            const unavailableMenuItemIds = new Set((unavailableDetails || []).map(item => item.menu_item_id));
+
+            // Đánh dấu item nếu menu_item_id của nó là unavailable
+            for (const insertedItem of insertedData.data) {
+              if (unavailableMenuItemIds.has(insertedItem.menu_item_id)) {
+                console.log('[sendNewItemsToKitchen] Marking item', insertedItem.id, 'as reordered');
+                await markItemAsReordered(insertedItem.id);
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('[sendNewItemsToKitchen] Error marking items as reordered:', err);
+          // Không throw error - continue anyway
+        }
+      }
+
       await supabase
         .from('cart_items')
         .delete()

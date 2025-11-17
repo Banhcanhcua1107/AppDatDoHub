@@ -508,10 +508,9 @@ BEGIN
     -- 2. Chỉ thực thi nếu món này có giới hạn số lượng hàng ngày
     IF v_daily_limit IS NOT NULL THEN
         -- [SỬA LỖI QUAN TRỌNG]
-        -- Nếu remaining_quantity là NULL (chưa được set), coi nó là số lượng giới hạn ban đầu.
-        IF v_current_remaining IS NULL THEN
-            v_current_remaining := v_daily_limit;
-        END IF;
+        -- Dùng COALESCE để coi giá trị NULL là số lượng giới hạn ban đầu.
+        -- Điều này đảm bảo v_current_remaining luôn là một con số.
+        v_current_remaining := COALESCE(v_current_remaining, v_daily_limit);
 
         -- 3. Tính toán số lượng còn lại mới
         v_new_remaining := v_current_remaining - NEW.quantity;
@@ -2598,22 +2597,27 @@ CREATE OR REPLACE FUNCTION "public"."update_menu_item_availability"("p_menu_item
     LANGUAGE "plpgsql" SECURITY DEFINER
     AS $$
 DECLARE
-    v_is_available boolean;
+    v_is_available_by_daily_limit BOOLEAN;
+    v_menu_item RECORD;
 BEGIN
-    -- Mặc định là có sẵn, sau đó kiểm tra từng nguyên liệu
-    v_is_available := true;
-
-    -- Kiểm tra xem có bất kỳ nguyên liệu nào không đủ không
-    SELECT false INTO v_is_available
-    FROM public.menu_item_ingredients mii
-    JOIN public.ingredients i ON mii.ingredient_id = i.id
-    WHERE mii.menu_item_id = p_menu_item_id
-      AND i.stock_quantity < mii.quantity_required;
-
-    -- Cập nhật lại bảng menu_items
-    UPDATE public.menu_items
-    SET is_available = v_is_available
+    -- Lấy thông tin về giới hạn hàng ngày của món ăn
+    SELECT daily_stock_limit, remaining_quantity
+    INTO v_menu_item
+    FROM public.menu_items
     WHERE id = p_menu_item_id;
+
+    -- ĐIỀU KIỆN DUY NHẤT: Kiểm tra giới hạn bán hàng ngày
+    -- Món ăn được coi là còn hàng NẾU không có giới hạn (daily_stock_limit IS NULL)
+    -- HOẶC nếu số lượng còn lại > 0.
+    v_is_available_by_daily_limit := (v_menu_item.daily_stock_limit IS NULL) OR (v_menu_item.remaining_quantity > 0);
+
+    -- [SỬA ĐỔI QUAN TRỌNG]
+    -- Bỏ qua hoàn toàn việc kiểm tra nguyên liệu.
+    -- Món ăn sẽ chỉ phụ thuộc vào số lượng giới hạn bán trong ngày.
+    UPDATE public.menu_items
+    SET is_available = v_is_available_by_daily_limit
+    WHERE id = p_menu_item_id;
+
 END;
 $$;
 

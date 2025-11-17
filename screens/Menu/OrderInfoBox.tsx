@@ -1,6 +1,6 @@
 // screens/Menu/OrderInfoBox.tsx
 
-import React, { useState, useEffect, useCallback } from 'react'; // <-- [SỬA LỖI] ĐÂY LÀ DÒNG BỊ THIẾU
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -72,18 +72,20 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({
     if (!tableId) return;
     setLoading(true);
     try {
-      // [FIXED] Ưu tiên order pending trước (để tránh lấy order paid cũ), sau đó sắp xếp theo created_at DESC
       const { data, error } = await supabase
         .from('orders')
         .select(`id, created_at, is_provisional, order_items(quantity, unit_price, returned_quantity, menu_items(is_available)), order_tables!inner(table_id)`)
         .eq('order_tables.table_id', tableId)
         .in('status', ['pending', 'paid'])
-        .order('status', { ascending: true }) // pending (P) < paid (p), nên pending sẽ được lấy trước
-        .order('created_at', { ascending: false }) // Trong cùng status, lấy cái mới nhất
+        .order('status', { ascending: true })
+        .order('created_at', { ascending: false })
         .limit(1);
 
       if (data && data.length > 0) {
         const orderData = data[0];
+        const orderId = orderData.id;
+        
+        // [SIMPLIFIED] Items are auto-deleted when báo còn, so just filter by is_available
         const billableItems = orderData.order_items.filter(
           (item: any) => item.menu_items?.is_available !== false
         );
@@ -100,8 +102,9 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({
           hour: '2-digit',
           minute: '2-digit',
         });
+        
         setOrderDetails({
-          orderId: orderData.id,
+          orderId: orderId,
           totalItems,
           totalPrice,
           orderTime,
@@ -127,14 +130,14 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({
         }
       } else if (!data || data.length === 0) {
         // Không tìm thấy order, kiểm tra cart_items
-        const { data: cartData, error: cartError } = await supabase
+        const { data: cartData2, error: cartError2 } = await supabase
           .from('cart_items')
           .select('quantity, total_price')
           .eq('table_id', tableId);
-        if (cartError) throw cartError;
-        if (cartData && cartData.length > 0) {
-          const totalItems = cartData.reduce((sum, item) => sum + item.quantity, 0);
-          const totalPrice = cartData.reduce((sum, item) => sum + item.total_price, 0);
+        if (cartError2) throw cartError2;
+        if (cartData2 && cartData2.length > 0) {
+          const totalItems = cartData2.reduce((sum, item) => sum + item.quantity, 0);
+          const totalPrice = cartData2.reduce((sum, item) => sum + item.total_price, 0);
           setOrderDetails({
             orderId: null,
             totalItems: totalItems,
@@ -144,6 +147,8 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({
         } else {
           setOrderDetails(null);
         }
+        setUnavailableOrderItems(new Set());
+        setUnavailableCount(0);
       } else {
         throw error;
       }

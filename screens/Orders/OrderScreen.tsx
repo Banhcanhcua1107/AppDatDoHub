@@ -306,7 +306,6 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
   const [isMenuVisible, setMenuVisible] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<ActiveOrder | null>(null);
   const [isCancelModalVisible, setCancelModalVisible] = useState(false);
-  // [THÊM] State để quản lý modal xác nhận đóng tất cả
   const [isCloseAllModalVisible, setCloseAllModalVisible] = useState(false);
 
   const fetchActiveOrders = useCallback(async (isInitialLoad = false) => {
@@ -348,8 +347,8 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
           }
         }
       }
-
       // 3. Định dạng lại danh sách order đã được ưu tiên để hiển thị
+      // [SIMPLIFIED] Items are auto-deleted when báo còn, so no need to load unavailable items
       const formattedOrders: ActiveOrder[] = Array.from(prioritizedOrders.values())
         .map((order) => {
           const billableItems = order.order_items.filter(

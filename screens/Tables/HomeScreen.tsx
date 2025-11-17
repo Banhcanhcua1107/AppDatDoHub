@@ -62,11 +62,19 @@ const TableGridItem: React.FC<{
     }
   };
   const theme = getStatusTheme();
+  const handlePress = () => {
+    console.log('[TableGridItem] handlePress called for item:', item.id, item.name);
+    onPress();
+  };
+  
   return (
     <View className="w-1/2 p-2">
       <Pressable
-        onPress={onPress}
-        onLongPress={onLongPress}
+        onPress={handlePress}
+        onLongPress={() => {
+          console.log('[TableGridItem] onLongPress called for item:', item.id, item.name);
+          onLongPress();
+        }}
         style={({ pressed }) => [{ transform: [{ scale: pressed ? 0.98 : 1 }] }]}
       >
         <View className="bg-white rounded-2xl p-4" style={styleSheet.shadow}>
@@ -127,33 +135,55 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
     if (isInitialLoad) setLoading(true); // Chỉ set loading true khi là lần load đầu
 
     try {
+        console.log('[fetchTables] Starting to fetch tables...');
         const { data, error } = await supabase.rpc('get_tables_with_notifications');
 
         if (error) {
+            console.error('[fetchTables] RPC Error:', error);
             Alert.alert('Lỗi', 'Không thể tải danh sách bàn: ' + error.message);
-        } else if (data) {
-            // [MỚI] Lấy orderId cho mỗi bàn
-            const tablesWithOrders = await Promise.all(
-              data.map(async (item: any) => {
-                const { data: orderData } = await supabase
-                  .from('order_tables')
-                  .select('orders(id)')
-                  .eq('table_id', item.id)
-                  .in('orders.status', ['pending', 'paid'])
-                  .limit(1)
-                  .single();
-                
-                return {
-                  ...item,
-                  id: String(item.id),
-                  orderId: orderData?.orders?.id || undefined,
-                };
-              })
-            );
-            setTables(tablesWithOrders);
+            return;
         }
+
+        if (!data || !Array.isArray(data)) {
+            console.warn('[fetchTables] No data returned or data is not array:', data);
+            setTables([]);
+            return;
+        }
+
+        console.log('[fetchTables] Fetched', data.length, 'tables');
+        
+        // [MỚI] Lấy orderId cho mỗi bàn
+        const tablesWithOrders = await Promise.all(
+          data.map(async (item: any) => {
+            try {
+              const { data: orderData } = await supabase
+                .from('order_tables')
+                .select('orders(id)')
+                .eq('table_id', item.id)
+                .in('orders.status', ['pending', 'paid'])
+                .limit(1)
+                .maybeSingle(); // [FIX] Dùng maybeSingle thay single để tránh error khi không có data
+              
+              return {
+                ...item,
+                id: String(item.id),
+                orderId: orderData?.orders?.id || undefined,
+              };
+            } catch (err) {
+              console.warn('[fetchTables] Error fetching order for table', item.id, ':', err);
+              return {
+                ...item,
+                id: String(item.id),
+              };
+            }
+          })
+        );
+        
+        console.log('[fetchTables] Successfully processed', tablesWithOrders.length, 'tables');
+        setTables(tablesWithOrders);
     } catch (error: any) {
-        console.error('Error fetching tables:', error.message);
+        console.error('[fetchTables] Exception:', error.message);
+        Alert.alert('Lỗi', 'Có lỗi xảy ra khi tải danh sách bàn');
     } finally {
         if (isInitialLoad) setLoading(false); // Đảm bảo luôn set loading false sau khi load xong
     }
@@ -190,7 +220,9 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
 
 
   const handlePressTable = (table: TableItemData) => {
+    console.log('[handlePressTable] Table pressed:', { id: table.id, name: table.name, has_alert: table.has_out_of_stock_alert });
     if (table.has_out_of_stock_alert) {
+        console.log('[handlePressTable] Has out of stock alert, showing modal');
         setSelectedTable({ id: table.id, name: table.name });
         setBoxVisible(true); 
         return;
@@ -343,6 +375,8 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
       </View>
     );
   }
+
+  console.log('[HomeScreen] Render with tables:', { count: tables.length, tables: tables.map(t => ({ id: t.id, name: t.name, status: t.status })) });
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F8F9FA' }}>
