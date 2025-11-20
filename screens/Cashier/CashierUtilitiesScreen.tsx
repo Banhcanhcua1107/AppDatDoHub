@@ -71,7 +71,7 @@ export default function CashierUtilitiesScreen() {
           <UtilityItem 
             icon="arrow-undo-circle-outline" // Thay icon cho phù hợp hơn
             title="Lịch sử trả món" 
-            onPress={() => navigation.navigate(ROUTES.RETURN_HISTORY_ARCHIVE)} 
+            onPress={() => navigation.navigate('ReturnHistoryArchive')} 
           />
         </View>
 

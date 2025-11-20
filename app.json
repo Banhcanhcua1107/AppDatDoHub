@@ -1,9 +1,9 @@
 {
   "expo": {
-    "name": "DatDoHub",
-    "slug": "my-expo-app",
+    "name": "TableFlow",
+    "slug": "tableflow-restaurant",
     "version": "1.0.0",
-    "scheme": "my-expo-app",
+    "scheme": "exp+tableflow-restaurant",
     "web": {
       "favicon": "./assets/favicon.png",
       "bundler": "metro"
@@ -23,7 +23,9 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.bephubbar.app"
@@ -34,6 +36,11 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.bephubbar.app"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "7a061be6-293b-4b64-8ae8-b7f2f576a0fe"
+      }
     }
   }
 }

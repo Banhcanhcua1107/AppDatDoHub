@@ -47,6 +47,8 @@ export const ROUTES = {
   KITCHEN_ORDERS_TAB: 'Bếp Orders', // Tên cho tab 1
   KITCHEN_UTILITIES_TAB: 'Bếp Tiện ích', // Tên cho tab 2
   
+  // [THÊM MỚI] Route bổ sung
+  ITEM_QUANTITY: 'ItemQuantity',
 
 } as const;
 

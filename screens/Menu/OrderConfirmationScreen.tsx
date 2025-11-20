@@ -28,6 +28,7 @@ import PaymentMethodBox from '../../components/PaymentMethodBox';
 import BillContent from '../../components/BillContent';
 import { BillItem } from '../Orders/ProvisionalBillScreen';
 import ConfirmModal from '../../components/ConfirmModal';
+import { markItemAsReordered } from '../../services/outOfStockService';
 
 // ... (Các interface DisplayItem, OrderSection, NoteInputModal, OrderListItem, ActionButton giữ nguyên như file của bạn)
 // --- START OF FILE OrderConfirmationScreen.tsx ---
@@ -287,6 +288,8 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
   // [SỬA] Sử dụng ref để tránh re-render khi update activeOrderId
   const isInitialMount = useRef(true);
   const outOfStockSubscriptionRef = useRef<any>(null);
+  const realtimeDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const lastFetchTimeRef = useRef<number>(0);
 
   /**
    * [SIMPLIFIED] Subscribe to real-time changes
@@ -644,6 +647,22 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
       console.log('[useFocusEffect] Setting up realtime channels...');
       console.log('[useFocusEffect] Channel ID:', channelId);
       
+      // [FIX] Debounce để tránh gọi fetchAllData quá nhiều lần
+      const debouncedFetchAllData = (isInitialLoad = false) => {
+        if (realtimeDebounceRef.current) {
+          clearTimeout(realtimeDebounceRef.current);
+        }
+        realtimeDebounceRef.current = setTimeout(() => {
+          const now = Date.now();
+          // Chỉ fetch nếu đã chờ ít nhất 1 giây kể từ lần cuối
+          if (now - lastFetchTimeRef.current > 1000) {
+            console.log('[Realtime] Fetching data after debounce...');
+            lastFetchTimeRef.current = now;
+            fetchAllData(isInitialLoad);
+          }
+        }, 500); // Chờ 500ms sau khi event cuối cùng
+      };
+      
       // [FIX] Lắng nghe tất cả orders của table thay vì filter theo activeOrderId động
       const channel = supabase
         .channel(`orders_channel:${channelId}`)
@@ -656,26 +675,37 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
           },
           (payload) => {
             console.log('[Realtime] Cập nhật orders:', payload);
-            // Chỉ fetch lại nếu update liên quan đến table hiện tại
-            fetchAllData(false);
+            debouncedFetchAllData(false);
           }
         )
         .subscribe();
       
+      // [FIX] Chỉ lắng nghe menu_items nếu có item được gửi bếp (tránh infinite loop)
       const menuItemsChannel = supabase
         .channel('public:menu_items_availability')
         .on(
           'postgres_changes',
           { event: 'UPDATE', schema: 'public', table: 'menu_items' },
           (payload) => {
-            console.log('[Realtime] Món ăn thay đổi trạng thái:', payload);
-            fetchAllData(false);
+            // Chỉ fetch nếu remaining_quantity hoặc is_available thay đổi (not stock_quantity)
+            const newData = payload.new as any;
+            const oldData = payload.old as any;
+            
+            // Bỏ qua các update không liên quan (VD: stock_quantity thay đổi)
+            if (newData.remaining_quantity !== oldData.remaining_quantity || 
+                newData.is_available !== oldData.is_available) {
+              console.log('[Realtime] Món ăn thay đổi trạng thái:', payload.new);
+              debouncedFetchAllData(false);
+            }
           }
         )
         .subscribe();
       
       return () => {
         console.log('[useFocusEffect] Cleaning up channels...');
+        if (realtimeDebounceRef.current) {
+          clearTimeout(realtimeDebounceRef.current);
+        }
         supabase.removeChannel(channel);
         supabase.removeChannel(menuItemsChannel);
       };
@@ -1152,7 +1182,7 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
       
       // [MỚI] Đánh dấu các items vừa add lại là đã được reorder nếu họ có menu_item từ unavailable items
       // Fallback: Nếu view không tồn tại, skip bước này
-      if (insertedData.data && insertedData.data.length > 0 && unavailableOrderItems.size > 0) {
+      if (insertedData.data && insertedData.data.length > 0) {
         try {
           // Lấy danh sách unavailable items để biết menu_item_id nào là unavailable
           const { data: unavailableDetails, error: unavailableError } = await supabase
