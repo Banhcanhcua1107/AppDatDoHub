@@ -153,27 +153,46 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
         console.log('[fetchTables] Fetched', data.length, 'tables');
         
         // [MỚI] Lấy orderId cho mỗi bàn
-        const tablesWithOrders = await Promise.all(
-          data.map(async (item: any) => {
+        const tablesWithOrders: TableItemData[] = await Promise.all(
+          data.map(async (item: any): Promise<TableItemData> => {
             try {
+              const tableId = item?.id || item?.table_id;
+              if (!tableId) {
+                console.warn('[fetchTables] Item missing id/table_id:', item);
+                return {
+                  id: String(Math.random()),
+                  name: item?.name || 'Unknown',
+                  status: item?.status || 'Trống',
+                  seats: item?.seats,
+                  has_out_of_stock_alert: item?.has_out_of_stock_alert,
+                };
+              }
+              
               const { data: orderData } = await supabase
                 .from('order_tables')
                 .select('orders(id)')
-                .eq('table_id', item.id)
+                .eq('table_id', tableId)
                 .in('orders.status', ['pending', 'paid'])
                 .limit(1)
-                .maybeSingle(); // [FIX] Dùng maybeSingle thay single để tránh error khi không có data
+                .maybeSingle();
               
               return {
-                ...item,
-                id: String(item.id),
-                orderId: orderData?.orders?.id || undefined,
+                id: String(tableId),
+                name: item?.name || 'Unknown',
+                status: item?.status || 'Trống',
+                seats: item?.seats,
+                has_out_of_stock_alert: item?.has_out_of_stock_alert,
+                orderId: orderData?.orders?.[0]?.id || undefined,
               };
             } catch (err) {
-              console.warn('[fetchTables] Error fetching order for table', item.id, ':', err);
+              console.warn('[fetchTables] Error fetching order for table:', err);
+              const tableId = item?.id || item?.table_id;
               return {
-                ...item,
-                id: String(item.id),
+                id: String(tableId || Math.random()),
+                name: item?.name || 'Unknown',
+                status: item?.status || 'Trống',
+                seats: item?.seats,
+                has_out_of_stock_alert: item?.has_out_of_stock_alert,
               };
             }
           })
@@ -204,9 +223,10 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
       
       const notificationsChannel = supabase
         .channel('public:return_notifications_home')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'return_notifications' }, (payload) => {
-            if(payload.new?.notification_type === 'out_of_stock' || payload.old?.notification_type === 'out_of_stock') {
-                 fetchTables(false); // Gọi refresh nền, không set loading
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'return_notifications' }, (payload: any) => {
+            const notificationType = payload?.new?.notification_type ?? payload?.old?.notification_type;
+            if(notificationType === 'out_of_stock') {
+                 fetchTables(false);
             }
         })
         .subscribe();
@@ -387,12 +407,6 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
             <Text className="text-3xl font-bold text-gray-800">Quản lý bàn</Text>
             <Text className="text-base text-gray-500">Nhấn để order, nhấn giữ để đặt bàn</Text>
           </View>
-          <TouchableOpacity
-            className="w-12 h-12 bg-white rounded-full items-center justify-center"
-            style={styleSheet.menuButtonShadow}
-          >
-            <Icon name="menu" size={26} color="#111827" />
-          </TouchableOpacity>
         </View>
       </View>
       <View className="flex-row justify-start px-5 py-3">
