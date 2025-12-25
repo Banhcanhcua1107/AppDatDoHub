@@ -24,6 +24,7 @@ import { AppStackParamList, ROUTES } from '../../constants/routes';
 import Icon from 'react-native-vector-icons/Ionicons';
 import CustomizeItemModal from './CustomizeItemModal';
 import CartDetailModal from './CartDetailModal';
+import ConfirmModal from '../../components/ConfirmModal';
 import { supabase } from '../../services/supabase';
 import { useNetwork } from '../../context/NetworkContext';
 import Toast from 'react-native-toast-message';
@@ -244,6 +245,7 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isFilterModalVisible, setFilterModalVisible] = useState(false);
   const [selectedFilterCategoryIds, setSelectedFilterCategoryIds] = useState<string[]>([]);
+  const [showConfirmDiscardModal, setShowConfirmDiscardModal] = useState(false);
 
   // [ĐÃ XÓA] Hàm syncOutOfStockItems đã được xóa khỏi đây vì nó là nguyên nhân gây lỗi.
 
@@ -348,6 +350,23 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
         supabase.removeChannel(channel);
       };
     }, [tableId, fetchData]) // [ĐÃ XÓA] Bỏ syncOutOfStockItems khỏi dependency
+  );
+
+  /**
+   * Prevent back navigation (to Home) if there are unsaved cart items
+   */
+  useFocusEffect(
+    useCallback(() => {
+      const unsubscribe = navigation.addListener('beforeRemove', (e: any) => {
+        // Only show confirmation when going back (not when navigating forward)
+        if (cartItems.length > 0 && e.data.action.type === 'GO_BACK') {
+          e.preventDefault();
+          setShowConfirmDiscardModal(true);
+        }
+      });
+
+      return unsubscribe;
+    }, [cartItems.length, navigation])
   );
 
   const handleSelectItem = async (item: MenuItemFromDB) => {
@@ -463,26 +482,8 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
     }
   };
 
-    const handleGoBackWithConfirmation = () => {
-    if (cartItems.length > 0) {
-      Alert.alert(
-        'Xác nhận',
-        'Giỏ hàng của bạn có món chưa được xác nhận. Bạn có muốn hủy những món này không?',
-        [
-          { text: 'Không', style: 'cancel' },
-          {
-            text: 'Có',
-            style: 'destructive',
-            onPress: async () => {
-              await handleClearCart();
-              navigation.goBack();
-            },
-          },
-        ]
-      );
-    } else {
-      navigation.goBack();
-    }
+  const handleGoBackWithConfirmation = () => {
+    navigation.goBack();
   };
 
   const handleToggleFilterCategory = (categoryId: string) => {
@@ -679,6 +680,22 @@ const MenuScreen = ({ route, navigation }: MenuScreenProps) => {
         selectedIds={selectedFilterCategoryIds}
         onToggleCategory={handleToggleFilterCategory}
         onClear={handleClearFilter}
+      />
+
+      {/* Xác nhận xoá món chưa gửi khi quay về Home */}
+      <ConfirmModal
+        isVisible={showConfirmDiscardModal}
+        title="Có Món Chưa Gửi Bếp"
+        message={`Bạn vừa thêm ${cartItems.length} món nhưng chưa gửi bếp. Muốn xoá những món này và quay về, hoặc ở lại để gửi bếp?`}
+        onClose={() => setShowConfirmDiscardModal(false)}
+        onConfirm={async () => {
+          setShowConfirmDiscardModal(false);
+          await handleClearCart();
+          navigation.goBack();
+        }}
+        confirmText="Xoá & Quay Về"
+        cancelText="Ở Lại"
+        variant="warning"
       />
     </View>
   );

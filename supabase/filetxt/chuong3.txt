@@ -1,0 +1,1007 @@
+CHƯƠNG 3 - THIẾT KẾ ỨNG DỤNG
+Chương này trình bày chi tiết quá trình thiết kế hệ thống ứng dụng quản lý nhà hàng TableFlow, tập trung vào việc đảm bảo hiệu quả vận hành, tính trực quan cho người dùng và khả năng mở rộng của hệ thống. Nội dung bao gồm:
+•	Tổng quan về thiết kế: Mô tả mục tiêu và nguyên tắc thiết kế của hệ thống, công nghệ chính, kiến trúc client-server.
+•	Sitemap: Cấu trúc điều hướng, giúp người dùng dễ dàng truy cập các chức năng, kèm hướng dẫn vẽ trong Figma.
+•	Use Case: Các trường hợp sử dụng, minh họa cách người dùng tương tác với hệ thống, bao gồm Sequence Diagram và Activity Diagram.
+•	Thiết kế cơ sở dữ liệu: Mô tả schema, bảng, và mối quan hệ để lưu trữ dữ liệu hiệu quả (ERD, SQL implementation).
+•	Sơ đồ luồng hoạt động: Minh họa quy trình xử lý từ giao diện đến Backend và cơ sở dữ liệu (Class, Sequence, Activity, State Diagram).
+•	Phân quyền và chức năng: Xác định vai trò người dùng (nhân viên, thu ngân, bếp, quản lý) và các tính năng tương ứng, RLS Policies.
+•	Cấu trúc mã nguồn: Tổ chức mã nguồn để dễ bảo trì và mở rộng (folder structure, services, hooks).
+•	Thiết kế giao diện người dùng: Chi tiết về thiết kế UI/UX, Design System, bao gồm wireframe và nguyên tắc thiết kế.
+3.1. TỔNG QUAN VỀ THIẾT KẾ
+Hệ thống TableFlow được thiết kế để cung cấp giải pháp quản lý nhà hàng toàn diện, hiện đại, hỗ trợ đa nền tảng (Mobile/Tablet) cho nhân viên và quản lý. Hệ thống tập trung vào việc tối ưu hóa quy trình gọi món, chế biến và thanh toán theo thời gian thực, giải quyết các bài toán về độ trễ thông tin giữa các bộ phận trong nhà hàng truyền thống.
+3.1.1. MỤC TIÊU THIẾT KẾ
+Việc thiết kế hệ thống AppDatDoHub hướng tới các mục tiêu chính sau:
+•	Tính thời gian thực (Real-time Synchronization)
+o	Đảm bảo thông tin đơn hàng được đồng bộ tức thì giữa Phục vụ, Bếp và Thu ngân. 
+o	Khi phục vụ gửi món, màn hình bếp phải hiện ngay lập tức mà không cần reload. 
+o	Được thực hiện thông qua Supabase Realtime Subscriptions, cho phép các client lắng nghe các sự kiện INSERT, UPDATE, DELETE từ database và cập nhật UI ngay lập tức. 
+o	Kỹ thuật này giải quyết được vấn đề polling truyền thống (kiểm tra định kỳ), giảm tài nguyên server và cải thiện trải nghiệm người dùng.
+•	Trải nghiệm người dùng (User Experience - UX)
+o	Giao diện được tối ưu cho thao tác chạm vuốt trên thiết bị di động, giảm thiểu số lần thao tác để hoàn thành tác vụ. 
+o	Ví dụ cụ thể: quy trình gọi món chỉ cần 3 bước - (1) Chọn bàn, (2) Chọn món từ menu, (3) Xác nhận gửi bếp. 
+o	Các thao tác phổ biến được đặt ở vị trí dễ tiếp cận, sử dụng các gesture tự nhiên như swipe để xóa, long-press để xem chi tiết.
+o	Font chữ được thiết kế rõ ràng với kích thước tối thiểu dễ đọc dưới ánh sáng yếu của nhà hàng.
+•	Hiệu suất cao (High Performance)
+o	Ứng dụng phản hồi nhanh, hoạt động ổn định ngay cả khi mạng chập chờn. Hệ thống áp dụng các kỹ thuật tối ưu như:
+o	Image lazy loading và caching với Cloudinary
+o	Debouncing cho các hàm tìm kiếm
+o	Memoization cho các component React phức tạp
+o	Optimistic UI updates (cập nhật UI trước, đồng bộ database sau)
+o	Offline-first architecture cho một số tính năng cơ bản (xem menu cached, xem đơn hàng đã tải)
+•	Bảo mật và Phân quyền (Security & RBAC)
+o	Phân quyền chặt chẽ theo vai trò (Admin, Staff, Kitchen, Cashier) sử dụng Row Level Security (RLS) của PostgreSQL. 
+o	Mỗi bảng dữ liệu có policies riêng đảm bảo user chỉ truy cập được dữ liệu được phép. 
+	Ví dụ: nhân viên phục vụ chỉ có thể UPDATE các order_items do chính họ tạo ra và chưa được bếp bắt đầu chế biến. 
+o	Passwords được hash bằng bcrypt, session tokens được mã hóa, và tất cả API calls đều yêu cầu JWT authentication.
+3.1.2. KIẾN TRÚC HỆ THỐNG VÀ CÔNG NGHỆ
+Hệ thống sử dụng kiến trúc Client-Server hiện đại với mô hình Serverless cho Backend, mang lại khả năng mở rộng tự động và giảm chi phí vận hành.
+Front-end (Mobile App) nền tảng front-end được xây dựng trên các công nghệ sau:
+•	React Native & Expo (SDK 53): Framework phát triển ứng dụng đa nền tảng cho phép viết code một lần chạy trên cả iOS và Android với hiệu năng gần như Native. Expo SDK 53 cung cấp các module được tối ưu sẵn cho camera, notifications, file system, và nhiều tính năng khác mà không cần cấu hình native code phức tạp. Điều này giúp tăng tốc độ phát triển và giảm complexity trong việc maintain codebase.
+•	NativeWind (Tailwind CSS): Utility-first CSS framework giúp styling nhanh chóng và đảm bảo tính nhất quán về giao diện. Thay vì viết CSS riêng cho từng component, NativeWind cho phép áp dụng các class như bg-blue-500, rounded-lg, p-4 trực tiếp vào component. Điều này tạo nên một Design System nhất quán và dễ maintain.
+•	Zustand: Thư viện quản lý state nhẹ và đơn giản hơn Redux. Zustand được sử dụng để quản lý global state như giỏ hàng (cart), thông tin user session, và các configuration. API đơn giản của Zustand giúp giảm boilerplate code và dễ dàng debug.
+•	React Navigation v7: Thư viện điều hướng màn hình phổ biến nhất cho React Native. Version 7 cung cấp API được cải thiện, hỗ trợ Deep Linking (mở ứng dụng từ link), Nested Navigators (stack trong tab), và các transitions mượt mà. Hệ thống sử dụng cấu trúc navigation phân quyền - mỗi role có bottom tabs riêng.
+•	Thư viện hỗ trợ bổ sung:
+o	react-native-toast-message: Hiển thị thông báo Toast không chặn UI, thích hợp cho notification "Đã thêm món vào giỏ", "Gửi bếp thành công".
+o	react-native-gifted-charts: Thư viện vẽ biểu đồ hiệu năng cao, hỗ trợ Line Chart, Bar Chart, Pie Chart cho Dashboard admin.
+o	date-fns: Thư viện xử lý ngày tháng nhẹ hơn Moment.js, cung cấp các hàm format, parse, diff chuẩn xác.
+Back-end & Database được xây dựng hoàn toàn trên Supabase - một nền tảng Backend-as-a-Service (BaaS) mã nguồn mở:
+•	PostgreSQL: Hệ quản trị cơ sở dữ liệu quan hệ mạnh mẽ, hỗ trợ JSONB cho dữ liệu linh hoạt, Full-text Search, và các Stored Procedures phức tạp. PostgreSQL được chọn vì tính ổn định, hiệu năng cao với concurrent connections, và hỗ trợ ACID transactions đầy đủ.
+•	Realtime Subscriptions: Công nghệ WebSocket của Supabase cho phép client lắng nghe các sự kiện database theo thời gian thực. Khi có INSERT/UPDATE/DELETE trên bảng order_items, tất cả clients đang subscribe sẽ nhận được notification ngay lập tức. Điều này được implement qua: 
+
+
+
+
+
+•	Edge Functions: Serverless functions chạy trên Deno runtime, được deploy trên edge network của Supabase. Edge Functions được sử dụng cho các logic nghiệp vụ phức tạp như:
+o	Tạo QR code thanh toán MoMo (yêu cầu ký HMAC với secret key).
+o	Xử lý IPN (Instant Payment Notification) webhook từ MoMo.
+o	Xử lý webhook VietQR khi khách chuyển khoản.
+•	Các business logic không nên expose ra client (tính toán commission, apply voucher rules).
+•	Cloudinary: Dịch vụ CDN và quản lý media chuyên nghiệp. Hình ảnh món ăn được upload lên Cloudinary, tự động resize theo kích thước thiết bị (thumbnail, medium, large), compress để giảm bandwidth, và serve qua CDN toàn cầu để tăng tốc tải ảnh. Cloudinary cũng hỗ trợ transformations như crop, filter, watermark trực tiếp qua URL.
+3.1.3. NGUYÊN TẮC THIẾT KẾ
+Hệ thống tuân thủ các nguyên tắc thiết kế software engineering hiện đại:
+SOLID Principles
+•	Single Responsibility: Mỗi class/component chỉ đảm nhận một nhiệm vụ duy nhất.
+•	Open/Closed: Mở rộng được nhưng không cần sửa code cũ (thông qua Higher-Order Components).
+•	Dependency Inversion: Phụ thuộc vào abstractions (interfaces) chứ không phải concrete implementations.
+DRY (Don't Repeat Yourself)
+Logic được tái sử dụng thông qua Custom Hook( useAuth, userOrder, useRealtime), Utility Functions (formatCurrency, calculateTotal), và Shared Components.
+Separation of Concerns
+•	Tách biệt rõ ràng giữa:
+•	Presentation Layer (UI Components).
+•	Business Logic Layer (Services, Hooks).
+•	Data Access Layer (Supabase Clients, API calls).
+Mobile-First Design
+•	Thiết kế ưu tiên trải nghiệm mobile, với các đặc điểm:
+•	Touch targets tối thiểu 44x44 pixels.
+•	Gesture-based interactions.
+•	Bottom navigation để dễ tiếp cận bằng ngón cái.
+•	Modal confirmation cho các hành động quan trọng.
+3.2. PHÂN TÍCH HỆ THỐNG
+Phần này phân tích chi tiết cấu trúc điều hướng, các use case chính và danh sách đầy đủ các chức năng của hệ thống.
+3.2.1. SITEMAP VÀ ĐIỀU HƯỚNG
+Sitemap của hệ thống AppDatDoHub mô tả cấu trúc điều hướng giữa các vai trò người dùng trong ứng dụng, đảm bảo mỗi vai trò có thể truy cập nhanh đến các chức năng cần thiết chỉ với 1–2 thao tác. Cấu trúc được thiết kế theo hướng đa vai trò (multi-role), trong đó mỗi người dùng sau khi đăng nhập sẽ được điều hướng đến giao diện phù hợp với chức năng của mình (Phục vụ & Thu ngân, Thu ngân, Bếp, hoặc Quản lý).
+Đăng nhập:
+•	Người dùng truy cập vào hệ thống bằng tài khoản Supabase Auth.
+•	Sau khi xác thực, hệ thống chuyển đến giao diện theo vai trò:
+o	Phục vụ.
+o	Thu ngân.
+o	Bếp.
+o	Quản lý.
+Nhân viên Phục vụ:
+•	Nhóm này là vai trò thao tác trực tiếp với khách tại bàn
+•	Chọn bàn: Xem sơ đồ bàn và chọn bàn để phục vụ.
+•	Xem menu: Hiển thị thực đơn và chi tiết món ăn.
+•	Xem order bàn: Kiểm tra món đã gọi và trạng thái xử lý.
+•	Xác nhận & gửi bếp: Gửi đơn hàng mới đến bếp theo thời gian thực.
+•	Lịch sử hóa đơn: Xem các hóa đơn đã phục vụ.
+•	Quản lý bàn: Gộp bàn, tách bàn, cập nhật trạng thái bàn.
+Thu ngân
+•	Vai trò này tập trung xử lý thanh toán và theo dõi doanh thu. Đối với thu ngân vẫn sẽ có những luống xử lý của nhân viên phục vụ nếu khách hàng order tại quầy thu ngân.
+•	Chi tiết hóa đơn: Xem thông tin đầy đủ từng hóa đơn theo bàn.
+•	Phương thức thanh toán: Chọn thanh toán bằng Tiền mặt, Ngân hàng, MoMo, hoặc VietQR.
+o	In hóa đơn: In hóa đơn sau khi thanh toán thành công.
+o	Đóng bàn: Cập nhật bàn về trạng thái trống sau khi hoàn tất thanh toán.
+o	Báo cáo doanh thu: Tổng hợp doanh số theo ngày, tuần, tháng.
+o	Báo cáo kho: Xem tồn kho theo lượng bán.
+Báo cáo chi phí: Tổng hợp chi phí vận hành và nhập hàng
+•	Bếp
+o	Vai trò bếp sử dụng hệ thống KDS (Kitchen Display System)
+o	Order từng bàn: Xem các order mới từ nhân viên theo thời gian thực.
+o	Quản lý số lượng: Cập nhật số lượng món sẵn có hoặc đánh dấu hết món.
+o	Lịch sử trả món: Xem yêu cầu hoàn trả món từ nhân viên/thu ngân.
+•	Quản lý
+o	Vai trò cao nhất, quản lý toàn bộ hoạt động kinh doanh.
+o	Quản lý menu: Thêm, sửa, xóa món ăn – quản lý giá và danh mục.
+o	Quản lý đơn hàng: Giám sát tất cả đơn hàng theo thời gian thực.
+o	Quản lý nhân viên: Tạo tài khoản, phân quyền Staff – Kitchen – Cashier – Admin.
+o	Báo cáo doanh thu: Xem báo cáo tổng hợp toàn nhà hàng, đánh giá hoạt động.
+ 
+Hình 3.1. Sitemap ứng dụng
+Sitemap của ứng dụng AppDatDoHub được thiết kế theo mô hình phân quyền theo vai trò, đảm bảo mỗi nhóm người dùng có thể truy cập nhanh vào các chức năng cần thiết phục vụ công việc hằng ngày. Thay vì điều hướng theo trang như hệ thống website, ứng dụng sử dụng các màn hình trong React Navigation, tối ưu cho thao tác nhanh, trực quan và phù hợp môi trường nhà hàng. Toàn bộ luồng chức năng được bố trí hợp lý dựa trên nhiệm vụ của từng vai trò: Phục vụ, Thu ngân, Bếp và Quản lý.
+Luồng điều hướng chính:
+Authentication Flow (Luồng xác thực) khi ứng dụng khởi động, RootNavigator kiểm tra session token trong AsyncStorage. Nếu token hợp lệ, user được điều hướng thẳng vào màn hình chính theo role. Nếu chưa đăng nhập hoặc token hết hạn, hiển thị AuthStack gồm:
+•	Login Screen: Đăng nhập bằng Email/Password, có checkbox "Ghi nhớ đăng nhập".
+•	Forgot Password: Nhập email để nhận link reset password qua email.
+Staff/Waiter Navigation (Nhân viên phục vụ) bottom tabs của nhân viên phục vụ gồm 4 tabs chính:
+•	Home (Sơ đồ bàn): Màn hình chính hiển thị lưới các bàn với màu sắc phân biệt trạng thái - Xanh lá (Trống), Đỏ (Có khách), Vàng (Đặt trước). Nhấn vào bàn sẽ navigate tới màn hình chi tiết bàn hoặc mở bàn mới.
+•	Menu: Danh sách món ăn dạng grid layout với hình ảnh lớn. Có thanh search và bộ lọc theo category. Chọn món sẽ thêm vào giỏ hàng với animation.
+•	Cart (Giỏ hàng): Xem review các món đã chọn, chỉnh sửa số lượng, thêm note đặc biệt. Có nút "Gửi bếp" để confirm order.
+•	Notifications: Center hiển thị các thông báo từ bếp ("Bàn 5 - Cà phê sữa đá đã xong"), từ admin (thông báo chung), và hệ thống.
+Kitchen Navigation (Bếp) Màn hình KDS (Kitchen Display System) được tối ưu cho tablet với 3 tabs:
+•	Queue (Hàng đợi): Danh sách món cần chế biến, sắp xếp theo thời gian FIFO. Các món giống nhau được group lại, hiển thị tổng số lượng và thời gian chờ của món đầu tiên.
+•	In Progress: Các món đang được chế biến, hiển thị timer đếm ngược.
+•	Menu Management: Toggle switch để bật/tắt tình trạng món còn/hết hàng.
+•	Cashier Navigation (Thu ngân) giao diện thu ngân tập trung vào thanh toán nhanh:
+•	Orders: Danh sách đơn hàng active, lọc theo trạng thái (Chờ thanh toán, Đang ăn). Nhấn vào đơn để mở màn hình checkout.
+•	Checkout: Chi tiết hóa đơn, chọn phương thức thanh toán, áp dụng discount.
+•	History: Lịch sử giao dịch trong ca, có search và filter theo ngày/phương thức thanh toán.
+•	Report: Dashboard mini hiển thị tổng thu trong ca, số lượng bill, cash balance.
+Admin Navigation (Quản lý) admin có quyền truy cập toàn bộ, bao gồm 5 tabs:
+•	Dashboard: Tổng quan với charts (doanh thu, lợi nhuận, top items).
+•	Menu Management: CRUD món ăn, categories, upload ảnh.
+•	Staff Management: Quản lý nhân viên, phân quyền, xem timesheet.
+•	Table Management: Thiết lập sơ đồ bàn, capacity.
+•	Reports: Các báo cáo chi tiết (P&L, Inventory, Customer Analytics).
+3.3. DANH SÁCH CHỨC NĂNG CHI TIẾT THEO VAI TRÒ 
+Dưới đây là danh sách đầy đủ các chức năng của hệ thống, được phân loại theo vai trò người dùng: 
+3.3.1. CHỨC NĂNG NHÂN VIÊN PHỤC VỤ (STAFF/WAITER) - 18 CHỨC NĂNG
+Bảng 3.1. Quản lý bàn
+STT	Tên chức năng	Mô tả chi tiết
+1	Xem sơ đồ bàn real-time	Hiển thị grid layout tất cả các bàn với màu sắc phân biệt trạng thái. Cập nhật real-time khi bàn khác thay đổi
+2	Mở bàn mới	Tạo session mới cho bàn trống, chuyển trạng thái sang "Đang phục vụ"
+3	Xem chi tiết bàn	Xem danh sách món đã order của bàn, trạng thái từng món, tổng bill tạm tính
+4	Thêm món cho bàn đang phục vụ	Cho phép order thêm món cho bàn đang ăn, món mới sẽ được gửi bếp riêng
+5	Chuyển bàn	Di chuyển toàn bộ order từ bàn A sang bàn B (khi khách yêu cầu đổi chỗ)
+6	Gộp bàn	Merge nhiều bàn thành một bill chung (khi nhóm khách lớn)
+3.3.2. QUẢN LÝ ĐƠN HÀNG (12 CHỨC NĂNG)
+Bảng 3.2. Quản lý đơn hàng
+STT	Tên chức năng	Mô tả chi tiết
+7	Xem menu món ăn	Grid layout hiển thị món với hình ảnh, tên, giá. Lazy loading khi scroll
+8	Tìm kiếm món	Search realtime theo tên món, có debounce 300ms để tối ưu performance
+9	Lọc món theo danh mục	Filter menu theo categories (Đồ uống, Đồ ăn, Tráng miệng...)
+10	Xem chi tiết món	Modal hiển thị hình lớn, description, ingredients, allergen warnings
+11	Thêm món vào giỏ	Add món vào cart local, hiển thị badge số lượng món ở icon giỏ hàng
+12	Chỉnh sửa số lượng trong giỏ	Tăng/giảm quantity, có validation min=1
+13	Xóa món khỏi giỏ	Swipe to delete gesture với animation
+14	Thêm ghi chú đặc biệt	Text input cho note như "Ít đường", "Không đá", "Không hành"
+15	Xem review giỏ hàng	Màn hình tổng hợp các món sẽ gửi, tính tổng tiền tạm
+16	Gửi đơn hàng đến bếp	Insert records vào order_items, realtime notification đến KDS
+17	Hủy món chưa chế biến	Chỉ được hủy món có status="waiting", sau khi hủy thông báo cho bếp
+18	Nhận thông báo món xong	Push notification khi món completed, có deep link đến table detail screen
+3.3.3. CHỨC NĂNG NHÂN VIÊN BẾP (KITCHEN) - 11 CHỨC NĂNG
+Bảng 3.3. Chức năng nhân viên bếp
+STT	Tên chức năng	Mô tả chi tiết
+1	Xem hàng đợi món	Danh sách món có status="waiting", sắp xếp theo created_at ASC (FIFO)
+2	Nhận thông báo món mới	Realtime subscription, kèm âm thanh báo hiệu khi có món mới
+3	Xem chi tiết món	Hiển thị table number, quantity, notes đặc biệt, thời gian chờ
+4	Nhóm món giống nhau	Group các items cùng menu_item_id, hiển thị tổng số lượng
+5	Bắt đầu chế biến	Update status="in_progress", ghi timestamp started_at
+6	Xem món đang nấu	Tab riêng hiển thị items có status="in_progress" với timer đếm thời gian
+7	Hoàn thành món	Update status="completed", trigger notification tới staff
+8	Xem lịch sử món đã làm	List các món completed trong ngày, có thống kê total count
+9	Quản lý tình trạng món	Toggle menu_items.is_available (còn/hết hàng)
+10	Xem món hết hàng	Danh sách các items đã đánh dấu unavailable, có thể bật lại
+11	Xem thống kê món bán ra	Chart hiển thị top món được order nhiều nhất trong ngày
+3.3.4. CHỨC NĂNG THU NGÂN (CASHIER) - 14 CHỨC NĂNG
+Bảng 3.4. Chức năng thu ngân
+STT	Tên chức năng	Mô tả chi tiết
+1	Xem danh sách đơn chờ thanh toán	List orders có status="pending", sắp xếp theo thời gian tạo
+2	Tìm kiếm đơn hàng	Search theo table number, order code, staff name
+3	Xem chi tiết hóa đơn	Itemized list gồm: món, số lượng, đơn giá, thành tiền
+4	Tính tổng tiền tự động	Subtotal + Tax (nếu có) + Service charge = Grand Total
+5	Áp dụng giảm giá	Input voucher code hoặc chọn promotion, validate và tính lại total
+6	Chọn phương thức thanh toán	Radio buttons: Tiền mặt / Chuyển khoản / MoMo
+7	Thanh toán tiền mặt	Input số tiền khách đưa, tính tiền thừa, có numpad tiện lợi
+8	Tạo QR VietQR	Generate QR code động với description chứa order_code, amount
+9	Tạo QR MoMo	Call Edge Function create-momo-payment, hiển thị QR từ response
+10	Xác nhận thanh toán	Update orders.status="paid", payment_method, paid_at timestamp
+11	In hóa đơn	Generate receipt HTML, gửi print command tới thermal printer
+12	Xem lịch sử giao dịch	List orders đã paid trong ca làm việc hiện tại
+13	Đối soát tiền cuối ca	Call stored procedure get_daily_cash_reconciliation, hiển thị báo cáo
+14	Xuất báo cáo thu chi	Export Excel file chứa chi tiết transactions
+3.3.5. CHỨC NĂNG QUẢN LÝ (ADMIN) - 26 CHỨC NĂNG
+Bảng 3.5. Dashboard và báo cáo
+STT	Tên chức năng	Mô tả chi tiết
+1	Xem dashboard tổng quan	KPIs: Doanh thu hôm nay, tổng đơn, trung bình bill, lợi nhuận
+2	Biểu đồ doanh thu	Line chart doanh thu 7/30 ngày gần nhất, có thể zoom và filter
+3	Biểu đồ top món bán chạy	Bar chart top 10 món có quantity cao nhất
+4	Phân tích giờ cao điểm	Heatmap hiển thị số lượng orders theo giờ trong ngày
+5	Xem báo cáo tài chính chi tiết	P&L statement: Revenue, COGS, Gross Profit, Operating Expenses
+6	Xem báo cáo tồn kho	Nếu có module inventory: stock quantity, reorder points
+7	Xuất báo cáo Excel/PDF	Export reports với formatting đẹp, có logo và signature
+Bảng 3.6. Quản lý Menu
+STT	Tên chức năng	Mô tả chi tiết
+8	Xem danh sách món ăn	Table view: thumbnail, tên, giá, category, trạng thái available
+9	Thêm món mới	Form: name, description, price, cost, category, allergens, image
+10	Sửa thông tin món	Edit form pre-filled, có validation cho required fields
+11	Xóa món	Soft delete (set deleted_at), confirmation modal để tránh xóa nhầm
+12	Upload hình món	Image picker, resize và compress trước khi upload lên Cloudinary
+13	Quản lý giá vốn và giá bán	Separate inputs cho cost và price, hiển thị margin %
+14	Quản lý danh mục	CRUD categories, có drag-to-reorder để sắp xếp thứ tự hiển thị
+15	Bulk update giá	Select multiple items, apply % increase/decrease hàng loạt
+Bảng 3.7. Quản lý Nhân viên
+STT	Tên chức năng	Mô tả chi tiết
+16	Xem danh sách nhân viên	Table: avatar, full name, email, role, status (active/inactive)
+17	Tạo tài khoản nhân viên	Form: email, password, full_name, role dropdown
+18	Sửa thông tin nhân viên	Edit screen, không cho sửa email (vì dùng làm identifier)
+19	Phân quyền người dùng	Dropdown chọn role: admin/staff/kitchen/cashier, update database
+20	Reset mật khẩu nhân viên	Gửi email reset password link qua Supabase Auth
+21	Vô hiệu hóa tài khoản	Soft disable (không xóa), user không thể login
+Bảng 3.8. Quản lý Bàn
+STT	Tên chức năng	Mô tả chi tiết
+22	Xem danh sách bàn	Grid/List view: tên bàn, capacity, floor, trạng thái hiện tại
+23	Thêm bàn mới	Form: table name, capacity (số ghế), floor/zone
+24	Sửa thông tin bàn	Edit form, có thể update capacity và floor
+25	Xóa bàn	Chỉ cho xóa bàn không có active orders, có confirmation
+26	Thiết lập sơ đồ bàn	Drag-and-drop canvas để arrange vị trí bàn trên floor plan
+3.4. USE CASE
+Phần Use Case mô tả các trường hợp sử dụng chính của hệ thống TableFlow, thể hiện cách các vai trò người dùng trong nhà hàng (Nhân viên phục vụ, Thu ngân, Bếp và Quản lý) tương tác với ứng dụng. Mỗi Use Case được xây dựng dựa trên nhu cầu vận hành thực tế của mô hình gọi món - phục vụ - chế biến - thanh toán tại bàn, đảm bảo quy trình tương tác giữa các bộ phận diễn ra nhanh chóng, chính xác và đồng bộ theo thời gian thực.
+Ứng dụng sử dụng React Native để xây dựng giao diện, kết hợp Supabase cho các chức năng backend như quản lý cơ sở dữ liệu, xác thực người dùng, phân quyền theo vai trò (RBAC), và đồng bộ dữ liệu realtime giữa các thiết bị. Các tính năng thanh toán được xử lý thông qua MoMo API và VietQR, trong khi hệ thống thông báo nội bộ được triển khai dựa trên Supabase Realtime và cơ chế phân phối thông báo theo vai trò.
+Các trường hợp sử dụng trong sơ đồ bao gồm toàn bộ các hoạt động thiết yếu của từng vai trò:
+•	Nhân viên phục vụ: Xem sơ đồ bàn, chọn bàn phục vụ, ghi order, xử lý trả món, xem tạm tính, gửi yêu cầu thanh toán, theo dõi lịch sử hóa đơn, và nhận thông báo từ bếp.
+•	Thu ngân: Xem danh sách đơn hàng, xử lý thanh toán (tiền mặt - MoMo - VietQR), in hóa đơn, xem báo cáo doanh thu - kho - chi phí, và theo dõi lịch sử trả món.
+•	Bếp: Xem danh sách món cần chế biến theo từng bàn, cập nhật tình trạng món, quản lý số lượng món còn/hết, xử lý trả món.
+•	Quản lý: Xem và lọc danh sách đơn hàng, theo dõi báo cáo tổng hợp, quản lý hệ thống và người dùng.
+Các Use Case này được thiết kế để đảm bảo hệ thống phản ánh đúng môi trường vận hành thực tế của nhà hàng: luồng dữ liệu realtime, vai trò rõ ràng, và quy trình hoạt động nhất quán giữa nhân viên – bếp – thu ngân – quản lý. Đây là nền tảng quan trọng giúp ứng dụng hỗ trợ quá trình chuyển đổi số trong lĩnh vực F&B một cách hiệu quả và trực quan. 
+ 
+Hình 3.2. Sơ đồ hệ thống
+3.5. USE CASE CHI TIẾT
+Phần này trình bày Use Case Diagrams chi tiết, mỗi diagram tập trung vào một vai trò cụ thể trong hệ thống. Các sơ đồ được thiết kế theo chuẩn UML 2.0 với các mối quan hệ include và extend để thể hiện rõ ràng sự phụ thuộc và mở rộng giữa các use case.
+3.5.1. USE CASE DIAGRAM - NHÂN VIÊN PHỤC VỤ (GỌI MÓN VÀ GỬI BẾP)
+
+ 
+Hình 3.3. Use Case Diagram - Nhân viên phục vụ
+Mô tả sơ đồ:
+Sơ đồ Use Case của Nhân viên phục vụ tập trung vào quy trình gọi món và gửi đơn hàng đến bếp. Actor chính là "Nhân viên" tương tác với hệ thống thông qua use case trung tâm "Gọi món và gửi bếp".
+Các Use Case chính:
+Bảng 3.9. Quy trình phục vụ
+Use Case	Loại quan hệ	Mô tả
+Gọi món và gửi bếp	Use Case chính	Entry point cho toàn bộ quy trình đặt món
+Mở bàn	include	Bắt buộc phải mở bàn trước khi gọi món, tạo session cho khách
+Xem menu	include	Hiển thị danh sách món ăn để nhân viên chọn
+Tìm kiếm	extend	Tính năng tìm kiếm nhanh theo tên món (tùy chọn)
+Lọc món	extend	Lọc menu theo danh mục như Đồ uống, Đồ ăn (tùy chọn)
+Chọn món	include	Chọn món từ menu để thêm vào giỏ hàng
+Thêm ghi chú	extend	Thêm yêu cầu đặc biệt như "Ít đường", "Không đá"
+Danh sách món đã đặt	include	Xem review giỏ hàng trước khi gửi bếp
+Xác nhận gửi bếp	Liên kết từ Danh sách	Xác nhận và gửi order đến Kitchen Display System
+Trả món	Liên kết từ Danh sách	Hủy món chưa được chế biến
+Tạm tính	extend	Xem tổng tiền tạm tính của đơn hàng
+Thêm món	Liên kết từ Danh sách	Order thêm món cho bàn đang phục vụ
+Thanh toán	extend	Chuyển sang quy trình thanh toán
+Tiền mặt	extend từ Thanh toán	Thanh toán bằng tiền mặt
+Momo	extend từ Thanh toán	Thanh toán qua ví điện tử MoMo
+Ngân hàng	extend từ Thanh toán	Thanh toán chuyển khoản VietQR
+Luồng hoạt động chính:
+1.	Nhân viên bắt đầu quy trình "Gọi món và gửi bếp".
+2.	Hệ thống bắt buộc thực hiện "Mở bàn" (include).
+3.	Hệ thống hiển thị menu thông qua "Xem menu" (include).
+4.	Nhân viên có thể tùy chọn "Tìm kiếm" hoặc "Lọc món" (extend).
+5.	Nhân viên "Chọn món" và có thể "Thêm ghi chú" (extend).
+6.	Hệ thống hiển thị "Danh sách món đã đặt" (include).
+7.	Từ danh sách, nhân viên có thể: Xác nhận gửi bếp, Trả món, Thêm món, hoặc Tạm tính.
+8.	Khi thanh toán, có 3 lựa chọn phương thức: Tiền mặt, Momo, Ngân hàng.
+3.5.2.  USE CASE DIAGRAM - NHÂN VIÊN BẾP (QUY TRÌNH BẾP)
+ 
+Hình 3.4. Use Case Diagram - Quy trình Bếp
+Mô tả sơ đồ:
+Sơ đồ Use Case của Nhân viên bếp thể hiện quy trình tiếp nhận, chế biến và hoàn thành món ăn trên Kitchen Display System (KDS). Actor chính là "Nhân viên bếp" với các chức năng quản lý tình trạng món và xử lý đơn hàng.
+Các Use Case chính:
+Bảng 3.10. Quy trình bếp
+Use Case	Loại quan hệ	Mô tả
+Quản lý tình trạng món	Use Case độc lập	Toggle trạng thái còn/hết hàng của món
+Xem món hết hàng	extend	Xem danh sách các món đã đánh dấu unavailable
+Xử lý món trong bếp	Use Case chính	Entry point cho quy trình chế biến
+Danh sách món trong đơn	include	Xem chi tiết các món cần chế biến
+Xem chi tiết	extend	Xem thông tin chi tiết: bàn, số lượng, ghi chú
+Nhận thông báo	include	Realtime notification khi có món mới
+Danh sách món trong đơn (duplicate)	include	Nhóm các món giống nhau
+Chế biến	extend	Bắt đầu chế biến món, cập nhật status="in_progress"
+Lỗi món ăn	include từ Chế biến	Xử lý khi món bị lỗi (đổ, cháy...)
+Hoàn thành	extend từ Chế biến	Đánh dấu món đã xong, notify staff
+Xem thống kê món bán	Use Case độc lập	Xem số liệu món đã chế biến
+Lịch sử chế biến	extend	Xem lịch sử các món đã hoàn thành trong ngày
+Luồng hoạt động chính:
+1.	Nhân viên bếp có thể "Quản lý tình trạng món" để đánh dấu món hết hàng.
+2.	Khi "Xử lý món trong bếp", hệ thống load "Danh sách món trong đơn" (include).
+3.	Nhân viên "Nhận thông báo" realtime khi có món mới (include).
+4.	Có thể "Xem chi tiết" từng món để biết ghi chú đặc biệt (extend).
+5.	Bắt đầu "Chế biến" - status chuyển sang in_progress.
+6.	Nếu có vấn đề, báo "Lỗi món ăn" (include).
+7.	Khi xong, đánh dấu "Hoàn thành" - trigger notification đến phục vụ.
+8.	"Xem thống kế món bán" và "Lịch sử chế biến" để theo dõi hiệu suất.
+3.5.3. USE CASE DIAGRAM - THU NGÂN (HỆ THỐNG THU NGÂN)
+ 
+Hình 3.5. Use Case Diagram - Hệ thông thu ngân
+Mô tả sơ đồ:
+Sơ đồ Use Case của Thu ngân tập trung vào quy trình thanh toán đa phương thức và quản lý lịch sử giao dịch. Actor chính là "Thu ngân" với các chức năng xử lý thanh toán tiền mặt, VietQR và MoMo.
+Các Use Case chính:
+Bảng 3.11. Hệ thông thu ngân
+Use Case	Loại quan hệ	Mô tả
+Chọn phương thức thanh toán	Use Case chính	Entry point cho quy trình thanh toán
+Tiền mặt	include	Xử lý thanh toán tiền mặt, tính tiền thừa
+Tạo QR VietQR	include	Generate QR code chuyển khoản ngân hàng
+QR momo	include	Generate QR code thanh toán MoMo
+Xác nhận thanh toán	include	Confirm giao dịch thành công, cập nhật order status
+In hóa đơn	extend từ Xác nhận	In receipt cho khách (tùy chọn)
+Xem chi tiết hóa đơn	extend từ Xác nhận	Xem itemized bill trước khi in
+Xem lịch sử	Use Case độc lập	Xem danh sách giao dịch trong ca
+Tìm kiếm đơn	extend từ Xem lịch sử	Tìm đơn theo mã, bàn, thời gian
+Xem chi tiết hóa đơn	extend từ Xem lịch sử	Xem chi tiết giao dịch đã hoàn thành
+Luồng hoạt động chính:
+1.	Thu ngân "Chọn phương thức thanh toán" cho đơn hàng.
+2.	Tùy theo lựa chọn:
+3.	Tiền mặt: Nhập số tiền khách đưa, hệ thống tính tiền thừa.
+4.	VietQR: Hệ thống tạo QR code với thông tin đơn hàng.
+5.	MoMo: Call Edge Function tạo QR thanh toán MoMo.
+6.	Tất cả 3 phương thức đều include "Xác nhận thanh toán".
+7.	Sau xác nhận, có thể "In hóa đơn" hoặc "Xem chi tiết hóa đơn" (extend).
+8.	"Xem lịch sử" để theo dõi các giao dịch trong ca làm việc.
+9.	Có thể "Tìm kiếm đơn" hoặc "Xem chi tiết hóa đơn" từ lịch sử.
+Đặc điểm kỹ thuật:
+•	VietQR: Sử dụng API của ngân hàng để generate QR động với amount và description.
+•	MoMo: Tích hợp MoMo Payment Gateway qua Supabase Edge Functions.
+•	Realtime: IPN (Instant Payment Notification) tự động cập nhật trạng thái thanh toán.
+3.5.4. USE CASE DIAGRAM - QUẢN LÝ (ADMIN)
+ 
+Hình 3.6. Use Case Diagram – Admin
+Mô tả sơ đồ:
+Sơ đồ Use Case của Admin thể hiện các chức năng quản trị hệ thống bao gồm quản lý menu, nhân viên và xem báo cáo. Actor chính là "Admin" với quyền truy cập toàn bộ hệ thống.
+Các Use Case chính:
+Bảng 3.12. Hệ thông admin
+Use Case	Loại quan hệ	Mô tả
+Danh sách món ăn	Use Case chính	Xem và quản lý tất cả món trong menu
+Thêm/sửa/xóa	Liên kết từ Danh sách món	CRUD operations cho menu items
+Danh sách nhân viên	Use Case chính	Xem danh sách tất cả nhân viên
+Sửa thông tin nhân viên	include	Cập nhật thông tin profile nhân viên
+Phân quyền	include	Gán role cho nhân viên (admin/staff/kitchen/cashier)
+Danh sách báo cáo	Use Case chính	Entry point cho module báo cáo
+Thống kê báo cáo	include	Xem các báo cáo chi tiết về doanh thu, đơn hàng
+Luồng hoạt động chính:
+Quản lý Menu:
+1.	Admin xem "Danh sách món ăn" dạng table với thumbnail, tên, giá, category.
+2.	Có thể "Thêm/sửa/xóa" món ăn.
+3.	Upload hình ảnh lên Cloudinary với auto-resize.
+4.	Set giá vốn (cost) và giá bán (price), hệ thống tính margin.
+5.	Quản lý Nhân viên:
+6.	Admin xem "Danh sách nhân viên" với status active/inactive.
+7.	"Sửa thông tin nhân viên" để cập nhật họ tên, số điện thoại.
+8.	"Phân quyền" để gán vai trò, quyết định màn hình user có thể truy cập.
+Báo cáo:
+1.	Admin xem "Danh sách báo cáo" các loại report có sẵn.
+2.	"Thống kê báo cáo" hiển thị:
+3.	Doanh thu theo ngày/tuần/tháng.
+4.	Top món bán chạy.
+5.	Phân tích giờ cao điểm.
+6.	Báo cáo nhân viên (số đơn phục vụ).
+Đặc điểm bảo mật:
+•	Chỉ user có role="admin" mới truy cập được các màn hình này.
+•	Row Level Security (RLS) đảm bảo data isolation.
+•	Mọi thao tác CRUD được ghi log với timestamp và user_id.
+3.5.5. ĐẶC TẢ USE CASE: QUẢN LÝ ĐƠN HÀNG
+Bảng 3.13. Gọi món và Gửi bếp
+Thành phần	Mô tả
+Tên Use Case	Gọi món và Gửi đơn hàng đến bếp
+Actor chính	Nhân viên phục vụ (Staff/Waiter)
+Actors phụ	Hệ thống Bếp (Kitchen Display System)
+Mô tả	Nhân viên nhận yêu cầu từ khách hàng, chọn món từ menu, thêm vào giỏ hàng và gửi đến bếp để chế biến
+Pre-conditions	- Nhân viên đã đăng nhập với vai trò Staff
+- Bàn đã được mở hoặc đang trong trạng thái phục vụ
+- Menu có ít nhất một món available
+Post-conditions	- Order được tạo hoặc cập nhật trong database
+- Order items được insert vào bảng order_items
+- Bếp nhận được thông báo real-time về món mới
+- Trạng thái bàn được cập nhật
+Luồng sự kiện chính (Main Flow):
+1.	Nhân viên chọn bàn từ màn hình "Sơ đồ bàn".
+•	Hệ thống kiểm tra trạng thái bàn.
+•	Nếu bàn trống: Hiển thị nút "Mở bàn".
+•	Nếu bàn có khách: Hiển thị chi tiết đơn hàng hiện tại.
+2.	Nhân viên nhấn "Thêm món" hoặc "Mở bàn".
+•	Hệ thống tạo order mới (nếu bàn trống) với status="pending".
+•	Hệ thống chuyển đến màn hình Menu.
+3.	Nhân viên chọn món từ danh sách.
+•	Có thể sử dụng search box để tìm nhanh.
+•	Có thể filter theo category.
+•	Hệ thống kiểm tra menu_items.is_available.
+4.	Nhân viên nhấn vào món.
+•	Hệ thống hiển thị modal chi tiết món.
+•	Nhân viên chọn số lượng (mặc định = 1).
+•	Nhân viên có thể thêm note đặc biệt (optional).
+•	Nhân viên nhấn "Thêm vào giỏ".
+5.	Hệ thống thêm món vào giỏ hàng local (Zustand store).
+•	Hiển thị toast "Đã thêm [Tên món] vào giỏ".
+•	Cập nhật badge số lượng món trên icon giỏ hàng.
+•	Tính toán tổng tiền tạm thời.
+6.	Nhân viên lặp lại bước 3-5 cho các món khác (nếu có).
+7.	Nhân viên nhấn icon "Giỏ hàng" để review.
+•	Hệ thống hiển thị màn hình Cart với danh sách món đã chọn.
+•	Hiển thị: hình ảnh, tên món, số lượng, đơn giá, note, thành tiền.
+•	Hiển thị tổng tiền cuối cùng.
+8.	Nhân viên kiểm tra lại và nhấn "Gửi bếp".
+•	Hệ thống hiển thị loading indicator.
+9.	Hệ thống xử lý:
+
+10.	Hệ thống hiển thị toast "Đã gửi đơn hàng thành công".
+•	Clear giỏ hàng local.
+•	Navigate về màn hình Table Detail.
+•	Hiển thị danh sách món đã order với trạng thái real-time.
+Luồng thay thế (Alternative Flows):
+1.	AF-01: Món không còn hàng (Tại bước 3).
+•	Nếu món có is_available=false.
+•	Hệ thống hiển thị món với opacity giảm (50%) và badge "Hết hàng".
+•	Không cho phép nhấn vào món.
+•	Nhân viên chọn món khác.
+2.	AF-02: Network error khi gửi order (Tại bước 9).
+•	Nếu kết nối mạng bị mất hoặc lỗi database.
+•	Hệ thống hiển thị error toast "Không thể gửi đơn. Vui lòng thử lại".
+•	Giữ nguyên giỏ hàng để nhân viên có thể retry.
+3.	Nhân viên nhấn "Gửi bếp" lại khi kết nối ổn định.
+•	AF-03: Thêm món cho bàn đang phục vụ (Bắt đầu từ bước 1).
+•	Bàn đã có order với status="pending".
+•	Hệ thống load order hiện tại.
+•	Nhân viên chọn "Thêm món".
+•	Flow tiếp tục như bình thường từ bước 2.
+•	Tại bước 9: Chỉ INSERT order_items mới, không tạo order mới.
+Luồng ngoại lệ (Exception Flows):
+1.	EF-01: Session timeout (Bất kỳ bước nào).
+•	Nếu JWT token hết hạn.
+•	Hệ thống hiển thị modal "Phiên đăng nhập hết hạn".
+•	Redirect về màn hình Login.
+•	Sau khi login lại, hệ thống attempt restore giỏ hàng từ AsyncStorage (nếu có).
+2.	EF-02: Bàn bị đóng bởi user khác (Tại bước 8-9).
+•	Nếu thu ngân đã thanh toán bàn này trong lúc nhân viên đang chọn món.
+•	Hệ thống kiểm tra table status trước khi INSERT.
+•	Hiển thị error "Bàn này đã được thanh toán. Không thể gửi đơn".
+•	Clear giỏ hàng và navigate về Home.
+Yêu cầu đặc biệt:
+1.	Performance: Thời gian từ khi nhấn "Gửi bếp" đến khi bếp nhận được notification không quá 2 giây.
+2.	Usability: Hỗ trợ gesture swipe-to-delete trên Cart items.
+3.	Accessibility: Font size tối thiểu 14sp, contrast ratio đạt WCAG AA.
+4.	Data Integrity: Lưu unit_price tại thời điểm order để tránh sai lệch khi giá menu thay đổi.
+3.5.6. ĐẶC TẢ USE CASE: QUY TRÌNH BẾP
+Bảng 3.14. Chế biến và Hoàn thành món
+Thành phần	Mô tả
+Tên Use Case	Nhận đơn, Chế biến và Hoàn thành món ăn
+Actor chính	Nhân viên Bếp (Kitchen Staff)
+Actors phụ	Nhân viên phục vụ (để nhận notification)
+Mô tả	Bếp nhận thông báo món mới từ realtime system, bắt đầu chế biến, và đánh dấu hoàn thành khi món sẵn sàng phục vụ
+Pre-conditions	- Nhân viên bếp đã đăng nhập với vai trò Kitchen
+- Có ít nhất một order_item với status="waiting"
+Post-conditions	- Order item status được cập nhật thành "completed"
+- Nhân viên phục vụ nhận notification món đã xong
+Luồng sự kiện chính:
+1.	Bếp mở màn hình KDS (Kitchen Display System).
+•	Hệ thống load danh sách order_items có status="waiting".
+•	Sắp xếp theo thời gian tạo (FIFO).
+•	Subscribe realtime channel "order-items-changes".
+2.	Hệ thống nhận INSERT event mới từ Supabase Realtime.
+•	Play âm thanh báo hiệu.
+•	Hiển thị notification banner "Có [số lượng] món mới".
+•	Auto-refresh danh sách hoặc thêm món mới vào đầu queue.
+3.	Bếp xem chi tiết món trong queue.
+•	Hiển thị: Table number, Tên món, Số lượng, Notes đặc biệt, Thời gian chờ.
+•	Các món giống nhau được group lại với tổng số lượng.
+4.	Bếp nhấn vào món để "Bắt đầu nấu".
+•	Hệ thống UPDATE order_items SET status='in_progress', started_at=NOW().
+•	Món di chuyển sang tab "In Progress".
+•	Hiển thị timer đếm thời gian chế biến.
+5.	Bếp hoàn tất chế biến món.
+•	Nhấn nút "Hoàn thành".
+6.	Hệ thống xử lý event hoàn thành:
+ 
+7.	Stored Function create_item_ready_notification() thực thi:
+ 
+8.	Nhân viên phục vụ nhận push notification.
+•	App hiển thị toast "Bàn 5 - Cà phê sữa đá đã xong".
+•	Notification có deep link đến Table Detail screen.
+9.	Nhân viên bưng món ra cho khách.
+10.	Nhân viên đánh dấu "Đã phục vụ" trên app.
+•	UPDATE order_items SET status='served' WHERE id=item_id.
+•	Item biến mất khỏi danh sách "Chờ phục vụ".
+Luồng thay thế:
+1.	AF-01: Hủy món theo yêu cầu (Tại bước 3-4).
+•	Nếu nhân viên phục vụ hủy món (khách đổi ý).
+•	Bếp nhận UPDATE event: status='cancelled'.
+•	Món tự động biến khỏi queue.
+•	Hiển thị toast "Món [Tên] đã bị hủy bởi [Staff name]".
+2.	AF-02: Món hết nguyên liệu (Tại bước 3).
+•	Bếp phát hiện không đủ nguyên liệu.
+•	Nhấn button "Báo hết hàng" trên món.
+•	Hệ thống UPDATE menu_items SET is_available=FALSE.
+•	Realtime broadcast đến tất cả staff apps.
+•	Menu của staff tự động ẩn món đó.
+3.5.7. ĐẶC TẢ USE CASE: THANH TOÁN
+Bảng 3.15. Thanh toán đơn hàng
+Thành phần	Mô tả
+Tên Use Case	Thanh toán đơn hàng qua nhiều phương thức
+Actor chính	Thu ngân (Cashier)
+Actors phụ	Khách hàng, Các hệ thống thanh toán (MoMo, Bank, VietQR), Supabase Edge Function
+Mô tả	Thu ngân chọn phương thức thanh toán (tiền mặt, VietQR, MoMo), xử lý giao dịch tương ứng, và hệ thống tự động xác nhận cập nhật trạng thái đơn
+Pre-conditions	- Thu ngân đã đăng nhập
+- Order tồn tại với status="pending"
+- Tất cả món đã completed
+- Credentials thanh toán đã được config trong Supabase secrets
+Post-conditions	- Order status = "paid"
+- Table status = "Trống"
+- Transaction log được tạo
+- Hóa đơn được in hoặc lưu
+Luồng sự kiện chính - Bước setup chung:
+1.	Thu ngân chọn bàn cần thanh toán từ danh sách "Orders".
+2.	Hệ thống hiển thị màn hình Checkout.
+•	Bill detailed: Itemized list tất cả món.
+o	Tên món | Số lượng | Đơn giá | Thành tiền.
+•	Subtotal: Tổng tiền trước giảm giá.
+•	Discount: Áp dụng voucher hoặc giảm giá manual (nếu có).
+•	Tax: Thuế (nếu cấu hình).
+•	Grand Total: Tổng tiền cuối cùng (Subtotal - Discount + Tax).
+•	Payment Methods: 3 nút để chọn phương thức thanh toán.
+3.	Decision: Thu ngân chọn phương thức thanh toán.
+3.5.7.1. Luồng A: Thanh toán Tiền mặt
+Trigger: Thu ngân nhấn nút "Tiền mặt".
+1.	Hệ thống hiển thị màn hình "Nhập tiền khách".
+•	Hiển thị Grand Total lớn.
+•	Numpad (0-9, xóa, clear) để nhập tiền khách đưa.
+•	Hiển thị real-time:
+o	Tiền khách: XXX,XXX.
+o	Tiền thừa: XXX,XXX (màu xanh nếu > 0, nếu < 0 thì cảnh báo).
+2.	Thu ngân nhập số tiền khách đưa (tối thiểu >= Grand Total).
+•	Nếu tiền < Grand Total: Cảnh báo "Tiền không đủ".
+•	Nếu tiền >= Grand Total: Enable nút "Xác nhận".
+3.	Thu ngân nhấn "Xác nhận thanh toán tiền mặt".
+4.	Hệ thống xử lý:
+ 
+5.	Supabase Realtime broadcast UPDATE event.
+6.	App hiển thị:
+•	Thanh toán thành công (màn hình xanh).
+•	Tiền thừa cần trả: XXX,XXX VND.
+•	Nút "In hóa đơn" / "Hoàn tất".
+7.	Nếu in hóa đơn:
+•	Generate receipt HTML với logo, order_code, timestamp, itemized list, total, payment method.
+•	Gửi print command đến thermal printer (Bluetooth hoặc network).
+Alternative Flows - Tiền mặt:
+1.	AF-A1: Thu ngân sửa tiền nhập: Nhấn clear hoặc backspace để nhập lại.
+2.	AF-A2: Thu ngân hủy giao dịch: Nhấn "Hủy", quay về màn hình Checkout để chọn phương thức khác.
+3.5.7.2. Luồng B: Thanh toán VietQR 
+ 
+Hình 3.7. Các luồng xử lý hoạt động của thanh toán vietqrcode
+Trigger: Thu ngân nhấn nút "Chuyển khoản".
+1.	Hệ thống call Edge Function “create-vietqr-payment”:
+ 
+2.	Edge Function xử lý:
+•	Call VietQR API hoặc Bank's API để generate QR.
+•	QR chứa thông tin: Bank account, Amount, Description, Recipient name.
+•	Response: {qrCodeUrl, paymentInfo}.
+3.	Hệ thống hiển thị modal "Mã QR Chuyển khoản".
+•	QR code lớn (200x200px).
+•	Thông tin thanh toán:
+ 
+•	Countdown timer (15 phút).
+•	Nút "Đã thanh toán" / "Hủy".
+•	Ghi chú: "Khách quét mã bằng app ngân hàng hoặc ví điện tử".
+4.	Xử lý song song (Parallel processes):
+•	Process B1 - Khách thanh toán qua app ngân hàng:
+o	Khách quét QR bằng app ngân hàng/ví điện tử.
+o	Khách nhập OTP xác thực.
+o	Ngân hàng xử lý giao dịch.
+o	Webhook callback từ Bank/VietQR Service:
+
+
+
+
+
+•	Process B2 - VietQR Webhook Handler xử lý:
+ 
+5.	Supabase Realtime broadcast UPDATE event.
+6.	App thu ngân nhận realtime event:
+•	Tự động đóng modal QR.
+•	Hiển thị màn hình "Thanh toán thành công".
+•	Nút "In hóa đơn" / "Hoàn tất".
+Alternative Flows - VietQR:
+1.	AF-B1: Khách quét nhưng chưa xác nhận: Modal timeout sau 15 phút, yêu cầu tạo lại QR.
+2.	AF-B2: Khách quét nhưng chuyển sai số tiền: Webhook không match amount, log warning, yêu cầu khách chuyển lại.
+3.	AF-B3: Khách hủy thanh toán: Nhấn "Hủy", quay về checkout để chọn phương thức khác.
+Race Condition Handling (VietQR):
+•	Vì webhook có thể đến trước khi order được tạo xong (khách chuyển khoản quá nhanh), webhook handler có:
+•	Retry 3 lần với delay 1 giây.
+•	Return HTTP 200 ngay cả khi không tìm thấy để tránh bank retry spam.
+•	Frontend có thể manual refresh nếu cần.
+3.5.7.3. Luồng C: Thanh toán MoMo
+
+
+
+
+
+
+
+
+
+ 
+Hình 3.8. Các luồng xử lý hoạt động của thanh toán momo
+Trigger: Thu ngân nhấn nút "Thanh toán MoMo".
+1.	Hệ thống call Supabase Edge Function create-momo-payment:
+ 
+2.	Edge Function xử lý:
+•	Tạo chữ ký HMAC SHA256.
+•	Call MoMo API /v2/gateway/api/create.
+•	Nhận response chứa qrCodeUrl và deeplink.
+3.	Hệ thống hiển thị modal "Mã QR thanh toán MoMo".
+•	QR code lớn.
+•	"MoMo" branding.
+•	Countdown timer (10 phút).
+•	Nút "Đã thanh toán" / "Hủy".
+4.	Xử lý song song (Parallel processes):
+•	Process D1 - Khách thanh toán qua app MoMo:
+o	Khách mở app MoMo.
+o	Quét QR.
+o	Xác nhận thanh toán (nhập mã PIN).
+•	Process D2 - MoMo API gọi IPN Webhook:
+o	MoMo xử lý giao dịch.
+o	Gọi IPN endpoint: POST /functions/v1/momo-ipn-handler.
+ 
+5.	Edge Function momo-ipn-handler nhận request:
+•	Verify HMAC signature: calculatedSig === receivedSig.
+•	Nếu signature invalid: Log security alert, return 400.
+•	Decode extraData để lấy originalOrderId.
+•	Nếu resultCode=0 (thành công).
+ 
+
+•	Return HTTP 204 để MoMo biết đã nhận
+6.	Supabase Realtime broadcast UPDATE event
+7.	App thu ngân nhận realtime event:
+•	Tự động đóng modal QR.
+•	Hiển thị "Thanh toán thành công" với animation.
+•	Nút "In hóa đơn" / "Hoàn tất".
+Alternative Flows - MoMo:
+1.	AF-C1: Khách hủy thanh toán: Không quét hoặc quét nhưng không xác nhận → Timeout 10 phút → Yêu cầu tạo lại QR.
+2.	AF-C2: Thanh toán thất bại: MoMo trả resultCode != 0 (ví không đủ tiền, giao dịch bị từ chối).
+•	IPN handler không update order.
+•	App hiển thị "Thanh toán thất bại. Vui lòng thử lại".
+•	Thu ngân chọn tạo lại QR hoặc đổi phương thức.
+3.	AF-C3: Mất kết nối mạng: App không nhận realtime event.
+•	Thu ngân nhấn refresh.
+•	Hệ thống query lại order status từ database.
+•	Nếu status='paid': Hiển thị success.
+•	Nếu 'pending': Hỏi khách xem đã thanh toán chưa.
+3.5.8. ĐẶC TẢ USE CASE: BÁO CÁO
+Bảng 3.16. Báo cáo tài chính
+Thành phần	Mô tả
+Tên Use Case	Xem Dashboard tổng quan và Báo cáo tài chính
+Actor chính	Quản lý (Admin)
+Mô tả	Admin xem các chỉ số kinh doanh quan trọng, biểu đồ doanh thu, và các báo cáo chi tiết
+Pre-conditions	- Admin đã đăng nhập
+- Database có dữ liệu orders và transactions
+Post-conditions	- Dashboard hiển thị số liệu real-time
+- Báo cáo có thể được export
+Luồng sự kiện chính:
+1.	Admin mở tab "Dashboard".
+2.	Hệ thống call stored procedure get_dashboard_overview():
+
+
+
+3.	Stored procedure tính toán và trả về JSON:
+4.	App render Dashboard UI:
+•	KPI cards: Doanh thu, Số đơn, TB bill, Lợi nhuận.
+•	Line chart: doanh thu 7 ngày gần nhất.
+•	Bar chart: top 5 món bán chạy.
+•	Heatmap: phân bố đơn hàng theo giờ.
+5.	Admin có thể filter theo khoảng thời gian.
+•	DatePicker chọn from/to date.
+•	Hệ thống re-call procedure với params mới.
+•	Charts tự động update.
+6.	Admin nhấn "Xuất báo cáo Excel".
+7.	Hệ thống generate Excel file:
+•	Sheet 1: Summary (KPIs).
+•	Sheet 2: Detailed transactions.
+•	Sheet 3: Top items report.
+•	Auto-formatting với colors và borders.
+8.	App trigger download file BaoCao_${date}.xlsx.
+•	Stored Procedure quan trọng:
+ 
+3.6. PHÂN TÍCH LUỒNG HOẠT ĐỘNG
+Phần này mô tả quy trình hoạt động tổng thể của hệ thống TableFlow thông qua sơ đồ hoạt động (Activity Diagram). Các sơ đồ minh họa luồng tác vụ giữa người dùng và hệ thống, bao gồm các bước xử lý tuần tự, điều kiện rẽ nhánh, và các hoạt động song song giữa các bộ phận (phục vụ, bếp, thu ngân).
+3.6.1. ACTIVITY DIAGRAM - QUY TRÌNH GỌI MÓN
+
+
+ 
+Hình 3.9. Activity Diagram - Quy trình gọi món
+Actor: Nhân viên phục vụ (Staff).
+Mục tiêu: Gọi món và gửi đơn đến bếp.
+Luồng hoạt động:
+•	Bắt đầu → Chọn bàn → Mở bàn (nếu trống).
+•	Hiển thị menu → Chọn món → Thêm ghi chú → Thêm vào giỏ hàng.
+•	Kiểm tra danh sách món → Gửi bếp.
+•	Hệ thống xử lý → Cập nhật database → Hiển thị thông báo thành công.
+•	Kết thúc.
+Điều kiện rẽ nhánh:
+•	Nếu bàn đang phục vụ → Chuyển sang “Thêm món”.
+•	Nếu món hết hàng → Thông báo lỗi và quay lại menu.
+3.6.2. ACTIVITY DIAGRAM - QUY TRÌNH CHẾ BIẾN
+
+ 
+Hình 3.10. Activity Diagram - Quy trình chế biến
+Actor: Nhân viên bếp.
+Mục tiêu: Nhận đơn và chế biến món.
+Luồng hoạt động:
+•	Bắt đầu → Nhận thông báo món mới (Realtime).
+•	Xem chi tiết món → Cập nhật trạng thái “Đang chế biến”.
+•	Nấu hoàn tất → Đánh dấu “Hoàn thành” → Gửi thông báo đến phục vụ.
+•	Kết thúc.
+Hoạt động song song:
+•	Nhiều đầu bếp có thể thao tác đồng thời trên các order khác nhau, mỗi thay đổi đều cập nhật realtime đến UI phục vụ và thu ngân.
+3.6.3. ACTIVITY DIAGRAM - QUY TRÌNH THANH TOÁN
+ 
+Hình 3.11. Activity Diagram - Quy trình thanh toán
+Actor: Thu ngân.
+Mục tiêu: Hoàn tất hóa đơn cho khách hàng.
+Luồng hoạt động:
+•	Bắt đầu → Mở hóa đơn → Xác nhận tổng tiền.
+•	Chọn phương thức thanh toán:
+•	Tiền mặt → Nhập số tiền → Tính tiền thừa.
+•	VietQR → Tạo mã QR → Chờ xác nhận giao dịch.
+•	MoMo → Tạo QR MoMo → Xử lý callback IPN.
+•	Cập nhật đơn hàng thành “paid” → In hóa đơn → Đóng bàn.
+•	Kết thúc.
+3.7. SƠ ĐỒ TUẦN TỰ
+Các sơ đồ tuần tự mô tả chi tiết quá trình tương tác giữa các thành phần trong hệ thống TableFlow theo trình tự thời gian. Bốn luồng chính dưới đây đại diện cho toàn bộ cơ chế hoạt động thời gian thực của sản phẩm: đặt món, đồng bộ dữ liệu real-time, thanh toán MoMo và thanh toán VietQR.
+3.7.1. SEQUENCE DIAGRAM - LUỒNG ĐẶT MÓN THỜI GIAN THỰC
+ 
+Hình 3.12. SEQUENCE DIAGRAM - Luồng đặt món thời gian thực
+	Sơ đồ mô tả toàn bộ quá trình gửi món từ ứng dụng nhân viên cho đến khi hệ thống bếp nhận được thông báo thời gian thực thông qua cơ chế WebSocket của Supabase.
+Thành phần tham gia:
+•	Nhân viên (Staff), Staff App, Supabase Client, PostgreSQL Database, Realtime Server, Kitchen App.
+Trình tự hoạt động:
+1.	Nhân viên thao tác thêm món và nhấn “Gửi đơn”.
+2.	Staff App gọi hàm insert(order_items) vào Supabase Client.
+3.	Supabase Client thực hiện lệnh INSERT vào PostgreSQL.
+4.	Database kiểm tra ràng buộc (constraints).
+5.	Trigger pg_notify được kích hoạt.
+6.	Realtime Server nhận sự kiện và phát WebSocket event.
+7.	Kitchen App nhận payload thời gian thực.
+8.	Staff App nhận phản hồi thành công và cập nhật UI.
+9.	Các hành động song song xảy ra:
+•	Phía nhân viên: cập nhật trạng thái cục bộ, điều hướng về màn hình bàn, hiển thị thông báo.
+•	Phía bếp: giải mã payload, render giao diện, phát âm thanh cảnh báo.
+Luồng này thể hiện rõ cơ chế Reactivity và Event-driven Architecture mà TableFlow áp dụng dựa trên Supabase Realtime.
+3.7.2. SEQUENCE DIAGRAM - LUỒNG THANH TOÁN MOMO
+
+ 
+Hình 3.13. SEQUENCE DIAGRAM - Luồng thanh toán MoMo
+Sơ đồ mô tả quá trình tạo QR thanh toán MoMo, xác thực giao dịch thông qua Webhook IPN và cập nhật trạng thái đơn hàng theo thời gian thực.
+Thành phần tham gia:
+•	Khách hàng, Thu ngân App, Functions API (Gateway), Edge Function (Processor), MoMo System, Webhook Handler, PostgreSQL, Realtime Server.
+Trình tự hoạt động:
+1.	Thu ngân gửi yêu cầu tạo thanh toán (POST payload).
+2.	Functions API forward yêu cầu sang Edge Function.
+3.	Edge Function tạo yêu cầu /create (ký HMAC SHA256).
+4.	MoMo trả về JSON gồm QR/DeepLink.
+5.	Functions API gửi kết quả xác minh về Thu ngân App.
+6.	Ứng dụng hiển thị QR cho khách hàng.
+7.	Khách hàng quét mã và xác thực.
+8.	MoMo gửi Webhook Callback (IPN) đến hệ thống.
+9.	Webhook Handler xác minh chữ ký số HMAC.
+10.	Database cập nhật payment_status = paid.
+11.	Trigger NOTIFY kích hoạt sự kiện.
+12.	Realtime Server đẩy WebSocket event đến POS Client.
+13.	Thu ngân App hiển thị thông báo “Thanh toán thành công”.
+14.	Luồng chứng minh khả năng đảm bảo tính toàn vẹn giao dịch (HMAC), xử lý bất đồng bộ và đồng bộ liên ứng dụng theo thời gian thực.
+3.7.3. SEQUENCE DIAGRAM - LUỒNG THANH TOÁN VIETQR & XÁC THỰC SEPAY
+
+ 
+Hình 3.14. SEQUENCE DIAGRAM - Luồng thanh toán VietQR & xác thực SePay
+Sơ đồ mô tả quy trình thanh toán VietQR truyền thống nhưng có bổ sung lớp xác thực SePay để tự động nhận biết giao dịch dựa trên biến động số dư ngân hàng.
+Thành phần tham gia:
+•	Khách hàng, Thu ngân App, VietQR Service, Bank System, Webhook Handler, SePay Service, PostgreSQL, Realtime Server.
+Trình tự hoạt động:
+1.	Thu ngân chọn phương thức “Chuyển khoản ngân hàng”.
+2.	Ứng dụng gửi request tạo mã QR VietQR.
+3.	VietQR Service trả về ảnh QR (PNG/SVG).
+4.	Ứng dụng hiển thị QR cho khách hàng.
+5.	Khách hàng quét mã và thực hiện chuyển tiền.
+6.	Ngân hàng phát sinh biến động số dư và gửi Webhook.
+7.	Webhook Handler trích xuất mã đơn hàng qua Regex.
+8.	SePay Service gửi yêu cầu xác minh giao dịch.
+9.	Hệ thống truy vấn SELECT * FROM orders.
+10.	So sánh nội dung chuyển khoản và số tiền.
+11.	Nếu hợp lệ: cập nhật payment_status = paid.
+12.	Commit transaction thành công.
+13.	Trigger_notify kích hoạt realtime event.
+14.	Realtime Server push WebSocket thông báo “Order Paid”.
+15.	Thu ngân App đóng QR modal và hiển thị trạng thái thành công.
+Luồng này mô tả rõ vai trò của SePay như lớp xác thực trung gian nhằm tự động hóa nhận diện giao dịch.
+3.7.4. SEQUENCE DIAGRAM - LUỒNG ĐỒNG BỘ DỮ LIỆU REAL-TIME
+ 
+Hình 3.15. SEQUENCE DIAGRAM - Luồng đồng bộ dữ liệu real-time
+Sơ đồ mô tả cách ứng dụng khách (Client App) đăng ký kênh realtime và nhận các sự kiện INSERT/UPDATE từ database Supabase.
+Thành phần tham gia:
+•	Người dùng khác (Source of Change), Client App, Supabase Client, Realtime Server, PostgreSQL.
+Quy trình đăng ký kênh:
+1.	Ứng dụng gọi subscribe() hoặc channel().
+2.	Supabase Client mở kết nối WebSocket.
+3.	Realtime Server phản hồi trạng thái “Connected”.
+4.	Client gửi yêu cầu đăng ký topic (bảng cần theo dõi).
+5.	PostgreSQL thực hiện LISTEN trên channel.
+6.	Realtime Server gửi trạng thái “Subscribed” về Client.
+7.	Client App hoàn tất đăng ký.
+Quy trình đồng bộ sự kiện:
+1.	Hệ thống phát sinh INSERT/UPDATE.
+2.	PostgreSQL trigger pg_notify.
+3.	Realtime Server gửi WebSocket Push.
+4.	Client App nhận callback (new/old record).
+5.	Ứng dụng cập nhật state cục bộ và render UI.
+Luồng này là nền tảng giúp TableFlow đảm bảo tính real-time, trạng thái nhất quán, và UI phản hồi tức thời.
+3.8. SƠ ĐỒ LỚP
+Sơ đồ lớp được sử dụng để mô tả cấu trúc tĩnh của hệ thống TableFlow thông qua các lớp (classes), thuộc tính (attributes), phương thức (methods) và các mối quan hệ giữa chúng. Class Diagram được xây dựng dựa trên mô hình cơ sở dữ liệu (ERD), đặc tả chức năng (Use Case Specification) và phân tích các luồng xử lý nghiệp vụ trong hệ thống.
+Sơ đồ phản ánh đầy đủ các thành phần chính của hệ thống, bao gồm:
+•	User & Operations,
+•	Order System,
+•	Menu Management,
+•	Inventory System,
+•	Services Layer,
+•	Các Enum dùng chung.
+ 
+Hình 3.16. CLASS DIAGRAM - Hệ thống TableFlow
+1.	User & Operations
+Nhóm lớp này quản lý người dùng và hoạt động trên bàn phục vụ:
+•	User: chứa thông tin người dùng và vai trò (admin, nhân viên, bếp, thu ngân). Người dùng có thể thực hiện các hành động như cập nhật hồ sơ và phân quyền.
+•	Table: đại diện cho bàn phục vụ trong nhà hàng, bao gồm trạng thái bàn, số ghế và các hàm mở/đóng bàn.
+•	Mỗi User có thể tạo và thao tác với nhiều đơn hàng; mỗi Table có thể gán cho một hoặc nhiều đơn hàng tùy theo phiên phục vụ.
+2.	Order System
+Đây là nhóm lớp quan trọng nhất, mô tả toàn bộ vòng đời của một đơn hàng:
+•	CartItem: lưu thông tin món trong giỏ trước khi tạo Order.
+•	Order: chứa thông tin tổng đơn hàng, trạng thái, phương thức thanh toán và các hành động thay đổi trạng thái.
+•	OrderItem: mô tả từng món ăn trong đơn hàng, số lượng, tùy chọn chế biến và trạng thái xử lý trong bếp.
+•	Transaction: ghi nhận giao dịch thanh toán cho đơn hàng.
+•	ReturnSlip: đại diện cho phiếu trả món, gồm lý do và thời điểm tạo.
+Các quan hệ quan trọng:
+•	Một Order gồm nhiều OrderItem.
+•	Một Order có thể tạo nhiều Transaction.
+•	Một ReturnSlip gắn với một Order và liệt kê các món được trả lại.
+3.	Menu Management
+Nhóm lớp này mô tả cấu trúc menu và các thành phần liên quan:
+•	Category: đại diện nhóm món ăn.
+•	MenuItem: mô tả món ăn (giá, mô tả, tồn kho, trạng thái hoạt động).
+•	OptionGroup & OptionChoice: quản lý nhóm tùy chọn và lựa chọn bổ sung cho món (ví dụ: size, topping, mức cay).
+Quan hệ:
+•	Mỗi MenuItem thuộc một Category.
+•	Một MenuItem có thể có nhiều OptionGroup, và mỗi OptionGroup có nhiều OptionChoice.
+4. Inventory System
+Nhóm này quản lý nguyên vật liệu và lịch sử xuất nhập kho:
+•	Ingredient: đại diện nguyên liệu, gồm đơn vị tính, tồn kho, ngưỡng cảnh báo.
+•	StockHistory: ghi lại từng lần điều chỉnh tồn kho, thay đổi số lượng và ghi chú.
+Quan hệ:
+•	Một Ingredient có nhiều bản ghi StockHistory.
+5. Services Layer
+Lớp dịch vụ mô tả các chức năng nghiệp vụ mức cao hỗ trợ toàn hệ thống:
+•	PaymentService: xử lý thanh toán tiền mặt, MoMo, VietQR, xác thực webhook.
+•	KitchenService: nhận món từ OrderItem, cập nhật trạng thái và gửi thông báo món đã sẵn sàng.
+•	NotificationService: gửi thông báo real-time đến các client hoặc role cụ thể.
+•	ReportService: tổng hợp báo cáo và hỗ trợ xuất file Excel.
+6. Common Enums
+Sử dụng để chuẩn hóa trạng thái và vai trò trong hệ thống:
+•	OrderStatus (pending, in_progress, completed, paid).
+•	OrderItemStatus (waiting, in_progress, completed, served).
+•	UserRole (admin, staff, kitchen, cashier).
+•	PaymentMethodEnum (cash, momo, transfer).
+3.9. THIẾT KẾ CƠ SỞ DỮ LIỆU
+Cơ sở dữ liệu PostgreSQL được thiết kế chuẩn hóa (Normalized) đến dạng chuẩn 3NF (Third Normal Form) để đảm bảo tính toàn vẹn dữ liệu, giảm redundancy, đồng thời áp dụng các tính năng nâng cao của PostgreSQL như JSONB, Full-text Search, và Stored Procedures để tối ưu hiệu năng.
+ 
+Hình 3.17. ERD - Entity Relationship Diagram
+3.9.1. MÔ TẢ CHI TIẾT CÁC BẢNG DỮ LIỆU
+3.9.1.1. Bảng public.users
+Lưu thông tin người dùng, đồng bộ từ auth.users của Supabase Auth. Đây là bảng dữ liệu mở rộng của hệ thống xác thực Supabase, chứa thông tin chi tiết về nhân viên như họ tên, vai trò, avatar, số điện thoại, và trạng thái hoạt động.
+Bảng 3.17. Bảng User
+Tên cột	Kiểu dữ liệu	Constraints	Mô tả
+id	UUID	PRIMARY KEY	Khóa chính, sync với auth.users.id
+email	VARCHAR(255)	UNIQUE, NOT NULL	Email đăng nhập
+full_name	VARCHAR(100)	NOT NULL	Họ tên đầy đủ
+role	user_role_enum	NOT NULL, DEFAULT 'staff'	Vai trò: admin, staff, kitchen, cashier
+avatar_url	TEXT	NULLABLE	URL ảnh đại diện (Cloudinary)
+phone	VARCHAR(15)	NULLABLE	Số điện thoại liên lạc
+is_active	BOOLEAN	DEFAULT TRUE	Trạng thái hoạt động
+created_at	TIMESTAMPTZ	DEFAULT NOW()	Thời gian tạo tài khoản
+updated_at	TIMESTAMPTZ	DEFAULT NOW()	Thời gian cập nhật cuối cùng
+Giải thích các vai trò:
+Bảng 3.18. Mô tả các vai trò của bảng User
+Vai trò	Quyền hạn	Chức năng chính
+admin	Toàn quyền	Quản lý menu, nhân viên, bàn, xem báo cáo tài chính
+staff	Phục vụ	Xem menu, gọi món, gửi bếp, nhận thông báo
+kitchen	Chế biến	Xem KDS, hoàn thành món, quản lý tình trạng hàng
+cashier	Thanh toán	Xem bill, xử lý thanh toán, in hóa đơn
+3.9.1.2. Bảng public.categories
+Phân loại các món ăn trên menu thành các danh mục để dễ tìm kiếm và quản lý.
+Bảng 3.19. Bảng catagories
+Tên cột	Kiểu dữ liệu	Constraints	Mô tả
+id	UUID	PRIMARY KEY	Khóa chính
+name	TEXT	UNIQUE, NOT NULL	Tên danh mục (ví dụ: "Cà phê", "Trà")
+created_at	TIMESTAMPTZ	DEFAULT NOW()	Thời gian tạo
+3.9.1.3. Bảng public.menu_items
+Lưu trữ thông tin chi tiết về từng món ăn/thức uống trên menu, bao gồm giá, hình ảnh, trạng thái sẵn có.
+Bảng 3.20. Bảng menu_items
+Tên cột	Kiểu dữ liệu	Constraints	Mô tả
+id	UUID	PRIMARY KEY	Khóa chính
+name	TEXT	NOT NULL	Tên món ăn
+price	NUMERIC	NOT NULL	Giá bán cho khách
+description	TEXT	NULLABLE	Mô tả chi tiết, ingredients
+image_url	TEXT	NULLABLE	URL hình ảnh (Cloudinary)
+category_id	UUID	FK, NOT NULL	Tham chiếu đến categories
+cost	NUMERIC	DEFAULT 0	Giá vốn (tính lợi nhuận)
+is_available	BOOLEAN	DEFAULT TRUE	Còn/hết hàng
+is_hot	BOOLEAN	DEFAULT FALSE	Đồ uống nóng?
+is_active	BOOLEAN	DEFAULT TRUE	Còn bán không?
+stock_quantity	INTEGER	DEFAULT 0	Số lượng tồn kho
+low_stock_threshold	INTEGER	DEFAULT 5	Ngưỡng cảnh báo hết hàng
+created_at	TIMESTAMPTZ	DEFAULT NOW()	Thời gian tạo
+updated_at	TIMESTAMPTZ	DEFAULT NOW()	Lần cập nhật cuối
+3.9.1.4. Bảng public.tables (Bàn ăn)
+Quản lý các bàn ăn trong nhà hàng, lưu trữ tên, số ghế, trạng thái bàn.
+Bảng 3.21. Bảng tables
+Tên cột	Kiểu dữ liệu	Constraints	Mô tả
+id	BIGINT	PRIMARY KEY	Khóa chính, auto-increment
+name	TEXT	UNIQUE, NOT NULL	Tên bàn (ví dụ: "Bàn 1", "Bàn 2")
+status	TEXT	DEFAULT 'Trống'	Trạng thái: Trống, Có khách, Chuẩn bị
+seats	INTEGER	NULLABLE	Số ghế (sức chứa)
+created_at	TIMESTAMPTZ	DEFAULT NOW()	Thời gian tạo
+3.9.1.5. Bảng public.orders (Đơn hàng)
+Lưu trữ thông tin tổng quan của đơn hàng: bàn, tổng tiền, trạng thái thanh toán.
+Bảng 3.22. Bảng orders
+Tên cột	Kiểu dữ liệu	Constraints	Mô tả
+id	UUID	PRIMARY KEY	Khóa chính
+table_id	BIGINT	FK, NOT NULL	Tham chiếu bàn ăn
+user_id	UUID	FK, NOT NULL	Nhân viên tạo đơn
+order_code	TEXT	UNIQUE, NULLABLE	Mã đơn (ví dụ: ORD-20241201-0001)
+total_price	NUMERIC	DEFAULT 0	Tổng tiền
+status	order_status_enum	DEFAULT 'pending'	Trạng thái đơn hàng
+payment_method	TEXT	NULLABLE	Phương thức thanh toán
+is_provisional	BOOLEAN	DEFAULT FALSE	Là hóa đơn dự kiến?
+created_at	TIMESTAMPTZ	DEFAULT NOW()	Thời gian tạo
+paid_at	TIMESTAMPTZ	NULLABLE	Thời gian thanh toán
+updated_at	TIMESTAMPTZ	DEFAULT NOW()	Cập nhật cuối
+3.9.1.6. Bảng public.order_items (Chi tiết đơn hàng)
+Lưu trữ từng món ăn trong đơn hàng, bao gồm số lượng, giá, trạng thái chế biến.
+Bảng 3.23. Bảng order_items
+Tên cột	Kiểu dữ liệu	Constraints	Mô tả
+id	BIGINT	PRIMARY KEY	Khóa chính
+order_id	UUID	FK, NOT NULL	Tham chiếu đơn hàng
+menu_item_id	UUID	FK, NOT NULL	Tham chiếu món ăn
+quantity	INTEGER	NOT NULL	Số lượng
+unit_price	NUMERIC	NOT NULL	Giá bán tại thời điểm order
+customizations	JSONB	NULLABLE	Tùy chọn (size, temperature, etc.)
+status	order_item_status	DEFAULT 'waiting'	Trạng thái chế biến
+returned_quantity	INTEGER	DEFAULT 0	Số lượng đã trả
+created_at	TIMESTAMPTZ	DEFAULT NOW()	Thời gian tạo
+3.9.1.7. Bảng public.transactions (Giao dịch thanh toán)
+Ghi lại chi tiết mỗi giao dịch thanh toán, bao gồm phương thức, số tiền, mã giao dịch.
+Bảng 3.24. Bảng transactions
+Tên cột	Kiểu dữ liệu	Constraints	Mô tả
+id	UUID	PRIMARY KEY	Khóa chính
+order_id	UUID	FK, NOT NULL	Tham chiếu đơn hàng
+amount	NUMERIC	NOT NULL	Số tiền thanh toán
+payment_method	payment_method_enum	NOT NULL	Phương thức: cash, momo, transfer
+transaction_id	TEXT	NULLABLE	Mã giao dịch từ MoMo hoặc ngân hàng
+status	TEXT	DEFAULT 'completed'	Trạng thái thanh toán
+created_at	TIMESTAMPTZ	DEFAULT NOW()	Thời gian giao dịch
+3.9.1.8. Bảng public.expenses (Chi phí hoạt động)
+Ghi lại các khoản chi phí hoạt động như điện nước, lương nhân viên để tính lợi nhuận ròng.
+Bảng 3.25. Bảng expense
+Tên cột	Kiểu dữ liệu	Constraints	Mô tả
+id	UUID	PRIMARY KEY	Khóa chính
+description	TEXT	NOT NULL	Mô tả chi phí
+amount	NUMERIC	NOT NULL	Số tiền chi
+expense_date	DATE	DEFAULT CURRENT_DATE	Ngày chi
+payment_method	TEXT	DEFAULT 'cash'	Cách thanh toán
+category	TEXT	NULLABLE	Loại chi (utilities, staff, marketing)
+created_at	TIMESTAMPTZ	DEFAULT NOW()	Thời gian ghi nhận
+3.9.1.9. Bảng public.return_slips (Phiếu trả hàng)
+Ghi lại các yêu cầu trả hàng từ khách (hàng hỏng, không đúng yêu cầu).
+Bảng 3.26. Bảng return_slips
+Tên cột	Kiểu dữ liệu	Constraints	Mô tả
+id	BIGINT	PRIMARY KEY	Khóa chính
+order_id	UUID	FK, NOT NULL	Tham chiếu đơn hàng
+reason	TEXT	NULLABLE	Lý do trả (ví dụ: "Quá mặn", "Bị cháy")
+type	TEXT	NULLABLE	Loại: "exchange" (đổi) hay "refund" (hoàn tiền)
+status	return_slip_status	DEFAULT 'approved'	Trạng thái yêu cầu
+created_at	TIMESTAMPTZ	DEFAULT NOW()	Thời gian tạo
+

@@ -19,6 +19,7 @@ import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppTabParamList, AppStackParamList, ROUTES } from '../../constants/routes';
 import { supabase } from '../../services/supabase';
+import Toast from 'react-native-toast-message';
 import OrderInfoBox from '../Menu/OrderInfoBox';
 import EmptyTableActionBox from '../Menu/EmptyTableActionBox';
 import ConfirmModal from '../../components/ConfirmModal';
@@ -135,7 +136,6 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
     if (isInitialLoad) setLoading(true); // Chỉ set loading true khi là lần load đầu
 
     try {
-        console.log('[fetchTables] Starting to fetch tables...');
         const { data, error } = await supabase.rpc('get_tables_with_notifications');
 
         if (error) {
@@ -149,8 +149,6 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
             setTables([]);
             return;
         }
-
-        console.log('[fetchTables] Fetched', data.length, 'tables');
         
         // [MỚI] Lấy orderId cho mỗi bàn
         const tablesWithOrders: TableItemData[] = await Promise.all(
@@ -198,7 +196,6 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
           })
         );
         
-        console.log('[fetchTables] Successfully processed', tablesWithOrders.length, 'tables');
         setTables(tablesWithOrders);
     } catch (error: any) {
         console.error('[fetchTables] Exception:', error.message);
@@ -214,10 +211,16 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
       // Gọi fetchTables cho lần load đầu tiên
       fetchTables(true);
 
+      let refreshTimeout: NodeJS.Timeout;
+
       const tablesChannel = supabase
         .channel('public:tables_home')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, 
-        () => fetchTables(false) // Gọi refresh nền, không set loading
+          () => {
+            // Debounce refetch để tránh nhiều request liên tiếp
+            clearTimeout(refreshTimeout);
+            refreshTimeout = setTimeout(() => fetchTables(false), 100);
+          }
         )
         .subscribe();
       
@@ -231,9 +234,31 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
         })
         .subscribe();
 
+      // [MỚI] Nghe thay đổi trên orders (để cập nhật khi is_provisional thay đổi)
+      const ordersChannel = supabase
+        .channel('public:orders_home_realtime')
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, (payload: any) => {
+            console.log('[HomeScreen] Order updated:', payload.new?.is_provisional);
+            // Khi order được cập nhật (đặc biệt khi is_provisional thay đổi), refresh tables
+            clearTimeout(refreshTimeout);
+            refreshTimeout = setTimeout(() => {
+              console.log('[HomeScreen] Refetching tables due to order update');
+              fetchTables(false);
+            }, 100);
+        })
+        .subscribe();
+
+      // [MỚI] Thêm polling interval để đảm bảo cập nhật kịp thời (giống OrderScreen)
+      const pollingInterval = setInterval(() => {
+        fetchTables(false);
+      }, 3000); // Refetch mỗi 3 giây khi focus screen
+
       return () => {
+        clearTimeout(refreshTimeout);
+        clearInterval(pollingInterval);
         supabase.removeChannel(tablesChannel);
         supabase.removeChannel(notificationsChannel);
+        supabase.removeChannel(ordersChannel);
       };
     }, [fetchTables]) // Chỉ phụ thuộc vào fetchTables (hàm này giờ đã ổn định)
   );
@@ -296,7 +321,36 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
         break;
 
       case 'reserve_table':
-        updateTableStatus(data.tableId, 'Đặt trước');
+        // [SỬA] Tạo order với is_provisional = true
+        (async () => {
+          try {
+            const { data: newOrder, error: orderError } = await supabase
+              .from('orders')
+              .insert({ status: 'pending', total_price: 0, is_provisional: true })
+              .select('id')
+              .single();
+            
+            if (orderError) throw orderError;
+            if (!newOrder) throw new Error('Không thể tạo order mới');
+            
+            const { error: tableError } = await supabase
+              .from('order_tables')
+              .insert({ order_id: newOrder.id, table_id: data.tableId });
+            
+            if (tableError) throw tableError;
+            
+            const { error: statusError } = await supabase
+              .from('tables')
+              .update({ status: 'Đặt trước' })
+              .eq('id', data.tableId);
+            
+            if (statusError) throw statusError;
+            
+            Toast.show({ type: 'success', text1: 'Đã đặt bàn', text2: `Bàn ${data.tableName} đã được đặt trước.` });
+          } catch (error: any) {
+            Toast.show({ type: 'error', text1: 'Lỗi', text2: error.message });
+          }
+        })();
         break;
 
       default:
@@ -395,8 +449,6 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
       </View>
     );
   }
-
-  console.log('[HomeScreen] Render with tables:', { count: tables.length, tables: tables.map(t => ({ id: t.id, name: t.name, status: t.status })) });
 
   return (
     <View style={{ flex: 1, backgroundColor: '#F8F9FA' }}>
@@ -536,7 +588,53 @@ const HomeScreen = ({ navigation }: HomeScreenProps) => {
         onClose={() => setCancelReservationModal({ visible: false, table: null })}
         onConfirm={() => {
           if (cancelReservationModal.table) {
-            updateTableStatus(cancelReservationModal.table.id, 'Trống');
+            // [OPTIMISTIC] Cập nhật UI ngay lập tức trước khi gọi server
+            setTables(prevTables =>
+              prevTables.map(t =>
+                t.id === cancelReservationModal.table!.id
+                  ? { ...t, status: 'Trống' as TableStatus }
+                  : t
+              )
+            );
+            
+            // [SỬA] Hủy order liên kết với bàn trước khi reset trạng thái bàn
+            (async () => {
+              try {
+                // Lấy order của bàn
+                const { data: orders, error: fetchError } = await supabase
+                  .from('orders')
+                  .select('id')
+                  .eq('is_provisional', true)
+                  .in('status', ['pending', 'paid']);
+
+                if (fetchError) throw fetchError;
+
+                // Tìm order liên kết với bàn này
+                if (orders && orders.length > 0) {
+                  for (const order of orders) {
+                    const { data: orderTables } = await supabase
+                      .from('order_tables')
+                      .select('order_id')
+                      .eq('order_id', order.id)
+                      .eq('table_id', cancelReservationModal.table.id)
+                      .single();
+
+                    if (orderTables) {
+                      // Xóa order này
+                      await supabase.rpc('cancel_order_and_reset_tables', { p_order_id: order.id });
+                    }
+                  }
+                }
+
+                // Cập nhật trạng thái bàn trên server
+                await updateTableStatus(cancelReservationModal.table.id, 'Trống');
+                Toast.show({ type: 'success', text1: 'Đã hủy đặt', text2: `Bàn ${cancelReservationModal.table.name} đã được hủy đặt.` });
+              } catch (error: any) {
+                Toast.show({ type: 'error', text1: 'Lỗi', text2: error.message });
+                // [ROLLBACK] Nếu lỗi, refetch lại để khôi phục trạng thái đúng
+                await fetchTables(false);
+              }
+            })();
           }
           setCancelReservationModal({ visible: false, table: null });
         }}

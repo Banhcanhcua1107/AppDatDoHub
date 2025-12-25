@@ -19,9 +19,6 @@ const PrintPreviewScreen = () => {
 
   const [copyCount, setCopyCount] = useState(1);
   const [isClosing, setIsClosing] = useState(false);
-  
-  // Chỉ hiển thị QR code khi KHÔNG phải thanh toán tiền mặt
-  const shouldShowQR = paymentMethod !== 'cash';
 
   // Hàm đóng bàn (gọi API)
   const closeTableSession = async (orderId: string) => {
@@ -124,7 +121,7 @@ const PrintPreviewScreen = () => {
 
       {/* Dùng ScrollView và component BillContent để hiển thị */}
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <BillContent order={order} items={items} showQRCode={shouldShowQR} />
+        <BillContent order={order} items={items} />
       </ScrollView>
     </View>
   );

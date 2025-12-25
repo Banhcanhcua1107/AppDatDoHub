@@ -147,8 +147,6 @@ const OrderInfoBox: React.FC<OrderInfoBoxProps> = ({
         } else {
           setOrderDetails(null);
         }
-        setUnavailableOrderItems(new Set());
-        setUnavailableCount(0);
       } else {
         throw error;
       }

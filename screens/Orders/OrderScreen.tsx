@@ -23,6 +23,7 @@ import { AppTabParamList, AppStackParamList, ROUTES } from '../../constants/rout
 import Toast from 'react-native-toast-message';
 import { useNetwork } from '../../context/NetworkContext';
 import ConfirmModal from '../../components/ConfirmModal';
+import ActionSheetModal from '../../components/ActionSheetModal';
 
 type TableInfo = { id: string; name: string };
 type ActiveOrder = {
@@ -179,14 +180,26 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
     <View style={styles.cardShadow} className="bg-white rounded-lg mb-4 mx-4">
       <TouchableOpacity onPress={handlePressCard}>
         <View
-          style={{ backgroundColor: '#3B82F6' }}
+          style={{ backgroundColor: item.is_provisional ? '#4338CA' : '#3B82F6' }}
           className="flex-row justify-between items-center p-3 rounded-t-lg"
         >
-          <View className="flex-row items-center">
+          <View className="flex-row items-center flex-1">
             <Ionicons name="time-outline" size={16} color="white" />
             <Text className="text-white font-bold text-sm ml-2">
               {formatTimeElapsed(item.createdAt)}
             </Text>
+            {/* [MỚI] Badge hiển thị trạng thái */}
+            <View style={{
+              backgroundColor: item.is_provisional ? 'rgba(255, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.3)',
+              marginLeft: 12,
+              paddingHorizontal: 8,
+              paddingVertical: 2,
+              borderRadius: 4
+            }}>
+              <Text className="text-white text-xs font-semibold">
+                {item.is_provisional ? '📋 Đặt trước' : '🍽️ Đang phục vụ'}
+              </Text>
+            </View>
           </View>
           <View className="flex-row items-center">
             <Ionicons name="copy-outline" size={16} color="white" />
@@ -201,9 +214,6 @@ const OrderItemCard: React.FC<OrderItemCardProps> = ({ item, navigation, onShowM
             <Text className="text-gray-900 font-bold text-2xl">
               {item.totalPrice.toLocaleString('vi-VN')}
             </Text>
-            <View className="flex-row items-center justify-end mt-1">
-              {item.is_provisional && <Ionicons name="restaurant" size={22} color="#2E8540" />}
-            </View>
           </View>
         </View>
       </TouchableOpacity>
@@ -307,6 +317,8 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
   const [selectedOrder, setSelectedOrder] = useState<ActiveOrder | null>(null);
   const [isCancelModalVisible, setCancelModalVisible] = useState(false);
   const [isCloseAllModalVisible, setCloseAllModalVisible] = useState(false);
+  const [filterStatus, setFilterStatus] = useState<'all' | 'serving' | 'provisional'>('all'); // [MỚI] Filter status
+  const [isStatusSheetVisible, setStatusSheetVisible] = useState(false); // [MỚI] ActionSheet cho filter
 
   const fetchActiveOrders = useCallback(async (isInitialLoad = false) => {
     if (isInitialLoad) setLoading(true);
@@ -350,24 +362,24 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
       // 3. Định dạng lại danh sách order đã được ưu tiên để hiển thị
       // [SIMPLIFIED] Items are auto-deleted when báo còn, so no need to load unavailable items
       const formattedOrders: ActiveOrder[] = Array.from(prioritizedOrders.values())
-        .map((order) => {
+        .map((order: any) => {
           const billableItems = order.order_items.filter(
             (item: any) => item.menu_items?.is_available !== false
           );
 
-          const totalPrice = billableItems.reduce(
-            (sum, item) => sum + (item.quantity - (item.returned_quantity || 0)) * item.unit_price,
+          const totalPrice: number = billableItems.reduce(
+            (sum: number, item: any) => sum + (item.quantity - (item.returned_quantity || 0)) * item.unit_price,
             0
           );
-          const totalItemCount = billableItems.reduce(
-              (sum, item) => sum + (item.quantity - (item.returned_quantity || 0)),
+          const totalItemCount: number = billableItems.reduce(
+              (sum: number, item: any) => sum + (item.quantity - (item.returned_quantity || 0)),
               0
           );
-          const tables = order.order_tables.map((ot: any) => ot.tables).filter(Boolean);
+          const tables: TableInfo[] = order.order_tables.map((ot: any) => ot.tables).filter(Boolean);
 
           return {
             orderId: order.id,
-            representativeTableId: tables[0]?.id,
+            representativeTableId: tables[0]?.id || '',
             tables: tables,
             totalPrice, 
             createdAt: order.created_at,
@@ -375,7 +387,7 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
             is_provisional: order.is_provisional,
           };
         })
-        .filter((order) => order.tables.length > 0 && order.totalItemCount >= 0); // Giữ cả order rỗng
+        .filter((order: ActiveOrder) => order.tables.length > 0 && order.totalItemCount >= 0); // Hiển thị tất cả order (cả đang phục vụ và đặt trước)
 
       formattedOrders.sort(
         (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
@@ -393,24 +405,79 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
   useFocusEffect(
     useCallback(() => {
       fetchActiveOrders(true);
+
+      // [FIX] Fallback polling nếu realtime không hoạt động
+      const pollingInterval = setInterval(() => {
+        fetchActiveOrders(false);
+      }, 3000); // Refetch mỗi 3 giây khi focus screen
+
+      return () => {
+        clearInterval(pollingInterval);
+      };
     }, [fetchActiveOrders])
   );
 
   useEffect(() => {
+    let debounceTimer: NodeJS.Timeout;
+
     const channel = supabase
       .channel('public:orders_realtime_updates')
       .on(
         'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'orders' }, // Chỉ lắng nghe UPDATE trên orders table
+        { event: 'UPDATE', schema: 'public', table: 'orders' },
         (payload) => {
-          console.log('[Realtime] Order updated:', payload.new?.status);
-          fetchActiveOrders(false); // Refetch ngay khi order thay đổi
+          console.log('[Realtime] Order updated:', { 
+            orderId: payload.new?.id, 
+            status: payload.new?.status,
+            is_provisional: payload.new?.is_provisional 
+          });
+          // [FIX] Debounce refetch để tránh multiple calls liên tiếp
+          clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => {
+            console.log('[Realtime] Triggering fetchActiveOrders for is_provisional change');
+            fetchActiveOrders(false);
+          }, 200);
+        }
+      )
+      .subscribe();
+
+    // Listener cho INSERT trên order_tables (bàn mới được đặt trước)
+    const orderTablesChannel = supabase
+      .channel('public:order_tables_realtime')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'order_tables' },
+        () => {
+          console.log('[Realtime] New order created');
+          clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => {
+            fetchActiveOrders(false);
+          }, 200);
+        }
+      )
+      .subscribe();
+
+    // Listener cho DELETE trên order_tables (bàn đặt trước bị hủy)
+    const orderTablesDeleteChannel = supabase
+      .channel('public:order_tables_delete')
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'order_tables' },
+        () => {
+          console.log('[Realtime] Order deleted from order_tables');
+          clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => {
+            fetchActiveOrders(false);
+          }, 200);
         }
       )
       .subscribe();
 
     return () => {
+      clearTimeout(debounceTimer);
       supabase.removeChannel(channel);
+      supabase.removeChannel(orderTablesChannel);
+      supabase.removeChannel(orderTablesDeleteChannel);
     };
   }, [fetchActiveOrders]);
 
@@ -597,8 +664,10 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
         <View className="flex-row items-center justify-between">
           <View>
             <Text className="text-3xl font-bold text-gray-800">Order</Text>
-            <TouchableOpacity className="flex-row items-center mt-1">
-              <Text className="text-base text-gray-500">Đang phục vụ</Text>
+            <TouchableOpacity onPress={() => setStatusSheetVisible(true)} className="flex-row items-center mt-1">
+              <Text className="text-base text-gray-500">
+                {filterStatus === 'all' ? 'Tất cả' : filterStatus === 'serving' ? 'Đang phục vụ' : 'Đặt trước'}
+              </Text>
               <Ionicons name="caret-down" size={16} color="#6B7280" className="ml-1" />
             </TouchableOpacity>
           </View>
@@ -624,7 +693,11 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
       </View>
 
       <FlatList
-        data={activeOrders}
+        data={activeOrders.filter(order => {
+          if (filterStatus === 'serving') return !order.is_provisional;
+          if (filterStatus === 'provisional') return order.is_provisional;
+          return true; // 'all'
+        })}
         renderItem={({ item }) => (
           <OrderItemCard item={item} navigation={navigation} onShowMenu={handleShowMenu} />
         )}
@@ -661,6 +734,44 @@ const OrderScreen = ({ navigation }: OrderScreenProps) => {
           onClose={() => setCloseAllModalVisible(false)}
           onConfirm={handleConfirmCloseAll}
           variant="danger"
+      />
+      {/* [MỚI] ActionSheet để filter status */}
+      <ActionSheetModal
+        visible={isStatusSheetVisible}
+        onClose={() => setStatusSheetVisible(false)}
+        title="Chọn loại order"
+        actions={[
+          {
+            id: 'all',
+            icon: 'list-outline',
+            text: 'Tất cả',
+            color: '#3B82F6',
+            onPress: () => {
+              setFilterStatus('all');
+              setStatusSheetVisible(false);
+            },
+          },
+          {
+            id: 'serving',
+            icon: 'restaurant-outline',
+            text: 'Đang phục vụ',
+            color: '#10B981',
+            onPress: () => {
+              setFilterStatus('serving');
+              setStatusSheetVisible(false);
+            },
+          },
+          {
+            id: 'provisional',
+            icon: 'bookmark-outline',
+            text: 'Đặt trước',
+            color: '#F59E0B',
+            onPress: () => {
+              setFilterStatus('provisional');
+              setStatusSheetVisible(false);
+            },
+          },
+        ]}
       />
     </View>
   );

@@ -7,6 +7,8 @@ import {
   Image,
   SafeAreaView,
   ScrollView,
+  Modal,
+  FlatList,
 } from 'react-native';
 
 // --- CÁC DÒNG IMPORT QUAN TRỌNG ---
@@ -26,11 +28,20 @@ type FormErrors = {
   password?: string;
 };
 
+// Quick login data cho các role
+const QUICK_LOGIN_DATA = [
+  { role: 'Admin', email: 'admin@admin.com.vn', password: 'admin123456' },
+  { role: 'Nhân viên', email: 'haidangnakar11@gmail.com', password: '123456' },
+  { role: 'Thu ngân', email: '2205CT0010@dhv.edu.vn', password: '123456' },
+  { role: 'Bếp', email: 'banhcanhcuah2l@gmail.com', password: '123456' },
+];
+
 export default function LoginScreen({ navigation }: LoginScreenProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
+  const [isDropdownVisible, setIsDropdownVisible] = useState(false);
   const { isOnline } = useNetwork();
   const { login } = useAuth();
 
@@ -81,6 +92,37 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
           }
         }
       };
+
+  // Handle quick login
+  const handleQuickLogin = async (loginData: typeof QUICK_LOGIN_DATA[0]) => {
+    setEmail(loginData.email);
+    setPassword(loginData.password);
+    setIsDropdownVisible(false);
+    setErrors({});
+    
+    // Trigger login after setting state
+    setTimeout(async () => {
+      if (!isOnline) {
+        Toast.show({ type: 'error', text1: 'Không có kết nối mạng' });
+        return;
+      }
+      try {
+        const result = await loginUser(loginData.email, loginData.password);
+        login(result);
+        Toast.show({
+          type: 'success',
+          text1: 'Đăng nhập thành công',
+          text2: `Role: ${result?.userProfile?.role || 'unknown'}`,
+        });
+      } catch (error: any) {
+        Toast.show({
+          type: 'error',
+          text1: 'Đăng nhập thất bại',
+          text2: error.message || 'Đã có lỗi xảy ra.',
+        });
+      }
+    }, 100);
+  };
 
   return (
     <SafeAreaView className="flex-1 bg-white">
@@ -183,11 +225,71 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
           </TouchableOpacity>
 
           {/* Footer */}
-          <View className="flex-row justify-center mt-6">
+          <View className="flex-row justify-center items-center mt-6">
             <Text className="text-gray-600">Bạn không có tài khoản? </Text>
             <TouchableOpacity onPress={() => navigation.navigate('Register')}>
               <Text className="font-bold text-[#3461FD]">Đăng ký</Text>
             </TouchableOpacity>
+          </View>
+
+          {/* Quick Login Dropdown */}
+          <View className="items-center mt-4">
+            <TouchableOpacity
+              onPress={() => setIsDropdownVisible(!isDropdownVisible)}
+              className="flex-row items-center bg-gray-100 px-4 py-2 rounded-lg"
+            >
+              <Text className="text-xs font-semibold text-gray-700 mr-1">🔓 Demo Login</Text>
+              <Ionicons name="chevron-down" size={14} color="#3461FD" />
+            </TouchableOpacity>
+
+            {/* Dropdown Modal */}
+            <Modal
+              visible={isDropdownVisible}
+              transparent
+              animationType="fade"
+              onRequestClose={() => setIsDropdownVisible(false)}
+            >
+              <TouchableOpacity
+                activeOpacity={1}
+                onPress={() => setIsDropdownVisible(false)}
+                className="flex-1 bg-black/30"
+              >
+                <View className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-lg w-56 overflow-hidden">
+                  <FlatList
+                    data={QUICK_LOGIN_DATA}
+                    keyExtractor={(item) => item.role}
+                    scrollEnabled={false}
+                    renderItem={({ item, index }) => (
+                      <TouchableOpacity
+                        onPress={() => handleQuickLogin(item)}
+                        className={`px-4 py-3 flex-row items-center ${
+                          index !== QUICK_LOGIN_DATA.length - 1 ? 'border-b border-gray-200' : ''
+                        }`}
+                      >
+                        <Ionicons
+                          name={
+                            item.role === 'Admin'
+                              ? 'shield-checkmark'
+                              : item.role === 'Quản lý'
+                              ? 'people'
+                              : item.role === 'Thu ngân'
+                              ? 'cash'
+                              : 'flame'
+                          }
+                          size={18}
+                          color="#3461FD"
+                          style={{ marginRight: 10 }}
+                        />
+                        <View className="flex-1">
+                          <Text className="font-semibold text-gray-800 text-sm">{item.role}</Text>
+                          <Text className="text-xs text-gray-500">{item.email}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    )}
+                  />
+                </View>
+              </TouchableOpacity>
+            </Modal>
           </View>
         </View>
       </ScrollView>

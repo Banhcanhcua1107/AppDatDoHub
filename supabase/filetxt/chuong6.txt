@@ -1,0 +1,43 @@
+CHƯƠNG 6 - KẾT LUẬN VÀ HƯỚNG PHÁT TRIỂN
+6.1. TÓM TẮT KẾT QUẢ
+Đề tài đã xây dựng thành công hệ thống AppDatDoHub – nền tảng hỗ trợ gọi món và vận hành nhà hàng theo hướng mobile-first. Các kết quả chính đạt được:
+•	Hoàn thiện mô hình dữ liệu và kiến trúc hệ thống.
+•	Tích hợp thành công real-time và thanh toán điện tử.
+•	Đạt kết quả thử nghiệm cao về chức năng, hiệu suất và độ tin cậy.
+•	Xây dựng giao diện thân thiện, dễ tiếp cận.
+•	Chứng minh tính khả thi trong thực tiễn vận hành F&B.
+Kết quả này chứng minh mục tiêu đề tài đã đạt được một cách đầy đủ.
+6.2. ĐÓNG GÓP CỦA ĐỀ TÀI
+6.2.1. ĐÓNG GÓP VỀ MẶT KỸ THUẬT
+•	Xây dựng kiến trúc ứng dụng tối ưu cho mô hình F&B.
+•	Kết hợp Supabase Realtime + RLS trong quản lý dữ liệu.
+•	Triển khai quy trình gọi món – bếp – thu ngân toàn diện.
+•	Ứng dụng các phương pháp phát triển.
+6.2.2. ĐÓNG GÓP VỀ MẶT THỰC TIỄN
+•	Giảm tải công việc thủ công cho nhân viên.
+•	Tăng tốc quy trình phục vụ và giảm sai sót nghiệp vụ.
+•	Tạo trải nghiệm liền mạch cho khách hàng.
+•	Tăng hiệu suất và doanh thu nhà hàng.
+6.3. HẠN CHẾ CỦA HỆ THỐNG
+Các hạn chế còn tồn tại:
+•	Chưa hỗ trợ đa chi nhánh.
+•	Chưa có cơ chế hoạt động offline.
+•	Chưa tích hợp đa dạng phương thức thanh toán khác ngoài MoMo.
+•	Một số thao tác cần tối ưu thêm để giảm độ trễ.
+6.4. HƯỚNG PHÁT TRIỂN NGẮN HẠN (3–6 THÁNG)
+•	Khắc phục lỗi v1.1.x.
+•	Bổ sung VietQR.
+•	Cải tiến UI/UX theo kết quả thử nghiệm.
+•	Tối ưu hóa menu management.
+•	Mở rộng báo cáo nâng cao.
+6.5. HƯỚNG PHÁT TRIỂN TRUNG HẠN (6–12 THÁNG)
+•	Xây dựng module đa chi nhánh.
+•	Tích hợp loyalty, ưu đãi và đánh giá khách hàng.
+•	Nâng cấp KDS với thuật toán dự báo.
+•	Phát triển dashboard phân tích theo thời gian thực.
+6.6. HƯỚNG PHÁT TRIỂN DÀI HẠN (TRÊN 12 THÁNG)
+•	Xây dựng hệ thống quản lý chuỗi cung ứng.
+•	Ứng dụng AI phân tích hành vi và tối ưu menu.
+•	Tích hợp phần cứng chuyên dụng (POS, keypad, máy in…).
+6.7. KẾT LUẬN
+Đề tài đã hoàn thành các mục tiêu và yêu cầu đặt ra ban đầu. Hệ thống TableFlow đạt mức độ hoàn thiện cao, đáp ứng đầy đủ các chức năng cốt lõi và có khả năng triển khai trong môi trường vận hành thực tế. Kết quả xây dựng và kiểm thử hệ thống cho thấy giải pháp có tính ứng dụng tốt và tiềm năng phát triển thành một nền tảng thương mại dành cho các mô hình F&B quy mô nhỏ và vừa. Những kết quả đạt được cũng có thể trở thành tài liệu tham khảo cho các đề tài tiếp theo liên quan đến hệ thống quản lý F&B và ứng dụng công nghệ trong tối ưu hóa quy trình vận hành nhà hàng.

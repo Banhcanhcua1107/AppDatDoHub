@@ -97,17 +97,22 @@ const BillHistoryScreen = () => {
               (sum, item) => sum + (item.quantity - item.returned_quantity),
               0
           );
+          // Tính totalPrice từ order_items thay vì dùng column total_price
+          const totalPrice = order.order_items.reduce(
+              (sum, item) => sum + ((item.quantity - item.returned_quantity) * item.unit_price),
+              0
+          );
           const tables = order.order_tables.map((ot: any) => ot.tables).filter(Boolean);
           
           return {
             orderId: order.id,
             tables: tables,
-            totalPrice: order.total_price || 0,
+            totalPrice: totalPrice || 0,
             totalItemCount,
             createdAt: order.created_at, 
           };
         })
-        .filter((order) => order.totalItemCount > 0 && order.totalPrice > 0);
+        .filter((order) => order.totalItemCount > 0);
 
       setCompletedBills(formattedBills);
     } catch (err: any) {

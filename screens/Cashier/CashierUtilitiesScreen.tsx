@@ -40,26 +40,7 @@ export default function CashierUtilitiesScreen() {
           />
         </View>
 
-        {/* Khu vực Thiết bị & Đồng bộ - GIỮ NGUYÊN */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Thiết bị & Đồng bộ</Text>
-          <UtilityItem 
-            icon="print-outline" 
-            title="Thiết lập máy in" 
-            onPress={() => {}} 
-          />
-          <UtilityItem 
-            icon="sync-outline" 
-            title="Đồng bộ dữ liệu" 
-            onPress={() => {}} 
-          />
-          <UtilityItem 
-            icon="wifi-outline" 
-            title="Kiểm tra kết nối" 
-            onPress={() => {}} 
-          />
-        </View>
-
+        
         {/* Khu vực Hoạt động & Báo cáo - GIỮ NGUYÊN */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Hoạt động & Báo cáo</Text>

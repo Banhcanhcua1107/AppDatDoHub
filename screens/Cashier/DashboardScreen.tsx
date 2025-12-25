@@ -14,6 +14,13 @@ import { supabase } from '../../services/supabase';
 const formatMoney = (amount: number = 0) => (amount || 0).toLocaleString('vi-VN') + ' ₫';
 const formatNumber = (num: number = 0) => (num || 0).toLocaleString('vi-VN');
 
+// [MỚI] Helper function để tính tiền thu từ 3 phương thức: tiền mặt, MoMo, chuyển khoản ngân hàng
+const calculateTotalRevenue = (orderStats: any) => {
+  if (!orderStats || !orderStats.paid) return 0;
+  // Tiền thu = tiền từ các đơn đã thanh toán (gồm tiền mặt, momo, ngân hàng)
+  return Number(orderStats.paid.amount || 0);
+};
+
 // [MỚI] Helper function để tính toán giá trị tối đa "đẹp" cho trục Y của biểu đồ
 const calculateChartMax = (data: any[], defaultMax = 100) => {
   if (!data || data.length === 0) {
@@ -211,7 +218,12 @@ export default function DashboardScreen() {
         {/* Phần KPI và thống kê không thay đổi */}
         <View style={styles.mainInfoContainer}>
           <View style={styles.kpiColumn}>
-            <KpiCard title="Tiền thu" value={formatMoney(data.kpis?.total_revenue)} icon="cash-outline" color="#10B981" />
+            <KpiCard 
+              title="Tiền thu" 
+              value={formatMoney(calculateTotalRevenue(data.order_stats))} 
+              icon="cash-outline" 
+              color="#10B981" 
+            />
             <KpiCard title="Tổng đơn" value={formatNumber(data.kpis?.total_orders)} icon="receipt-outline" color="#3B82F6" />
           </View>
           <View style={styles.statsContainer}>

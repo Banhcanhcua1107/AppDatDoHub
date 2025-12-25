@@ -189,6 +189,12 @@ const OrderListItem: React.FC<{
                   <Text className="text-blue-800 text-xs font-bold">Mới</Text>
                 </View>
             )}
+            {!isNew && !isPaid && !isReturnedItem && !isOutOfStock && !isUnavailable && (
+              <View className="flex-row items-center bg-green-100 px-2 py-1 rounded-full mb-1">
+                <Icon name="checkmark" size={14} color="#059669" />
+                <Text className="text-green-700 text-xs font-bold ml-1">Đã gửi</Text>
+              </View>
+            )}
             {isPaid && !isUnavailable && (
               <View className="bg-gray-200 px-2 py-1 rounded-full mb-1">
                 <Text className="text-gray-600 text-xs font-bold">Đã trả bill</Text>
@@ -284,6 +290,10 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
     item: DisplayItem | null;
   }>({ visible: false, item: null });
   const [closeSessionModal, setCloseSessionModal] = useState(false);
+  // [MỚI] Modal xác nhận bàn bắt đầu phục vụ (từ tạm tính -> đang phục vụ)
+  const [isProvisionalConfirmModalVisible, setProvisionalConfirmModalVisible] = useState(false);
+  const [isOrderProvisional, setIsOrderProvisional] = useState(false);
+  const [pendingProvisionalToggle, setPendingProvisionalToggle] = useState(false);
 
   // [SỬA] Sử dụng ref để tránh re-render khi update activeOrderId
   const isInitialMount = useRef(true);
@@ -291,53 +301,8 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
   const realtimeDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const lastFetchTimeRef = useRef<number>(0);
 
-  /**
-   * [SIMPLIFIED] Subscribe to real-time changes
-   * When kitchen báo hết/còn, items are automatically added/deleted from database
-   * We just need to reload order data when changes happen
-   */
-  const subscribeToOutOfStock = useCallback((orderId: string | null) => {
-    // Unsubscribe từ subscription cũ
-    if (outOfStockSubscriptionRef.current) {
-      try {
-        supabase.removeChannel(outOfStockSubscriptionRef.current);
-      } catch (err) {
-        console.warn('[subscribeToOutOfStock] Error removing old channel:', err);
-      }
-      outOfStockSubscriptionRef.current = null;
-    }
-
-    if (!orderId) return;
-
-    try {
-      // Subscribe to order_items changes for this order
-      const channel = supabase
-        .channel(`order_items:order_id=eq.${orderId}`)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'order_items',
-            filter: `order_id=eq.${orderId}`,
-          },
-          (payload) => {
-            console.log('[subscribeToOutOfStock] order_items changed:', payload.eventType);
-            // Reload data when items change (deleted or added)
-            fetchAllData(false);
-          }
-        )
-        .subscribe();
-
-      outOfStockSubscriptionRef.current = channel;
-    } catch (err) {
-      console.error('[subscribeToOutOfStock] Failed to subscribe:', err);
-    }
-  }, [fetchAllData]);
-  
   const fetchAllData = useCallback(
     async (isInitialLoad = true) => {
-      console.log('[fetchAllData] START - isInitialLoad:', isInitialLoad, 'activeOrderId:', activeOrderId);
       if (isInitialLoad) setLoading(true);
       try {
         let orderIdToFetch = activeOrderId;
@@ -377,6 +342,7 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
               `
                 id,
                 status,
+                is_provisional,
                 order_items(
                     id, quantity, unit_price, customizations, created_at, returned_quantity,
                     status, menu_items(name, image_url, is_available)
@@ -389,6 +355,8 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
 
           if (orderError) throw orderError;
           if (orderDetails) {
+            // [MỚI] Track if current order is provisional
+            setIsOrderProvisional(orderDetails.is_provisional || false);
             freshTables = orderDetails.order_tables.map((ot: any) => ot.tables).filter(Boolean);
             // [FIX] Chỉ update currentTables nếu thực sự khác (so sánh deep)
             if (freshTables.length > 0) {
@@ -620,9 +588,7 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
         }
 
         setDisplayedSections(sections);
-        console.log('[fetchAllData] END - Sections count:', sections.length);
       } catch (error: any) {
-        console.error('[fetchAllData] ERROR:', error);
         if (error.code !== 'PGRST116')
           Alert.alert('Lỗi', `Không thể tải dữ liệu: ${error.message}`);
       } finally {
@@ -631,6 +597,49 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
     },
     [activeOrderId, initialTableId]
   );
+
+  /**
+   * [SIMPLIFIED] Subscribe to real-time changes
+   * When kitchen báo hết/còn, items are automatically added/deleted from database
+   * We just need to reload order data when changes happen
+   */
+  const subscribeToOutOfStock = useCallback((orderId: string | null) => {
+    // Unsubscribe từ subscription cũ
+    if (outOfStockSubscriptionRef.current) {
+      try {
+        supabase.removeChannel(outOfStockSubscriptionRef.current);
+      } catch (err) {
+        console.warn('Failed to unsubscribe:', err);
+      }
+      outOfStockSubscriptionRef.current = null;
+    }
+
+    if (!orderId) return;
+
+    try {
+      // Subscribe to order_items changes for this order
+      const channel = supabase
+        .channel(`order_items:order_id=eq.${orderId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'order_items',
+            filter: `order_id=eq.${orderId}`,
+          },
+          (payload) => {
+            console.log('[Realtime] Order items updated:', payload);
+            fetchAllData(false);
+          }
+        )
+        .subscribe();
+
+      outOfStockSubscriptionRef.current = channel;
+    } catch (err) {
+      console.error('[subscribeToOutOfStock] Failed to subscribe:', err);
+    }
+  }, [fetchAllData]);
 
   useFocusEffect(
     useCallback(() => {
@@ -694,7 +703,6 @@ const OrderConfirmationScreen = ({ route, navigation }: Props) => {
             // Bỏ qua các update không liên quan (VD: stock_quantity thay đổi)
             if (newData.remaining_quantity !== oldData.remaining_quantity || 
                 newData.is_available !== oldData.is_available) {
-              console.log('[Realtime] Món ăn thay đổi trạng thái:', payload.new);
               debouncedFetchAllData(false);
             }
           }
@@ -962,7 +970,7 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
     const canRemoveItem = editingItem.isNew;
     const isItemCompleted = editingItem.status === 'served' || editingItem.status === 'completed';
     const itemIsOutOfStock = editingItem.is_available === false;
-    const itemIsUnavailable = editingItem.isUnavailable === true;
+    const itemIsUnavailable = editingItem.isUnavailable !== undefined && editingItem.isUnavailable !== null;
     
     if (canEditNote && !isItemCompleted && !itemIsOutOfStock && !itemIsUnavailable) {
       itemActions.push({
@@ -1002,10 +1010,13 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
   const representativeTable = currentTables[0] || { id: initialTableId, name: initialTableName };
   const currentTableNameForDisplay = currentTables.map((t) => t.name).join(', ');
   const newItemsFromCart = allItems.filter((item) => item.isNew);
+  // [SỬA] billableItems chỉ tính những món đã gửi bếp (không mới, không hết, không trả lại, không paid)
   const billableItems = allItems.filter((item) => 
+    !item.isNew &&  // [MỚI] Chỉ những món đã gửi bếp
     !item.isPaid && 
     !item.isReturnedItem && 
-    item.is_available !== false
+    item.is_available !== false &&
+    item.isUnavailable !== true
   );
   const paidItems = allItems.filter((item) => item.isPaid);
   const hasNewItems = newItemsFromCart.length > 0;
@@ -1151,7 +1162,7 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
       if (!orderIdToUse) {
         const { data: newOrder } = await supabase
           .from('orders')
-          .insert({ status: 'pending', total_price: 0 })
+          .insert({ status: 'pending', total_price: 0, is_provisional: false })
           .select('id')
           .single();
         if (!newOrder) throw new Error('Không thể tạo order mới.');
@@ -1234,12 +1245,114 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
   };
 
   const handleSendToKitchen = async () => {
-    setLoading(true);
-    await sendNewItemsToKitchen();
-    if (isOnline) {
-        await fetchAllData(false);
+    // [MỚI] Kiểm tra nếu order đang ở trạng thái provisional (đặt trước)
+    // và có items mới cần gửi bếp, hiển thị modal xác nhận
+    if (isOrderProvisional && hasNewItems && !pendingProvisionalToggle) {
+      setProvisionalConfirmModalVisible(true);
+      return;
     }
-    setLoading(false);
+
+    setLoading(true);
+    try {
+      const orderId = await sendNewItemsToKitchen();
+
+      // Nếu đã gửi bếp thành công và order vẫn đang ở trạng thái đặt trước,
+      // ép về trạng thái phục vụ để OrderScreen hiển thị màu xanh.
+      if (orderId && isOrderProvisional) {
+        const { error } = await supabase
+          .from('orders')
+          .update({ is_provisional: false })
+          .eq('id', orderId);
+
+        if (!error) {
+          setIsOrderProvisional(false);
+          
+          // [MỚI] Update tables.status
+          if (representativeTable?.id) {
+            const { error: tableError } = await supabase
+              .from('tables')
+              .update({ status: 'Đang phục vụ' })
+              .eq('id', representativeTable.id);
+            
+            if (tableError) {
+              console.warn('[handleSendToKitchen] Warning updating table status:', tableError.message);
+            } else {
+              console.log('[handleSendToKitchen] Table status updated to Đang phục vụ');
+            }
+          }
+        }
+      }
+
+      if (isOnline) {
+        await fetchAllData(false);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // [MỚI] Handler để xác nhận bàn bắt đầu phục vụ (toggle is_provisional)
+  const handleConfirmProvisionalBill = async () => {
+    setProvisionalConfirmModalVisible(false);
+    if (!activeOrderId) return;
+
+    try {
+      setLoading(true);
+      setPendingProvisionalToggle(true);
+
+      console.log('[handleConfirmProvisionalBill] Updating is_provisional=false for orderId:', activeOrderId);
+
+      // Toggle is_provisional từ true -> false
+      const { error, data } = await supabase
+        .from('orders')
+        .update({ is_provisional: false })
+        .eq('id', activeOrderId);
+
+      console.log('[handleConfirmProvisionalBill] Update result:', { error, data });
+
+      if (error) throw error;
+
+      // Update local state
+      setIsOrderProvisional(false);
+      console.log('[handleConfirmProvisionalBill] Local state updated to false');
+
+      // [MỚI] Update tables.status để phản ánh trạng thái mới
+      if (representativeTable?.id) {
+        const { error: tableError } = await supabase
+          .from('tables')
+          .update({ status: 'Đang phục vụ' })
+          .eq('id', representativeTable.id);
+        
+        if (tableError) {
+          console.warn('[handleConfirmProvisionalBill] Warning updating table status:', tableError.message);
+        } else {
+          console.log('[handleConfirmProvisionalBill] Table status updated to Đang phục vụ');
+        }
+      }
+
+      // Gửi items mới đến bếp
+      await sendNewItemsToKitchen();
+
+      // Reload dữ liệu
+      if (isOnline) {
+        await fetchAllData(false);
+      }
+
+      Toast.show({
+        type: 'success',
+        text1: 'Xác nhận phục vụ',
+        text2: `Bàn bắt đầu phục vụ. Order được gửi bếp.`
+      });
+    } catch (error: any) {
+      Toast.show({
+        type: 'error',
+        text1: 'Lỗi',
+        text2: `Không thể xác nhận: ${error.message}`
+      });
+    } finally {
+      setPendingProvisionalToggle(false);
+      setLoading(false);
+    }
   };
 
   const handlePayment = async () => {
@@ -1910,6 +2023,20 @@ const optimisticallyUpdateNote = (itemUniqueKey: string, newNote: string) => {
         cancelText="Hủy"
         variant="warning"
       />
+
+      {/* [MỚI] Modal xác nhận bàn bắt đầu phục vụ từ trạng thái đặt trước */}
+      <ConfirmModal
+        isVisible={isProvisionalConfirmModalVisible}
+        title="Xác nhận Bàn Bắt Đầu Phục Vụ"
+        message={`Bàn sẽ chuyển từ trạng thái "Đặt trước" sang "Đang phục vụ". Xác nhận để tiếp tục gửi order đến bếp?`}
+        onClose={() => setProvisionalConfirmModalVisible(false)}
+        onConfirm={handleConfirmProvisionalBill}
+        confirmText="Xác nhận"
+        cancelText="Hủy"
+        variant="success"
+      />
+
+
     </View>
   );
 };

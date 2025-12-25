@@ -25,11 +25,11 @@ const formatDateTime = (dateString: string) => {
   );
 };
 
-const BillContent: React.FC<BillContentProps> = ({ order, items, title = 'PHIẾU TÍNH TIỀN', showQRCode = true }) => {
+const BillContent: React.FC<BillContentProps> = ({ order, items, title = 'PHIẾU TÍNH TIỀN', showQRCode = false }) => {
   // --- Dữ liệu và logic tính toán được giữ nguyên ---
   const invoiceId = `HD${order.orderId.substring(0, 6).toUpperCase()}`;
-  const cashierName = 'Hà Trang';
-  const serverName = 'Hà Trang';
+  const cashierName = 'NPC001';
+  const serverName = 'NPC002';
   const vatRate = 0.1;
 
   // Tính toán: Giá món ăn không tính thuế VAT

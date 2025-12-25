@@ -177,8 +177,11 @@ BEGIN
     FROM public.order_tables
     WHERE order_id = p_order_id;
 
-    -- Cập nhật trạng thái của order thành 'cancelled'
-    UPDATE public.orders SET status = 'cancelled' WHERE id = p_order_id;
+    -- Xóa order_tables records để trigger DELETE event cho realtime
+    DELETE FROM public.order_tables WHERE order_id = p_order_id;
+
+    -- Cập nhật trạng thái của order thành 'cancelled' và updated_at để trigger UPDATE event
+    UPDATE public.orders SET status = 'cancelled', updated_at = now() WHERE id = p_order_id;
 
     -- Nếu có bàn liên quan, cập nhật trạng thái của chúng thành 'Trống'
     IF array_length(table_ids_to_reset, 1) > 0 THEN

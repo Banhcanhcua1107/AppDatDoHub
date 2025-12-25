@@ -160,7 +160,6 @@ const ServeStatusScreen = ({ route, navigation }: Props) => {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'menu_items' },
         (payload) => {
-          console.log('[Realtime] Món ăn thay đổi trạng thái:', payload);
           fetchItems(); // Refresh lại dữ liệu
         }
       )

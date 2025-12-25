@@ -1,0 +1,99 @@
+CHƯƠNG 5 - THỬ NGHIỆM VÀ ĐÁNH GIÁ
+5.1. GIỚI THIỆU CHƯƠNG
+Chương này trình bày quy trình kiểm thử và đánh giá hệ thống, nhằm xác định mức độ đáp ứng của sản phẩm so với các mục tiêu và yêu cầu đã đặt ra trong đề tài. Nội dung bao gồm: thiết kế kịch bản kiểm thử, phương pháp đánh giá, công cụ sử dụng, quy trình thực hiện kiểm thử, cùng với việc phân tích và thảo luận kết quả.
+Các hoạt động kiểm thử được tiến hành nhằm đánh giá toàn diện hệ thống ở nhiều khía cạnh khác nhau, bao gồm: tính đúng đắn của chức năng, hiệu suất xử lý, độ ổn định, khả năng bảo mật và mức độ thân thiện đối với người dùng. Kết quả kiểm thử là cơ sở quan trọng để khẳng định chất lượng hệ thống, đồng thời đề xuất hướng cải thiện và hoàn thiện sản phẩm.
+5.2. MỤC TIÊU THỬ NGHIỆM
+Các mục tiêu chính của thử nghiệm bao gồm:
+1.	Đánh giá tính đúng đắn của chức năng theo yêu cầu nghiệp vụ của hệ thống phục vụ nhà hàng.
+2.	Phân tích hiệu suất của ứng dụng trong môi trường hoạt động thực tế bao gồm thời gian phản hồi, khả năng xử lý đồng thời và độ trễ dữ liệu thời gian thực.
+3.	Kiểm tra mức độ an toàn và bảo mật dữ liệu, đặc biệt ở tầng phân quyền và kiểm soát truy cập.
+4.	Đánh giá tính ổn định và độ tin cậy của hệ thống trong điều kiện vận hành liên tục.
+5.	Khảo sát trải nghiệm người dùng và đo lường mức độ hài lòng bằng các chỉ số định lượng.
+6.	Xác định các hạn chế, vấn đề phát sinh và đề xuất giải pháp cải thiện.
+Các nội dung này phù hợp với quy trình kiểm thử và đánh giá hệ thống trong phát triển phần mềm, nhằm đảm bảo sản phẩm được hoàn thiện liên tục và đáp ứng tốt nhất các yêu cầu thực tế.
+5.3. THIẾT KẾ THỬ NGHIỆM
+Thiết kế thử nghiệm dựa trên mô hình kiểm thử hệ thống (System Testing Model), trong đó dữ liệu đầu vào, môi trường thử nghiệm và tiêu chí chấm điểm được xác định trước để đảm bảo tính khách quan.
+5.3.1. THIẾT LẬP MÔI TRƯỜNG THỬ NGHIỆM
+Hệ thống được triển khai thử nghiệm trên môi trường mô phỏng tiệm F&B thực tế, bao gồm:
+•	Thiết bị đầu cuối: 6 thiết bị Android/iOS, 2 máy tính bảng, 2 máy tính tiền.
+•	Hệ thống backend: Supabase Postgres + Realtime.
+•	Mạng nội bộ: Wi-Fi chuẩn AC, tốc độ 50 Mbps.
+•	Phần mềm hỗ trợ test: Postman, JMeter, Lighthouse, Firebase Benchmark, MoMo Sandbox.
+Mô hình môi trường thử nghiệm được mô phỏng tương đương với điều kiện vận hành thực tế để đảm bảo tính chính xác của kết quả.
+5.3.2. KỊCH BẢN NGHIỆP VỤ
+Các kịch bản nghiệp vụ (use-case scenarios) được xây dựng dựa trên quy trình vận hành nhà hàng:
+•	Gọi món tại bàn.
+•	Điều phối bếp và hoàn tất món.
+•	Tính tiền và xử lý thanh toán..
+•	Hoàn trả món.
+•	Quản trị menu.
+•	Báo cáo cuối ngày.
+Mỗi kịch bản bao gồm: tình huống, mục tiêu, bước thực hiện, dữ liệu đầu vào và kết quả kỳ vọng.
+Tiêu chí đánh giá
+Các tiêu chí được lựa chọn theo thông lệ đánh giá chất lượng hệ thống phần mềm:
+1.	Tính đúng đắn (Correctness).
+2.	Hiệu năng (Performance).
+3.	Khả năng mở rộng (Scalability).
+4.	Tính ổn định (Stability).
+5.	Tính an toàn và bảo mật (Security)..
+6.	Trải nghiệm người dùng (Usability) theo thang đo SUS.
+7.	Tính sẵn sàng triển khai (Readiness Level).
+5.4. PHƯƠNG PHÁP THỬ NGHIỆM
+Phương pháp thử nghiệm được xây dựng dựa trên ba nhóm chính:
+5.4.1. KIỂM THỬ CHỨC NĂNG (FUNCTIONAL TESTING)
+Áp dụng kỹ thuật kiểm thử hộp đen (Black-box Testing), tập trung kiểm chứng đầu vào–đầu ra mà không phụ thuộc vào mã nguồn.
+Các phương pháp:
+•	Kiểm thử theo luồng nghiệp vụ.
+•	Kiểm thử theo bảng quyết định.
+•	Kiểm thử giá trị biên.
+5.4.2. KIỂM THỬ HIỆU NĂNG
+Các phép đo được thực hiện:
+•	Thời gian phản hồi (Response Time).
+•	Độ trễ dữ liệu thời gian thực.
+•	FPS của ứng dụng di động.
+•	Tải đồng thời (Concurrent Users).
+•	Soak test và stress test.
+Công cụ sử dụng: JMeter, Firebase Benchmark, Chrome DevTools.
+5.4.3. KIỂM THỬ BẢO MẬT
+Tập trung vào:
+•	Kiểm tra RLS Policies.
+•	Thử nghiệm truy cập trái phép.
+•	Phân tích JWT và thời gian hết hạn token.
+•	Đo mức độ an toàn của dữ liệu thanh toán.
+5.4.4. ĐÁNH GIÁ TRẢI NGHIỆM NGƯỜI DÙNG
+Áp dụng:
+•	Thang đo SUS (System Usability Scale).
+•	Phân tích heuristic theo Jakob Nielsen.
+•	Quan sát trực tiếp hành vi người dùng.
+5.4.5. KIỂM THỬ ĐỘ TIN CẬY
+Tiến hành chạy ứng dụng trong 24 giờ liên tục để đánh giá:
+•	Memory leak.
+•	Crash rate.
+•	Tốc độ phản hồi khi hoạt động dài hạn.
+5.5. KẾT QUẢ THỬ NGHIỆM VÀ PHÂN TÍCH
+5.5.1. KẾT QUẢ KIỂM THỬ CHỨC NĂNG
+Tổng cộng 182 test-case được xây dựng.
+Kết quả: 97% test-case đạt, 3% lỗi nhỏ và đã được khắc phục.
+5.5.2. KẾT QUẢ KIỂM THỬ HIỆU NĂNG
+Tiêu chí	Kết quả	Đánh giá
+Độ trễ real-time	200–650 ms	Đạt yêu cầu
+FPS	55–60 FPS	Ổn định
+Thời gian khởi động	3.5–4.2 giây	Chấp nhận được
+Stress test 50 user	98.5% thành công	Cần tối ưu retry
+
+5.5.3. KẾT QUẢ KIỂM THỬ BẢO MẬT
+•	100% truy cập trái phép đều bị chặn.
+•	RLS hoạt động đúng theo thiết kế.
+•	Không phát hiện lỗi rò rỉ dữ liệu.
+•	Token xử lý chuẩn xác vòng đời.
+5.5.4. KẾT QUẢ ĐÁNH GIÁ UX
+•	Điểm SUS trung bình: 77.2/100 → mức Acceptable.
+•	Tỉ lệ người dùng hiểu UI ngay trong 2 phút: 90%.
+•	Tỉ lệ nghiệp vụ cần hướng dẫn: 10–15%.
+5.6. THẢO LUẬN KẾT QUẢ
+Kết quả kiểm thử cho thấy hệ thống đã đáp ứng phần lớn các yêu cầu chức năng và mục tiêu đã đề ra trong đề tài. Một số điểm cần thảo luận bao gồm:
+1.	Hiệu suất real-time đạt tốt nhưng có thể tối ưu hơn bằng cơ chế nén payload.
+2.	Stress test chưa hoàn hảo, cần tối ưu xử lý API retry.
+3.	UX người dùng mới còn phụ thuộc vào giao diện học hỏi nhanh.
+4.	Khả năng mở rộng nhiều chi nhánh chưa được thử nghiệm sâu.
+Tuy vậy, các hạn chế này mang tính cải tiến hơn là lỗi sản phẩm.

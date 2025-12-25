@@ -1,0 +1,411 @@
+CHƯƠNG 4 - KẾT QUẢ ĐẠT ĐƯỢC
+Sau quá trình thiết kế chi tiết được trình bày ở Chương 3, nhóm đã triển khai hệ thống quản lý nhà hàng AppDatDoHub cho phép phục vụ, bếp, thu ngân, và quản lý hoạt động hiệu quả theo thời gian thực. Ứng dụng được xây dựng bằng React Native + Expo (SDK 53) cho phía Front-end, Supabase PostgreSQL cho Backend & Database, Edge Functions cho logic phức tạp, và Realtime Subscriptions cho cập nhật tức thì giữa các bàn, bếp, và thu ngân.
+Hệ thống hỗ trợ:
+•	Quản lý bàn: Hiển thị trạng thái thời gian thực (Trống, Đang phục vụ, Đặt trước), hợp nhất/chia tách bàn.
+•	Gọi món đa phương thức: Chọn bàn, duyệt menu, tùy chỉnh sản phẩm, xác nhận đơn hàng.
+•	Kitchen Display System (KDS): Hiển thị đơn hàng mới, cập nhật trạng thái, thông báo hoàn tát.
+•	Thanh toán: Hỗ trợ tiền mặt, MoMo QR, VietQR, hoàn trả từng mục
+•	Báo cáo tài chính: Doanh số, lợi nhuận, chi phí, tồn kho theo ngày/tuần/tháng.
+•	Quản lý hàng tồn kho: Theo dõi số lượng, cảnh báo hết hàng, tạo đơn nhập.
+•	Thông báo Real-time: Để Bếp, Phục vụ, Thu ngân được cập nhật tức thì.
+Bảng màu thiết kế: Nâu cà phê (#2C1810), Vàng nóc (#D4A574), Trắng kem (#F5F1ED), Xám (#6B7280).
+4.1. MÀN HÌNH CHỌN BÀN (TABLE SELECTION)
+ 
+Hình 4.1. Giao diện quản lý bàn
+Đường dẫn: /home → HomeScreen.tsx.
+Chức năng chính:
+•	Hiển thị lưới bàn ăn với trạng thái thời gian thực.
+•	Cho phép chọn bàn để bắt đầu gọi món.
+•	Hiển thị cảnh báo hàng tồn kho nếu bàn có đơn hàng chứa sản phẩm không còn hàng.
+•	Hỗ trợ hợp nhất/chia tách bàn thông qua menu ngữ cảnh.
+Các trạng thái bàn:
+Bảng 4.1. Bảng trạng thái bàn
+Trạng thái	Màu sắc	Mô tả
+Trống	Xanh dương (#3B82F6)	Bàn còn trống, có thể chọn để gọi món
+Đang phục vụ	Xám (#4B5563)	Bàn đang có khách, có thể tiếp tục thêm món
+Đặt trước	Chỉ mục (#4338CA)	Bàn được đặt trước, không thể chọn gọi món
+Thành phần giao diện:
+•	Header:
+o	Logo ứng dụng.
+o	Tên nhân viên đăng nhập (ví dụ: "Nhân viên: Bùi Minh Tuấn").
+o	Nút đăng xuất.
+o	Legend (Chú giải):
+o	Hiển thị ba ô vuông với màu sắc tương ứng và nhãn (Trống, Đang phục vụ, Đặt trước).
+•	Grid Bàn:
+o	Bố cục 2 cột trên thiết bị di động, 3 cột trên tablet.
+o	Mỗi bàn là một thẻ (Card) với:
+o	Tên bàn (ví dụ: "Bàn 01", "Bàn A2").
+o	Số ghế (ví dụ: "4 ghế").
+o	Trạng thái (Trống/Đang phục vụ/Đặt trước).
+o	Biểu tượng cảnh báo (nếu có hàng tồn kho).
+o	Hiệu ứng press (scale 0.98) khi bấm.
+•	Action Menu (Khi long-press vào bàn):
+o	Gọi món: Đi đến MenuScreen để chọn sản phẩm.
+o	Xem chi tiết: Hiển thị thông tin đơn hàng hiện tại.
+o	Hợp nhất bàn: Chọn bàn khác để gộp đơn hàng.
+o	Chia tách bàn: Phân chia đơn hàng hiện tại cho bàn mới.
+4.2. MÀN HÌNH MENU & TÙY CHỈNH SẢN PHẨM
+ 
+Hình 4.2. Màn hình menu và tuỳ chỉnh
+Đường dẫn: /menu → MenuScreen.tsx.
+Chức năng chính:
+•	Hiển thị danh sách menu theo danh mục (Cà phê, Trà, Bánh, v.v.).
+•	Tìm kiếm và lọc sản phẩm theo tên hoặc danh mục.
+•	Cho phép tùy chỉnh sản phẩm (size, đường, topping).
+•	Thêm sản phẩm vào giỏ hàng.
+•	Hiển thị số lượng tồn kho và cảnh báo hết hàng.
+Các phần chính:
+•	Top Navigation:
+o	Nút quay lại (Back).
+o	Tên bàn được chọn (ví dụ: "Bàn 01").
+o	Nút giỏ hàng với số lượng sản phẩm (badge).
+•	Search Bar:
+o	Ô tìm kiếm với icon magnifying glass.
+o	Tìm kiếm theo tên sản phẩm (chuẩn hóa dấu tiếng Việt).
+o	Icon X để xóa tìm kiếm.
+•	Category Tabs:
+o	Cuộn ngang các danh mục.
+o	Hiện tab dành cho danh mục được chọn (underline).
+o	Ví dụ: "Cà phê", "Trà", "Bánh", "Tráng miệng", "Đồ ăn nhẹ".
+•	Product Grid:
+o	Bố cục 2 cột.
+o	Mỗi sản phẩm hiển thị:
+o	Hình ảnh (từ Cloudinary, lazy-loaded).
+o	Tên sản phẩm.
+o	Giá tiền (ví dụ: "45.000 ₫").
+o	Số lượng tồn kho (ví dụ: "Còn: 12").
+o	Trạng thái (Còn/Hết hàng) - với icon ⓘ nếu hạn ghi chú.
+o	Nút "+" để thêm sản phẩm.
+•	Product Detail Modal (Khi bấm vào sản phẩm):
+o	Hình ảnh sản phẩm (to hơn).
+o	Tên, mô tả chi tiết.
+o	Giá gốc.
+o	Tùy chỉnh Size (nếu có):
+o	Radio buttons: Small (+0₫), Medium (+5.000₫), Large (+10.000₫).
+o	Tùy chỉnh Đường (nếu có):
+o	Radio buttons: 100% đường, 50% đường, Không đường.
+o	Tùy chỉnh Topping (nếu có):
+o	Checkboxes: Trân châu (+10.000₫), Thạch (+5.000₫), Kem (+8.000₫).
+o	Ghi chú (TextInput tùy chọn).
+o	Số lượng: Spinner (-, 1, +).
+o	Tổng tiền: Hiển thị giá cuối cùng.
+o	Nút "Thêm vào giỏ" (xanh) / Nút "Hủy" (xám).
+4.3. MÀN HÌNH CHI TIẾT GIỎ HÀNG
+ 
+Hình 4.3. Màn hình giỏ hàng
+Đường dẫn: MenuScreen → Bấm icon giỏ hàng
+Chức năng chính:
+•	Hiển thị danh sách sản phẩm trong giỏ hàng.
+•	Chỉnh sửa số lượng hoặc xóa sản phẩm.
+•	Hiển thị tổng tiền.
+•	Xác nhận gửi bếp hoặc tiếp tục thêm sản phẩm.
+Thành phần giao diện:
+•	Header:
+o	Tiêu đề "Giỏ hàng".
+o	Nút đóng (X).
+•	List sản phẩm trong giỏ:
+o	Mỗi item hiển thị:
+o	Hình ảnh sản phẩm (thumbnail).
+o	Tên sản phẩm + tùy chỉnh (ví dụ: "Cappuccino - Medium, 50% đường, +Trân châu").
+o	Đơn giá (ví dụ: "68.000 ₫").
+o	Spinner số lượng (-, số lượng, +).
+o	Tổng tiền (đơn giá × số lượng).
+o	Nút xóa (icon trash).
+•	Summary Section:
+o	Tổng sản phẩm (ví dụ: "3 sản phẩm").
+o	Tổng tiền (ví dụ: "234.000 ₫").
+•	Action Buttons:
+o	"Tiếp tục thêm" (grey) → Đóng modal, quay về MenuScreen.
+o	"Xác nhận gửi bếp" (green) → Gửi đơn hàng.
+4.4. MÀN HÌNH ĐƠN HÀNG (ORDERS)
+ 
+Hình 4.4. Màn hình order
+
+Đường dẫn: Bottom Tab → "Đơn hàng" → OrderScreen.tsx.
+Chức năng chính:
+•	Hiển thị danh sách đơn hàng hiện tại (chưa hoàn thành).
+•	Cho phép xem chi tiết, cập nhật trạng thái.
+•	Cho phép hủy hoặc trả lại sản phẩm.
+•	Hiển thị thời gian đang xử lý.
+Các phần chính:
+•	Header:
+o	Tiêu đề "Đơn hàng".
+o	Biểu thị số đơn hàng đang xử lý (ví dụ: badge "3").
+•	Active Orders List:
+o	Mỗi đơn hàng là một card với:
+o	Bàn áp dụng: "Bàn 01, Bàn 02" (nếu là đơn hợp nhất).
+o	ID đơn hàng: "ORD_2025_001".
+o	Thời gian: "Thêm 12 phút trước" (formatted time).
+o	Tổng số mon: "5 mon".
+o	Tổng tiền: "234.000 ₫".
+o	Trạng thái:
+	Đang chế biến (1/5 mon hoàn tất)..
+	Chờ phục vụ (5/5 mon hoàn tát).
+	Đã phục vụ (chờ thanh toán).
+	Nút "..." để mở menu tùy chọn.
+•	Order Detail Card (Khi tap vào đơn hàng):
+o	Hiển thị danh sách sản phẩm trong đơn hàng.
+o	Mỗi sản phẩm hiển thị: tên, tùy chỉnh, số lượng, trạng thái.
+•	Action Menu (Long-press hoặc bấp "..."):
+o	Xem chi tiết: Mở detail card.
+o	Thêm sản phẩm: Quay về MenuScreen, thêm sản phẩm cho bàn.
+o	Hủy đơn hàng: Mở confirmation modal, hủy toàn bộ.
+o	Trả lại sản phẩm: Chọn sản phẩm để trả lại (partial return).
+4.5. GIAO DIỆN KITCHEN (BẾP)
+ 
+Hình 4.5. Màn hình bếp
+Đường dẫn: Bottom Tab → "Bếp" → KitchenDisplayScreen.tsx.
+Chức năng chính:
+•	Hiển thị danh sách đơn hàng chờ chế biến (real-time).
+•	Cho phép cập nhật trạng thái sản phẩm (Waiting → In Progress → Completed).
+•	Hiển thị cảnh báo nếu sản phẩm không còn hàng.
+•	Theo dõi yêu cầu hủy/trả hàng từ phục vụ.
+Các phần chính:
+•	Header:
+•	Tiêu đề "Kitchen Display System".
+•	Badge số đơn chờ (ví dụ: "3 đơn chờ").
+•	Filter buttons: "Tất cả", "Chờ xử lý", "Đang chế biến", "Hoàn tất".
+•	Nút refresh.
+•	Ticket Card (Mỗi đơn hàng là một "phiếu"):
+o	Tiêu đề:
+	Bàn áp dụng (ví dụ: "Bàn 01").
+	ID đơn hàng (ví dụ: "#ORD_2025_001").
+	Thời gian lập (ví dụ: "10:30 AM").
+	Thời gian xử lý (ví dụ: "⏱️ 12:45").
+	Danh sách sản phẩm (Items):
+	[COMPLETED] Cappuccino x2 (Medium, 50% đường, +Trân châu).
+	[IN PROGRESS]  Latte x1 (Large, không đường).
+	[PENDING]  Bánh Croissant x3 (ghi chú: nóng thêm).
+o	Mỗi item có:
+	Icon trạng thái (✓/⧗/◯)
+	Tên sản phẩm
+	Số lượng
+	Tùy chỉnh (size, đường, topping)
+	Ghi chú (nếu có)
+	Icon cảnh báo nếu hàng không còn
+o	Action Buttons (dưới cùng card):
+	Nút "Bắt đầu xử lý" (grey) → Chuyển tất cả item từ pending → in_progress.
+	Nút "Hoàn tất" (green) → Chuyển tất cả item từ in_progress → completed, gửi thông báo phục vụ.
+	Nút "☰ Tùy chọn" → Mở menu (xem yêu cầu hủy/trả, đánh dấu sản phẩm riêng lẻ).
+o	Cancellation/Return Requests:
+	Badge hiển thị số yêu cầu hủy/trả chờ (ví dụ: " 2").
+	Khi bấp vào, hiển thị danh sách:
+	Tên khách hàng yêu cầu.
+	Sản phẩm muốn trả/hủy..
+	Lý do.
+•	Nút "Chấp nhận" / "Từ chối".
+o	Item Availability Status:
+	Nếu sản phẩm hết hàng, hiển thị:
+	Icon warning .
+	Text: "Hết hàng".
+	Nút "Đánh dấu không còn" (để cập nhật trong menu).
+4.6. QUẢN LÝ TÌNH TRẠNG HÀNG
+
+
+
+ 
+Hình 4.6. Màn hình quản lý trạng thái món và số lượng
+Đường dẫn: Bottom Tab → "Bếp" → Menu → ItemAvailabilityScreen.tsx.
+Chức năng chính:
+•	Đánh dấu sản phẩm không còn hàng (Out of Stock).
+•	Cập nhật số lượng tồn kho (nếu cần).
+•	Xem lịch sử cập nhật tình trạng hàng.
+Thành phần giao diện:
+•	Tab Navigation:
+o	"Còn hàng" / "Hết hàng"
+•	Product List:
+o	Mỗi sản phẩm hiển thị:
+o	Tên sản phẩm.
+o	Số lượng hiện tại (ví dụ: "Còn: 45 / 100").
+o	Toggle "Còn/Hết hàng".
+o	Spinner để chỉnh số lượng (nếu admin cho phép).
+•	Confirmation Modal (Khi toggle "Hết hàng"):
+o	"Bạn chắc chắn muốn đánh dấu [Tên sản phẩm] là hết hàng?".
+o	Lý do (Dropdown): "Hết nguyên liệu", "Quá nhiều đơn", "Bảo trì".
+o	Nút "Xác nhận" / "Hủy".
+4.7. MÀN HÌNH DASHBOARD CASHIER
+ 
+Hình 4.7. Tổng quan doanh thu ngày
+
+Đường dẫn: Bottom Tab → "Thu ngân" → DashboardScreen.tsx.
+Chức năng chính:
+•	Hiển thị tổng doanh số hôm nay.
+•	Hiển thị biểu đồ doanh số (theo giờ)..
+•	Liệt kê đơn hàng chờ thanh toán.
+•	Hiển thị tổng tiền các phương thức thanh toán.
+Thành phần giao diện:
+•	KPI Section (Top):
+o	Card 1: Tổng doanh số (Ngày hôm nay) - "1.234.000 ₫".
+o	Card 2: Tổng đơn hàng - "24 đơn".
+o	Card 3: Avg. Bill  - "51.417 ₫".
+o	Card 4: Pending Orders - "3 đơn".
+•	Chart Section:
+o	Biểu đồ cột (Bar Chart): Doanh số theo từng giờ trong ngày.
+o	X-axis: Giờ (10am, 11am, ..., 9pm).
+o	Y-axis: Doanh số (₫).
+•	Pending Orders:
+o	Danh sách 5 đơn hàng chờ thanh toán.
+o	Mỗi dòng: Bàn | ID đơn hàng | Tổng tiền | Nút "Thanh toán".
+•	Action Buttons (Bottom):
+o	" Thanh toán" → Đi tới PaymentScreen.
+o	" Báo cáo" → Đi tới ReportScreen.
+o	" Quản lý chi" → Đi tới ExpensesScreen.
+4.8. MÀN HÌNH THANH TOÁN
+ 
+Hình 4.8. Giao diện thanh toán
+Đường dẫn: Cashier Dashboard → "Thanh toán" → PaymentScreen.tsx.
+Chức năng chính:
+•	Cho phép chọn bàn/đơn hàng cần thanh toán.
+•	Hiển thị bill chi tiết.
+•	Cho phép chọn phương thức thanh toán (Tiền mặt / MoMo / VietQR).
+•	Xử lý hoàn trả (nếu có sản phẩm không được phục vụ).
+•	In hóa đơn.
+Các phần chính:
+•	Order Selection (Nếu chưa chọn):
+o	Danh sách bàn/đơn hàng chờ thanh toán
+o	Bấm vào để chọn
+•	Bill Preview:
+ 
+Hình 4.9. Bill thanh toán của khách hàng
+•	Action Area:
+o	Nút "Hoàn trả sản phẩm" (grey) → Mở modal chọn sản phẩm trả lại.
+o	Nút "In hóa đơn" (blue).
+•	Payment Method Selection:
+o	Radio buttons:
+o	Tiền mặt.
+o	MoMo QR.
+o	VietQR.
+o	Nhập tiền khách đưa (nếu tiền mặt) → Tính tiền thối.
+•	Confirmation:
+o	Nút "Xác nhận thanh toán" (green).
+o	Xử lý:
+o	POST /api/payments với phương thức và số tiền.
+o	Nếu MoMo/VietQR: Hiển thị QR code.
+o	Nếu Tiền mặt: Cập nhật trạng thái ngay lập tức.
+4.9. BÁO CÁO TÀI CHÍNH
+ 
+Hình 4.10. Báo cáo tài chính
+Đường dẫn: Bottom Tab → "Thu ngân" → Menu → FinancialSummaryScreen.tsx.
+Chức năng chính:
+•	Hiển thị báo cáo doanh số theo ngày/tuần/tháng.
+•	Hiển thị lợi nhuận (Doanh số - Chi phí).
+•	Hiển thị thống kê hàng tồn kho.
+•	So sánh với kỳ trước.
+Các phần chính:
+•	Period Selector:
+o	Tabs: "Hôm nay", "Tuần này", "Tháng này", "Tùy chỉnh".
+o	DatePicker (nếu chọn "Tùy chỉnh").
+•	Summary Cards:
+o	Top Products:
+	Danh sách 5 sản phẩm bán chạy nhất.
+	Mỗi dòng: Tên, Số lượng, Doanh số.
+o	Chart (Optional):
+	Line chart: Doanh số qua các ngày trong tháng.
+	Hoặc Pie chart: Tỷ lệ doanh số theo danh mục.
+o	Export Button:
+	Nút "Xuất Excel" hoặc "Chia sẻ PDF".
+4.10. QUẢN LÝ CHI PHÍ
+ 
+Hình 4.11. Quản lý chi phí
+Đường dẫn: Bottom Tab → "Thu ngân" → Menu → ExpensesScreen.tsx.
+Chức năng chính:
+•	Ghi nhận chi phí hàng ngày (nguyên liệu, điện nước, bảo trì, v.v.).
+•	Xem lịch sử chi phí.
+•	Tính toán lợi nhuận.
+Thành phần giao diện:
+•	Add Expense Button (Floating):
+•	Nút "+" để thêm chi phí mới.
+•	Expense List:
+o	Mỗi chi phí hiển thị:
+o	Danh mục (icon):Nguyên liệu, Điện nước, Bảo trì, Khác.
+o	Mô tả (ví dụ: "Mua cà phê hạt").
+o	Số tiền (ví dụ: "- 200.000 ₫").
+o	Ngày (ví dụ: "02/12/2025").
+•	Add Expense Modal:
+o	Danh mục (Dropdown): Nguyên liệu, Điện nước, Bảo trì, Khác.
+o	Mô tả (TextInput).
+o	Số tiền (NumberInput)..
+o	Ngày (DatePicker).
+o	Nút "Thêm" / "Hủy".
+4.11. MÀN HÌNH DASHBOARD ADMIN
+ 
+Hình 4.12. Giao diện quản lý admin
+Đường dẫn: Bottom Tab → "Admin" → AdminDashboardScreen.tsx.
+Chức năng chính:
+•	Tổng quan toàn hệ thống (doanh số, đơn hàng, người dùng, menu).
+•	Nhanh chóng truy cập các tính năng quản lý.
+•	Xem thông báo hệ thống.
+Thành phần giao diện:
+•	Header:
+•	Logo + Tên Admin (ví dụ: "Chào, Quản lý Minh Tuấn").
+•	Ngày hôm nay (ví dụ: "Thứ 2, 02/12/2025").
+•	Recent Activities (Scrollable):
+•	Log các hoạt động gần đây (tạo menu, tạo đơn hàng, v.v.).
+4.12. QUẢN LÝ MENU
+ 
+Hình 4.13. Giao diện quản lý menu
+Đường dẫn: Admin Dashboard → "Quản lý Menu" → AdminMenuScreen.tsx.
+Chức năng chính:
+•	Hiển thị danh sách sản phẩm menu
+•	Thêm sản phẩm mới
+•	Chỉnh sửa sản phẩm
+•	Xóa sản phẩm
+•	Quản lý danh mục
+Thành phần giao diện:
+•	Search & Filter Bar:
+•	TextInput để tìm kiếm sản phẩm.
+•	Dropdown lọc theo danh mục.
+•	Nút "Thêm sản phẩm mới".
+•	Add/Edit Modal:
+•	Tên sản phẩm (TextInput).
+•	Mô tả (TextArea).
+•	Danh mục (Dropdown).
+•	Giá bán (NumberInput).
+•	Giá vốn (NumberInput).
+•	Hình ảnh (Image picker).
+•	Số lượng tồn kho (NumberInput).
+•	Ngưỡng cảnh báo hết hàng (NumberInput).
+•	Tùy chỉnh (Size, Sugar, Topping) - Array interface.
+•	Nút "Lưu" / "Hủy".
+4.13. QUẢN LÝ NHÂN VIÊN
+ 
+Hình 4.14. Giao diện quản lý nhân viên
+Đường dẫn:Admin Dashboard →"Quản lý NV" →AdminUsersScreen.tsx.
+Chức năng chính:
+•	Hiển thị danh sách nhân viên.
+•	Thêm nhân viên mới.
+•	Chỉnh sửa thông tin (tên, email, vai trò).
+•	Vô hiệu hoá nhân viên.
+•	Xem lịch sử hoạt động.
+Thành phần giao diện:
+•	Add/Edit Modal:
+•	Email (TextInput - unique).
+•	Tên đầy đủ (TextInput).
+•	Vai trò (Dropdown): Admin, Staff, Kitchen, Cashier.
+•	Số điện thoại (TextInput).
+•	Avatar (Image picker).
+•	Mật khẩu (TextInput - mới/đặt lại).
+•	Trạng thái hoạt động (Toggle).
+•	Nút "Lưu" / "Hủy".
+4.14. BÁO CÁO & PHÂN TÍCH
+ 
+Hình 4.15. Giao diện báo cáo phân tích
+Đường dẫn: Admin Dashboard → "Báo cáo" → AdminReportsScreen.tsx.
+Chức năng chính:
+•	Xem báo cáo doanh số chi tiết.
+•	Phân tích sản phẩm bán chạy.
+•	Xem lợi nhuận, chi phí.
+•	So sánh kỳ kỳ.
+Thành phần giao diện:
+•	Report Tabs:
+o	"Doanh số", "Lợi nhuận", "Sản phẩm", "Nhân viên".
+o	Period Selector (Giống Cashier):
+o	Ngày, Tuần, Tháng, Tùy chỉnh.
+•	Charts:
+o	Bar chart: Doanh số theo ngày.
+o	Pie chart: Tỷ lệ doanh số theo danh mục.
+o	Line chart: Xu hướng doanh số..
+•	Detailed Tables:
+o	Top 10 sản phẩm bán chạy.
+o	Top 10 sản phẩm lợi nhuận cao nhất.
+o	Hiệu suất nhân viên (đơn hàng phục vụ, số lần hoàn trả, v.v.).

@@ -1,0 +1,56 @@
+LỜI MỞ ĐẦU
+1.	LÝ DO CHỌN ĐỀ TÀI
+Trong bối cảnh chuyển đổi số và cuộc cách mạng công nghiệp 4.0 đang diễn ra mạnh mẽ, ngành dịch vụ ăn uống (F&B) đang chứng kiến sự thay đổi sâu sắc trong mô hình quản lý và phương thức phục vụ khách hàng. Việc áp dụng công nghệ thông tin đã trở thành xu hướng tất yếu giúp các nhà hàng, quán ăn, quán cà phê hay quán đồ uống nâng cao hiệu quả hoạt động, giảm thiểu sai sót trong quá trình phục vụ và nâng cao trải nghiệm người dùng. Người tiêu dùng ngày nay ngày càng đề cao tính tiện lợi, nhanh chóng và minh bạch trong việc đặt món, thanh toán và theo dõi đơn hàng. Chính vì vậy, việc xây dựng một hệ thống quản lý gọi món thông minh không chỉ giúp tối ưu hóa vận hành mà còn góp phần nâng cao năng lực cạnh tranh cho doanh nghiệp.
+Tuy nhiên, tại Việt Nam, phần lớn các cơ sở F&B quy mô vừa và nhỏ vẫn đang duy trì mô hình quản lý truyền thống, phụ thuộc vào việc ghi chép thủ công hoặc trao đổi đơn hàng qua các ứng dụng nhắn tin như Zalo hoặc Messenger. Điều này dẫn đến nhiều hạn chế như: dễ xảy ra nhầm lẫn trong ghi nhận đơn, khó theo dõi tồn kho, thiếu khả năng tổng hợp báo cáo doanh thu, và không có cơ chế quản lý dữ liệu khách hàng hiệu quả. Bên cạnh đó, việc sử dụng các nền tảng giao hàng bên thứ ba như GrabFood hay ShopeeFood tuy mang lại sự tiện lợi, nhưng lại làm gia tăng chi phí hoa hồng, giảm lợi nhuận và khiến các cửa hàng bị phụ thuộc vào nền tảng bên ngoài.
+Xuất phát từ thực tế đó, đề tài “Xây dựng ứng dụng gọi món và thanh toán tại bàn” được lựa chọn với mục tiêu xây dựng một giải pháp công nghệ toàn diện, giúp các cơ sở F&B quản lý hiệu quả quá trình phục vụ khách hàng ngay tại chỗ. Ứng dụng hướng tới việc hỗ trợ nhân viên phục vụ gọi món nhanh chóng, chính xác; giúp bộ phận bếp nhận đơn theo thời gian thực; hỗ trợ thu ngân trong khâu thanh toán và in hóa đơn; đồng thời cung cấp cho quản lý công cụ thống kê doanh thu và giám sát hoạt động quán. Hệ thống cũng được thiết kế để vận hành ổn định trong cả môi trường online và offline, đảm bảo hoạt động liên tục ngay cả khi mất kết nối mạng.
+Ứng dụng được phát triển dựa trên các công nghệ hiện đại như NativeWind, Expo, TypeScript và Supabase, mang lại khả năng phát triển cross-platform, tương thích trên nhiều thiết bị di động và máy tính bảng. NativeWind giúp tối ưu hóa giao diện người dùng với phong cách Tailwind CSS quen thuộc, Expo hỗ trợ triển khai nhanh và kiểm thử trên nhiều nền tảng, trong khi Supabase cung cấp nền tảng backend mạnh mẽ cho xác thực, cơ sở dữ liệu và thông báo theo thời gian thực. Việc kết hợp các công nghệ này giúp hệ thống đạt hiệu năng cao, dễ mở rộng và bảo trì.
+Đề tài không chỉ mang ý nghĩa thực tiễn trong việc hiện đại hóa hoạt động quản lý của các cơ sở kinh doanh F&B mà còn là cơ hội giúp sinh viên rèn luyện kỹ năng lập trình, thiết kế hệ thống và triển khai sản phẩm thực tế. Thông qua dự án này, sinh viên có thể kết hợp lý thuyết đã học với kinh nghiệm thực tiễn, góp phần thúc đẩy quá trình chuyển đổi số trong lĩnh vực dịch vụ ăn uống tại Việt Nam.
+2.	TỔNG QUAN VỀ CÁC GIẢI PHÁP HIỆN CÓ
+Trong lĩnh vực ứng dụng công nghệ thông tin cho ngành dịch vụ ăn uống (F&B), nhiều giải pháp quản lý bán hàng và hệ thống gọi món tự động đã được triển khai rộng rãi nhằm tối ưu hóa quy trình vận hành. Các hệ thống POS (Point of Sale) hiện đại của những thương hiệu lớn như Starbucks, McDonald's hay KFC cho thấy hiệu quả rõ rệt trong việc đồng bộ giao tiếp giữa nhân viên phục vụ, bộ phận bếp và thu ngân. Hiện nay, hơn 70% doanh nghiệp F&B trên thế giới đã chuyển sang sử dụng các giải pháp tự động hóa để giảm chi phí vận hành, hạn chế sai sót và cải thiện tốc độ phục vụ.
+Tại Việt Nam, cùng với sự tăng trưởng nhanh của ngành F&B, nhiều chuỗi lớn như The Coffee House, Highlands Coffee, Phúc Long hay Gong Cha đã phát triển ứng dụng di động riêng cho phép khách hàng đặt món, thanh toán và tích điểm thành viên. Các hệ thống này góp phần nâng cao trải nghiệm khách hàng và gia tăng doanh thu trực tuyến. Tuy nhiên, mô hình này vẫn còn là thách thức đối với các quán ăn và nhà hàng nhỏ do chi phí đầu tư cao, yêu cầu nhân lực kỹ thuật và khó khăn trong việc duy trì vận hành lâu dài.
+Trong môi trường đào tạo công nghệ phần mềm, nhiều đồ án và dự án sinh viên đã tập trung xây dựng các website hoặc hệ thống quản lý đơn hàng cho quán cà phê và nhà hàng. Tuy vậy, hầu hết chỉ dừng lại ở các tính năng cơ bản như xem menu, đặt món hoặc quản lý đơn hàng đơn lẻ. Các hệ thống này chưa tích hợp đầy đủ các phân hệ vận hành thực tế như quản lý bàn, hiển thị bếp (KDS), thanh toán điện tử hay báo cáo doanh thu. Điều này cho thấy nhu cầu xây dựng một giải pháp hoàn chỉnh, phù hợp với quy mô nhỏ và vừa, vẫn còn rất lớn.
+3.	MỤC TIÊU, ĐỐI TƯỢNG VÀ PHẠM VI CỦA ĐỀ TÀI
+Mục tiêu của đề tài:
+•	Đề tài được thực hiện nhằm xây dựng một ứng dụng di động hỗ trợ gọi món và thanh toán tại bàn, giúp tự động hóa quy trình phục vụ trong các nhà hàng và quán ăn quy mô nhỏ và vừa. Mục tiêu chính của phần mở đầu bao gồm:
+o	Trình bày nhu cầu thực tiễn của ngành F&B trong việc ứng dụng công nghệ để tối ưu hóa quy trình vận hành.
+o	Xác định vai trò của hệ thống trong việc hỗ trợ giao tiếp giữa phục vụ – bếp – thu ngân thông qua cơ chế đồng bộ thời gian thực.
+o	Khẳng định định hướng xây dựng giải pháp kỹ thuật hiện đại, dễ triển khai và phù hợp điều kiện của mô hình kinh doanh nhỏ lẻ tại Việt Nam.
+•	Đối tượng của đề tài:
+o	Các nhà hàng, quán ăn, quán cà phê quy mô nhỏ và vừa đang có nhu cầu ứng dụng công nghệ để tự động hóa quy trình gọi món – chế biến – thanh toán.
+o	Khách hàng sử dụng ứng dụng di động để xem menu, đặt món và thanh toán.
+o	Nhân viên phục vụ, bộ phận bếp, thu ngân và quản lý – những đối tượng trực tiếp vận hành hệ thống.
+o	Các quy trình tác nghiệp trong nhà hàng cần được số hóa và đồng bộ.
+•	Phạm vi của đề tài:
+o	Tập trung xây dựng hệ thống gọi món tại bàn, quản lý đơn hàng, hiển thị bếp (KDS), thanh toán và báo cáo doanh thu cơ bản.
+o	Phát triển ứng dụng trên nền tảng React Native; sử dụng Supabase làm hệ thống backend và tích hợp thanh toán MoMo/VietQR.
+o	Giới hạn trong mô hình vận hành của các quán ăn và nhà hàng nhỏ tại Việt Nam, hỗ trợ ngôn ngữ tiếng Việt và các phương thức thanh toán nội địa.
+o	Phạm vi thực hiện trong khuôn khổ thời gian đồ án từ tháng 8/2024 đến tháng 11/2025.
+4.	PHƯƠNG PHÁP THỰC HIỆN ĐỀ TÀI
+Để đảm bảo đề tài được triển khai đúng hướng, đáp ứng yêu cầu thực tiễn, nhóm sử dụng các phương pháp thực hiện sau:
+•	Phương pháp thu thập và phân tích tài liệu: Thu thập và tổng hợp và phân tích các tài liệu liên quan đến chuyển đổi số trong ngành F&B và các mô hình hệ thống quản lý nhà hàng hiện nay, bao gồm:
+o	Tài liệu kỹ thuật về React Native, Supabase, MoMo API, VietQR và các giải pháp realtime trong ứng dụng di động.
+o	Các bài viết, phân tích thị trường và báo cáo về xu hướng gọi món – thanh toán trực tuyến tại Việt Nam và quốc tế.
+o	Thông tin về những hệ thống POS, KDS và Table Ordering phổ biến để nắm bắt tiêu chuẩn thiết kế, quy trình vận hành và các yêu cầu chức năng thường được áp dụng.
+Việc phân tích tài liệu giúp xác định xu hướng công nghệ, yêu cầu nghiệp vụ cốt lõi và cơ sở để xây dựng một mô hình hệ thống phù hợp với thực tế.
+•	Phương pháp khảo sát thực tế: thực hiện khảo sát tại một số quán ăn và nhà hàng quy mô nhỏ và vừa tại TP.HCM nhằm thu thập thông tin về:
+o	Quy trình gọi món, chuyển món cho bếp và thanh toán hiện tại.
+o	Các vấn đề thường gặp như sai sót khi ghi order, chậm trễ trong phục vụ, thiếu đồng bộ giữa nhân viên – bếp – thu ngân.
+o	Nhu cầu và mong muốn của chủ quán về việc ứng dụng công nghệ nhằm tối ưu chi phí nhân sự và tăng hiệu quả vận hành.
+•	Phương pháp phân tích và thiết kế hệ thống:
+o	Phân tích quy trình nghiệp vụ và mô hình hoạt động của các hệ thống quản lý nhà hàng hiện có (PosApp, CukCuk, The Coffee House App, LoziFood,...).
+o	Xác định các điểm mạnh, hạn chế và yêu cầu cải tiến.
+o	Xây dựng các mô hình phân tích hệ thống bao gồm:
+	Use Case Diagram
+	Sơ đồ quy trình hoạt động
+	ERD (Entity Relationship Diagram)
+	Kiến trúc hệ thống Front-end và Back-end
+o	Thiết kế giao diện người dùng bằng Figma và thiết kế cấu trúc cơ sở dữ liệu trên Supabase.
+•	Phương pháp phát triển phần mềm: 
+o	Đề tài áp dụng mô hình phát triển Agile với cách tiếp cận lặp lại (Iterative Development), bao gồm các giai đoạn:
+	Xác định yêu cầu chức năng cho từng Sprint
+	Thiết kế giao diện và cấu trúc dữ liệu
+	Lập trình Front-end và Back-end
+	Tích hợp các tính năng realtime, thanh toán, thông báo và phân quyền
+	Đánh giá và cải tiến sau từng vòng lặp
+o	Công cụ sử dụng: React Native, Supabase, Visual Studio Code, GitHub, Expo.
+
